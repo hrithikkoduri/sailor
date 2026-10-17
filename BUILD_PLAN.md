@@ -117,18 +117,24 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **Done when:** ✅ live run produced a 77-event trace showing the full story
   (reproduce → fix → verify → finish), in the file *and* row-order-tested in the DB.
 
-### Step 9 — Checkpoints, resume, and durable turns
-- **What:** auto-checkpoint after each meaningful step; `harness run --resume <run-id>`;
-  `fork(sha)` creates a new sandbox at a checkpoint (the base for best-of-N).
-  **Lease + heartbeat:** the worker renews `runs.heartbeat_at` (~30s); a sweep marks stale
-  runs `interrupted` and re-enqueues a **resume** run — restore sandbox from `checkpoint_sha`,
-  rebuild context from the journal, continue. Idempotent effects: PR create/comment guarded
-  by lookups. Stretch: step-level journal memoization (replay recorded LLM calls instead of
+### Step 9 — Checkpoints, resume, and durable turns ✅
+- **Package:** `Sandbox.fork(ref)` (local: full — clean state at the ref, uncommitted changes
+  not carried; heyo: retained-disk wake path, fork stub until best-of-N-on-Heyo); engine
+  `pauseAfterPhase` (graceful stop at a phase boundary → reason `"paused"` + `checkpointRef`);
+  auto-checkpoint at every phase boundary (`checkpoint` events); thread persisted after EVERY
+  completed turn with `phase` on `StoredThread` (the resume position) — a crash loses at most
+  the in-flight turn. Resume = `runAgent` again with the same thread + sandbox; it starts in
+  the saved phase.
+- **App:** `runs.heartbeat_at` + `threads.messages/phase` columns (drizzle migration 0001);
+  `src/runs/lease.ts` — `heartbeatRun` / `withHeartbeat` / `sweepStaleRuns` (stale run →
+  `interrupted` → resume run enqueued; race-safe via conditional status flip).
+- **Done when:** ✅ package: pause→resume completes the fix (tested); thread saved every turn
+  (counting store); fork-at-checkpoint yields the old state (a test caught the uncommitted-
+  changes bug → forced checkout). App: sweep interrupts stale runs and enqueues resumes; fresh
+  runs untouched (integration tests). Live: ⛳ checkpoints in real runs.
+  **The end-to-end kill-the-worker demo moves to step 10 — it needs the worker to kill.**
+  Stretch (kept): step-level journal memoization (replay recorded LLM calls instead of
   re-paying for them).
-- **Files:** `src/agent/checkpoints.ts`, `src/worker/` lease helpers, `src/db/schema.ts`
-  (+`heartbeat_at` via drizzle generate), CLI flags
-- **Done when:** kill the worker mid-run → the lease goes stale → the run **auto-resumes**
-  from its last checkpoint and completes without human action.
 
 ---
 
