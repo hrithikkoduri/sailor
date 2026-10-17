@@ -21,6 +21,7 @@ import {
   type RunJobData,
 } from "../queue/index.js";
 import { executeRun } from "../runs/execute.js";
+import { drainInbox } from "../threads/inbox.js";
 import { handleSweep } from "./sweep.js";
 
 const USAGE = `Usage: harness worker [options]
@@ -70,6 +71,10 @@ export async function workerCommand(argv: string[]): Promise<number> {
       process.stdout.write(
         `[worker] run ${job.data.runId} → ${outcome.status}${outcome.summary ? ` — ${outcome.summary.replace(/\s+/g, " ").slice(0, 90)}` : ""}\n`,
       );
+      // Post-turn consumer: events that queued up while this run was busy
+      // become the NEXT run (coalesced into one task).
+      const drained = await drainInbox({ db, queues }, outcome.threadId);
+      if (drained) process.stdout.write(`[worker] inbox drain → run ${drained.id} queued\n`);
     },
     { connection: runsWorkerConnection, concurrency: 1 },
   );

@@ -8,7 +8,7 @@ import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
-import { appendEvent, consumeEvents, pendingEvents } from "../../src/threads/inbox.js";
+import { appendEvent, consumeEvents, drainInbox, pendingEvents } from "../../src/threads/inbox.js";
 import { transitionThread } from "../../src/threads/state.js";
 import { wakeThread } from "../../src/threads/wake.js";
 import { loadConfig } from "../../src/config.js";
@@ -80,6 +80,30 @@ describe("threads: inbox + wake lock + state machine", () => {
       [1, 2, 3].map((i) => wakeThread({ db, queues }, threadId, { trigger: "manual", task: `c${i}` })),
     );
     expect(results.filter((r) => r !== null)).toHaveLength(1);
+  });
+
+  it("drainInbox turns queued events into ONE run when idle; refuses while busy", async () => {
+    const threadId = await newThread(5);
+    await appendEvent(db, { threadId, kind: "pr_comment", payload: { body: "please also handle X" } });
+    await appendEvent(db, { threadId, kind: "check_run", payload: { conclusion: "failure" } });
+
+    // Busy: an active run owns the turn → drain refuses, events stay pending.
+    const active = await wakeThread({ db, queues }, threadId, { trigger: "manual", task: "work" });
+    expect(active).not.toBeNull();
+    expect(await drainInbox({ db, queues }, threadId)).toBeNull();
+    expect((await pendingEvents(db, threadId)).length).toBe(2);
+
+    // Idle: the batch becomes ONE run whose task carries the events; consumed.
+    await db
+      .update(schema.runs)
+      .set({ status: "succeeded", finishedAt: new Date() })
+      .where(eq(schema.runs.id, active!.id));
+    const drained = await drainInbox({ db, queues }, threadId);
+    expect(drained).not.toBeNull();
+    expect(drained!.trigger).toBe("inbox");
+    expect(drained!.task).toContain("pr_comment");
+    expect(drained!.task).toContain("please also handle X");
+    expect(await pendingEvents(db, threadId)).toEqual([]);
   });
 
   it("transitionThread validates against the machine", async () => {

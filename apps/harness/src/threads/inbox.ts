@@ -9,6 +9,8 @@
  */
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
+import type { Queues } from "../queue/index.js";
+import { wakeThread, type WokenRun } from "./wake.js";
 
 export interface NewEvent {
   threadId: string;
@@ -47,4 +49,29 @@ export async function consumeEvents(db: Db, eventIds: bigint[]): Promise<void> {
     .update(schema.events)
     .set({ status: "consumed", consumedAt: new Date() })
     .where(inArray(schema.events.id, eventIds));
+}
+
+/** Minimal rendering of an event batch into a run's task (real triage arrives with steps 12–13). */
+export function renderInboxTask(events: Array<{ kind: string; payload: unknown }>): string {
+  return events.map((e) => `[${e.kind}] ${JSON.stringify(e.payload).slice(0, 500)}`).join("\n");
+}
+
+/**
+ * drainInbox — the post-turn consumer.
+ *
+ * Events that arrived while a run was active are still `pending`. When the
+ * thread goes idle, the batch becomes ONE new run (coalescing): task = the
+ * rendered batch, trigger "inbox". The events are consumed the moment the run
+ * exists — the instruction survives in `runs.task` even if the run later
+ * fails. Returns null when there is nothing to do or the thread is still busy.
+ */
+export async function drainInbox(
+  deps: { db: Db; queues: Queues },
+  threadId: string,
+): Promise<WokenRun | null> {
+  const pending = await pendingEvents(deps.db, threadId);
+  if (pending.length === 0) return null;
+  const run = await wakeThread(deps, threadId, { trigger: "inbox", task: renderInboxTask(pending) });
+  if (run) await consumeEvents(deps.db, pending.map((e) => e.id));
+  return run;
 }

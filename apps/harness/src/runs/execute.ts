@@ -66,6 +66,7 @@ export interface ExecuteRunDeps {
 
 export interface ExecuteRunOutcome {
   runId: string;
+  threadId: string;
   status: "succeeded" | "failed" | "cancelled" | "paused";
   reason: string;
   summary?: string;
@@ -191,7 +192,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     }
 
     await sandbox.destroy();
-    return { runId: run.id, status, reason: outcome.reason, summary: outcome.summary };
+    return { runId: run.id, threadId: thread.id, status, reason: outcome.reason, summary: outcome.summary };
   } catch (err) {
     await sinkTail.catch(() => undefined);
     const message = err instanceof Error ? err.message : String(err);
@@ -200,7 +201,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       .set({ status: "failed", finishedAt: new Date(), error: message })
       .where(eq(schema.runs.id, run.id));
     await sandbox.destroy().catch(() => undefined);
-    return { runId: run.id, status: "failed", reason: "error" };
+    return { runId: run.id, threadId: thread.id, status: "failed", reason: "error" };
   } finally {
     clearInterval(cancelWatch);
     activeControllers.delete(run.id);
