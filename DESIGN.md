@@ -59,6 +59,8 @@ One dashboard with three faces, all served by the same Hono server:
 
 `messages` table arrives with the chat step via `drizzle-kit generate`. Auth v1: no auth, dashboard binds localhost only. GitHub remains the primary conversation surface for outside users (issue comments, PR reviews); chat is the operator's window into a thread.
 
+**No dedicated messaging service.** The three messaging jobs are each covered by something we already run: intake = a POST route in `server/api.ts`; delivery = BullMQ on Redis (retries, exactly-once, already proven in tests); persistence = Postgres (`events` + `messages`, the source of truth). The browser learns about replies by **polling** v1 (agent turns take minutes — 2–3s polling latency is invisible); SSE is a stretch; a broker/pub-sub platform would add ops cost for zero user-visible gain at this scale. The only coordination rule — `wakeThread(threadId)`: enqueue a run if the thread is idle, otherwise the message waits in the inbox for the current turn's coalescing — lives in `src/threads/` (step 11), shared by webhooks and chat alike.
+
 ## Confirmed decisions
 
 | # | Decision | Rationale | Status |
