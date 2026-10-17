@@ -35,13 +35,17 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 
 ## Phase 1 — Sandbox layer
 
-### Step 3 — Sandbox interface + `process` backend (local dev)
+### Step 3 — Sandbox interface + `local` backend ✅
 - **What:** the `Sandbox` interface with the **tool-call contract**
-  (self-contained commands, real kill deadline, secrets-as-env). `process` backend runs
-  commands in `.harness/sandboxes/<id>` on the Mac. Checkpoints = git commits.
-- **Files:** `src/sandbox/types.ts` (sketched), `src/sandbox/process.ts`, `tests/sandbox.process.test.ts`
-- **Done when:** tests prove: exec captures output + exit codes, a hanging command is
-  **killed** at its deadline, checkpoint returns a sha, destroy is idempotent.
+  (self-contained commands, real kill deadline, secrets-as-env). `LocalSandbox` runs
+  commands as processes in `.harness/sandboxes/<id>/repo` on the Mac with
+  process-group SIGTERM→SIGKILL on timeout. Checkpoints = git commits.
+  Injected via `--local`/tests only — never selectable by config.
+- **Files:** `src/sandbox/{types.ts,local.ts,index.ts}`, `tests/unit/local-sandbox.test.ts`
+- **Done when:** ✅ 9 conformance tests prove: exec captures output + exit codes,
+  no state leaks between execs, a hanging command is **killed** at its deadline,
+  secrets-as-env, checkpoint returns a sha (+no-op checkpoint), destroy idempotent,
+  keep preserves, clone with ref checkout, localPath copies don't mutate the original.
 
 ### Step 4 — `heyo` backend (real Firecracker microVMs)
 - **What:** same interface over `@heyocomputer/hws`: createDeployment → pull image →
