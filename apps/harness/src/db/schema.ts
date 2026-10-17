@@ -59,9 +59,11 @@ export const runs = pgTable(
     threadId: uuid("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
-    // queued | running | succeeded | failed | cancelled | budget_exhausted
+    // queued | running | succeeded | failed | cancelled | budget_exhausted | interrupted | paused
     status: text("status").notNull().default("queued"),
     trigger: text("trigger").notNull(), // label | manual | babysit_ci | babysit_comment | review | resume
+    /** The instruction this run works on (from the issue, or a follow-up comment). */
+    task: text("task"),
     phase: text("phase"), // reproduce | fix | verify (where it currently is)
     error: text("error"),
     steps: integer("steps").notNull().default(0),

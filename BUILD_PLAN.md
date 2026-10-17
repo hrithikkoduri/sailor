@@ -140,11 +140,21 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 
 ## Phase 4 — Full stack in motion (threads, GitHub, babysitting)
 
-### Step 10 — Worker process + run jobs
-- **What:** long-lived `npm run worker` consuming the BullMQ `runs` queue; one job = one
-  agent run end-to-end (sandbox → loop → checkpoint → trace). Graceful shutdown.
-- **Files:** `src/worker/index.ts`, `src/worker/runJob.ts`
-- **Done when:** enqueue a run in DB → worker executes it → status transitions recorded.
+### Step 10 — Worker process + run jobs ✅
+- **App:** `PostgresThreadStore` (durable ThreadStore on `threads.messages/summary/phase`,
+  pulled forward from step 11); `executeRun` — a reusable injectable executor (heartbeats,
+  AbortController registry via `cancelRun`, dual-sink traces, status/usage/checkpoint
+  recording); `harness worker` — runs consumer (concurrency 1) + the sweep as a BullMQ 6
+  **Job Scheduler** + graceful drain on SIGTERM; `harness runs enqueue` — the manual door
+  into the pipeline; migration 0002 (`runs.task`).
+- **Lease coherence (learned live):** `--stale-after-ms` must be ≥ 1.5× the heartbeat
+  interval, validated at startup — the demo's 3s threshold vs 30s cadence made the sweep
+  eat its own live run. Now both are flags (`--heartbeat-every-ms`, `--stale-after-ms`).
+- **Done when:** ✅ live: enqueue → worker executed it (8 steps, succeeded, traces + usage
+  + checkpoint recorded) → **`kill -9` mid-run** → a second worker recovered: the heartbeat
+  sweep's resume run AND BullMQ's stalled-job redelivery both completed successfully; no
+  state lost; SIGTERM drains cleanly. Integration tests: store roundtrip, executor
+  end-to-end, full recovery pipeline (stale → sweep → queue → resume at saved phase).
 
 ### Step 11 — Threads: inbox, one-turn-at-a-time, state machine
 - **What:** the **thread** record (a conversation that lives across turns) with an event

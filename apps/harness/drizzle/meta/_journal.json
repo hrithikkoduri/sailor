@@ -15,6 +15,13 @@
       "when": 1792265580952,
       "tag": "0001_sparkling_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792267618181,
+      "tag": "0002_flippant_arachne",
+      "breakpoints": true
     }
   ]
 }
