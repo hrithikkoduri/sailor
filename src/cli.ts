@@ -27,6 +27,7 @@ function usage(): string {
     ["doctor", "check the environment", ""],
     ["migrate", "apply database migrations (safe to re-run)", ""],
     ["sandbox smoke", "boot a microVM → clone → test → checkpoint → destroy", ""],
+    ["llm smoke", "live round-trip of the LLM client (text + tool calls)", ""],
     ...Object.entries(PLANNED).map(([cmd, info]) => [cmd, info.summary, `planned — step ${info.step}`]),
     ["help", "show this message", ""],
   ];
@@ -78,6 +79,16 @@ async function main(): Promise<number> {
         return smokeCommand(args.slice(1));
       }
       process.stderr.write(`unknown sandbox subcommand: ${sub ?? "(none)"} — try: harness sandbox smoke\n`);
+      return 1;
+    }
+
+    case "llm": {
+      const sub = args[0];
+      if (sub === "smoke") {
+        const { llmSmokeCommand } = await import("./commands/llm-smoke.js");
+        return llmSmokeCommand();
+      }
+      process.stderr.write(`unknown llm subcommand: ${sub ?? "(none)"} — try: harness llm smoke\n`);
       return 1;
     }
 

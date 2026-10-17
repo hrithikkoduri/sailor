@@ -75,11 +75,15 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   timeout kills, search caps) + **live conformance on a Heyo microVM** (bash/read/search/
   edit/run_tests/checkpoint round-trip) — 9/9 integration tests green, VM cleaned up.
 
-### Step 6 — LLM client (OpenRouter / OpenAI-compatible)
+### Step 6 — LLM client (OpenRouter / OpenAI-compatible) ✅
 - **What:** one `LLMClient` interface: `complete(messages, tools) → text | toolCalls + usage`.
-  Retries with backoff, token/cost accounting per call (we need $ budgets later).
-- **Files:** `src/llm/client.ts`, `src/llm/openai.ts`
-- **Done when:** a scripted call returns tool calls correctly and usage is recorded.
+  Raw `fetch` (no SDK); retry on 429/5xx with exponential backoff + jitter; immediate
+  throw on other 4xx; latency + token + cost accounting (`LLM_PRICE_IN/OUT_PER_MTOK`).
+- **Files:** `src/llm/{types,openai,index}.ts`, `src/commands/llm-smoke.ts`
+- **Done when:** ✅ `harness llm smoke` passes against OpenRouter
+  (deepseek/deepseek-v4.1-flash): text round-trip (`finish: stop`) + tool-call round-trip
+  with valid JSON arguments. Note discovered live: reasoning models spend completion
+  budget on chain-of-thought — tiny max_tokens yields empty text; usage counts it.
 
 ### Step 7 — Agent loop (reproduce → fix → verify) ★ vertical slice
 - **What:** the phase machine + system prompt + guardrails (step/token/$ budgets,

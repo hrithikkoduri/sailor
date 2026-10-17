@@ -25,7 +25,14 @@ export interface HarnessConfig {
   /** GitHub access for reading issues and opening PRs (bot account PAT). */
   github: { token: string | undefined };
   /** LLM endpoint — any OpenAI-compatible API (OpenRouter by default). */
-  llm: { baseUrl: string; apiKey: string | undefined; model: string | undefined };
+  llm: {
+    baseUrl: string;
+    apiKey: string | undefined;
+    model: string | undefined;
+    /** USD per million tokens; enables cost accounting when both are set. */
+    priceInPerMTok?: number;
+    priceOutPerMTok?: number;
+  };
   /** Postgres — threads, runs, events, traces (full stack from step 2). */
   postgres: { url: string };
   /** Redis — BullMQ queues (runs + babysit timers). */
@@ -80,6 +87,12 @@ function sizeClass(value: string | undefined): HeyoSizeClass {
   return v;
 }
 
+function optionalNumber(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 /**
  * Build the typed config from an environment map. Pure: no file access, no
  * mutation — tests can pass a plain object.
@@ -99,6 +112,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig 
       baseUrl: env.LLM_BASE_URL ?? "https://openrouter.ai/api/v1",
       apiKey: env.LLM_API_KEY || undefined,
       model: env.LLM_MODEL || undefined,
+      priceInPerMTok: optionalNumber(env.LLM_PRICE_IN_PER_MTOK),
+      priceOutPerMTok: optionalNumber(env.LLM_PRICE_OUT_PER_MTOK),
     },
     postgres: { url: env.DATABASE_URL ?? "postgres://harness:harness@localhost:5432/harness" },
     redis: { url: env.REDIS_URL ?? "redis://localhost:6379" },
