@@ -47,13 +47,16 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   secrets-as-env, checkpoint returns a sha (+no-op checkpoint), destroy idempotent,
   keep preserves, clone with ref checkout, localPath copies don't mutate the original.
 
-### Step 4 — `heyo` backend (real Firecracker microVMs)
+### Step 4 — `heyo` backend (real Firecracker microVMs) ✅
 - **What:** same interface over `@heyocomputer/hws`: createDeployment → pull image →
-  boot → `exec` (wrapped with guest `timeout` since Heyo's API timeout doesn't kill) →
-  checkpoint commits → destroy. Plus the git-credentials setup (outside `/workspace`).
-- **Files:** `src/sandbox/heyo.ts`, `src/sandbox/index.ts` (factory), `harness sandbox smoke`
-- **Done when:** smoke test against Heyo Cloud passes: VM boots → repo clones → tests run →
-  checkpoint sha recorded → VM destroyed. **Needs your `HEYO_TOKEN`.**
+  boot → `exec` (wrapped with guest `timeout` since Heyo's API timeout doesn't kill, and
+  with an embedded `cd` since Heyo's `cwd` option isn't dependable) → checkpoint commits →
+  destroy (or keep). Git credentials for private repos land in `/etc/git-credentials`,
+  outside `/workspace`. `harness sandbox smoke` is the standing proof command.
+- **Files:** `src/sandbox/heyo.ts`, `src/sandbox/index.ts` (factory), `src/commands/smoke.ts`
+- **Done when:** ✅ smoke test against Heyo Cloud passes (2026-10-17):
+  VM boots → repo clones → tests run → checkpoint sha recorded → VM destroyed — **6.2s total**.
+  First-run bug found & fixed: server ignores the exec `cwd` option → embedded `cd` in the wrapper.
 
 ---
 

@@ -111,7 +111,7 @@ Lands in: step 9 (lease/heartbeat/resume + journal), steps 17–18 (SSE).
 
 ## Heyo facts worth remembering (from research)
 
-- `exec(id, cmd)` = one fresh process per call, starts in `/`. Non-zero exit is a normal return value.
+- `exec(id, cmd)` = one fresh process per call, starts in `/`. Non-zero exit is a normal return value. **Its `cwd` option is not dependable across server versions** — always embed `cd <dir> && …` in the command itself (the HeyoSandbox adapter does this inside its wrapper; smoke-tested 2026-10-17: first smoke failed with "not a git repository" precisely because of this).
 - Heyo timeout does NOT kill the guest command → always wrap with guest `timeout`.
 - Stateful ≠ immortal: lifecycle is running → stopped (disk retained, `idle_action: retain`) → resumed → destroyed (`deleteDeployment` / `evictVm`). Disk survives restarts; nothing survives deletion.
 - HWS ("Heyo Web Services") = control plane (like a mini AWS: manages VMs + plugins: secrets, image store, logs, git hosting, Postgres, queue). **Plugins attach to namespaces (tenants), not inside sandboxes.** A sandbox is just a VM.

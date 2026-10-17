@@ -20,13 +20,13 @@ const PLANNED: Record<string, PlannedCommand> = {
   worker: { summary: "long-lived job worker (BullMQ queues)", step: "10" },
   serve: { summary: "GitHub webhook intake service", step: "12" },
   eval: { summary: "run the eval suite and report metrics", step: "15" },
-  "sandbox smoke": { summary: "create a sandbox, clone, test, destroy", step: "4" },
 };
 
 function usage(): string {
   const rows = [
     ["doctor", "check the environment", ""],
     ["migrate", "apply database migrations (safe to re-run)", ""],
+    ["sandbox smoke", "boot a microVM → clone → test → checkpoint → destroy", ""],
     ...Object.entries(PLANNED).map(([cmd, info]) => [cmd, info.summary, `planned — step ${info.step}`]),
     ["help", "show this message", ""],
   ];
@@ -69,6 +69,16 @@ async function main(): Promise<number> {
         await pool.end();
       }
       return 0;
+    }
+
+    case "sandbox": {
+      const sub = args[0];
+      if (sub === "smoke") {
+        const { smokeCommand } = await import("./commands/smoke.js");
+        return smokeCommand(args.slice(1));
+      }
+      process.stderr.write(`unknown sandbox subcommand: ${sub ?? "(none)"} — try: harness sandbox smoke\n`);
+      return 1;
     }
 
     case "help":

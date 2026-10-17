@@ -8,6 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { Pool } from "pg";
 import { Redis } from "ioredis";
+import { Hws } from "@heyocomputer/hws";
 import type { HarnessConfig } from "./config.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
@@ -71,6 +72,21 @@ function commandAvailable(cmd: string): string | null {
   return null;
 }
 
+/** Live Heyo credential probe: does the token work, and what can it see? */
+async function heyoProbe(
+  server: string,
+  token: string,
+): Promise<{ ok: true; namespace?: string; admin?: string } | { ok: false; error: string }> {
+  const lb = new Hws({ server, token, timeoutMs: 10_000 });
+  try {
+    const who = await lb.whoami();
+    return { ok: true, namespace: who.namespace, admin: who.admin_scope };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message.split("\n")[0] ?? message };
+  }
+}
+
 export async function runDoctor(cfg: HarnessConfig): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
 
@@ -126,16 +142,42 @@ export async function runDoctor(cfg: HarnessConfig): Promise<CheckResult[]> {
     required: true,
   });
 
-  // --- credentials (optional until the feature that needs them lands) -------
-  results.push({
-    name: "HEYO_TOKEN",
-    status: cfg.heyo.token ? "ok" : "warn",
-    detail: cfg.heyo.token ? "set" : "not set — microVM backend unavailable",
-    hint: cfg.heyo.token
-      ? undefined
-      : "Needed for the heyo sandbox backend (step 4). Dev runs fine on the process backend.",
-    required: false,
-  });
+  // --- credentials ----------------------------------------------------------
+  // HEYO_TOKEN gets a LIVE probe: presence alone hides the classic failures
+  // (expired token, wrong server, token confined to a different namespace).
+  if (cfg.heyo.token) {
+    const probe = await heyoProbe(cfg.heyo.server, cfg.heyo.token);
+    if (probe.ok) {
+      const mismatch = probe.namespace !== undefined && probe.namespace !== cfg.heyo.namespace;
+      results.push({
+        name: "HEYO_TOKEN",
+        status: mismatch ? "fail" : "ok",
+        detail: mismatch
+          ? `valid, but confined to namespace "${probe.namespace}" while HEYO_NAMESPACE is "${cfg.heyo.namespace}"`
+          : `valid — namespace ${probe.namespace ?? "(unconfined)"}, ${probe.admin ?? "?"} tier`,
+        hint: mismatch
+          ? "Align HEYO_NAMESPACE with the token's namespace, or mint a token for it."
+          : undefined,
+        required: false,
+      });
+    } else {
+      results.push({
+        name: "HEYO_TOKEN",
+        status: "fail",
+        detail: `set but rejected: ${probe.error}`,
+        hint: "Check HEYO_TOKEN and HEYO_SERVER, or mint a fresh token in the namespace dashboard.",
+        required: false,
+      });
+    }
+  } else {
+    results.push({
+      name: "HEYO_TOKEN",
+      status: "warn",
+      detail: "not set — microVM backend unavailable",
+      hint: "Needed for the heyo sandbox backend; get one from your namespace dashboard at app.heyo.computer.",
+      required: false,
+    });
+  }
 
   results.push({
     name: "LLM_API_KEY",
