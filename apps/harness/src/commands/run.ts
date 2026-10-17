@@ -4,7 +4,7 @@
  * This is the product's thin glue over the framework package:
  *   build the sandbox (--local for dev, heyo microVM by default)
  *   → write the repo map
- *   → runAgent(codingStrategy) with live event printing
+ *   → runAgent(codingAgent) with live event printing
  *   → report the result
  *
  * The PR/webhook layers (steps 12–13) reuse exactly this path — they enqueue
@@ -17,8 +17,7 @@ import { loadConfig } from "../config.js";
 import { JsonlTrace } from "@harness/agent";
 import { TraceRecorder } from "../trace/store.js";
 import {
-  allTools,
-  codingStrategy,
+  codingAgent,
   createLLMClient,
   createSandbox,
   runAgent,
@@ -207,13 +206,12 @@ export async function runCommand(argv: string[]): Promise<number> {
     await sandbox.start();
 
     const result = await runAgent(
-      // No explicit context: codingStrategy.prepareContext() writes the repo map.
+      // No explicit context: the coding strategy's prepareContext() writes the repo map.
       { task: args.issue, testCommand: args.testCmd },
       {
         llm,
         sandbox,
-        tools: allTools,
-        strategy: codingStrategy,
+        agent: codingAgent,
         budgets: { maxSteps: args.maxSteps ?? 40, maxUsd: args.maxUsd ?? 5 },
         onEvent: sink,
       },

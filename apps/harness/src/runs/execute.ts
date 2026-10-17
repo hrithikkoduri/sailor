@@ -15,8 +15,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import {
   JsonlTrace,
-  allTools,
-  codingStrategy,
+  codingAgent,
   createLLMClient,
   createSandbox,
   runAgent,
@@ -149,8 +148,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
           {
             llm,
             sandbox,
-            tools: allTools,
-            strategy: codingStrategy,
+            agent: codingAgent,
             thread: { store: new PostgresThreadStore(db), id: thread.id },
             startPhase: deps.startPhase ?? run.startPhase ?? undefined,
             signal: controller.signal,
