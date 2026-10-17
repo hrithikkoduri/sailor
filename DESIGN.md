@@ -25,29 +25,25 @@ Dashboard + chat ──HTTP──▶  │ server (Hono): webhooks · api ·   �
                                     secrets injected as env at boot
 ```
 
-## Repository layout (Option A — monorepo-shaped single package)
+## Repository layout — staging workspaces now, extraction later
 
-Split by **runtime first, then domain**. Three runtimes — cli, worker, server — import shared infrastructure and domain modules. One-way dependencies only: `runtimes → domain → infra` (a sandbox adapter must never import the agent; a domain module must never import a runtime). The folders map 1:1 onto a future `apps/` + `packages/` monorepo split; that split happens when a trigger fires, not before.
+npm workspaces with one package + two apps. Split by **runtime first, then domain**; one-way dependencies only: `apps → packages` (a sandbox adapter must never import the agent; the package must never import the app). The package tree follows the framework layers; `engine/` is agent-agnostic, `strategies/` holds our coding agent's reproduce→fix→verify.
 
 ```
-src/
-  cli.ts                    entry: the `harness` command router
-  config.ts log.ts doctor.ts
-  db/ queue/ sandbox/ llm/ trace/ github/     shared infrastructure
-  agent/ tools/ threads/ eval/                shared domain
-  worker/  (index.ts + handlers/{run,babysit}.ts)      runtime: long-lived jobs
-  server/  (index.ts, webhooks.ts, api.ts, dashboard/) runtime: HTTP + web UI
-eval/tasks/   data: eval specs     image/   toolchain VM Dockerfile
-drizzle/      generated migrations  tests/{unit,integration}/
+packages/agent/   @harness/agent — the framework (publishable-ready from day one)
+  engine/           loop, loop detection, budgets, context, events  (agent-agnostic)
+  llm/              model transport (OpenAI-compatible + streaming)
+  sandbox/          execution: interface + heyo + local backends
+  tools/            capabilities: Tool protocol + the coding tool set
+  strategies/       behavior: coding.ts (reproduce → fix → verify) ships as default
+  trace/            structured events → JSONL + DB consumers
+apps/harness/     the product: cli, config, db, queue, worker, server, github, eval
+apps/dashboard/   Vite + React (step 17) — consumes the harness API over HTTP
+eval/tasks/       data: eval specs        image/  toolchain VM Dockerfile
+drizzle/          generated migrations    tests/{unit,integration}/
 ```
 
-| Today | Future monorepo | Split trigger |
-|---|---|---|
-| `src/server/` | `apps/api/` | webhooks and dashboard API need separate deploy/scaling |
-| `src/worker/` | `apps/worker/` | multiple worker types deployed independently |
-| `src/server/dashboard/` | `apps/dashboard/` | it grows into a real React/Vite build |
-| `src/agent/` + `tools/` + `threads/` | `packages/core/` | a second consumer of the agent appears |
-| `src/{db,sandbox,llm,trace}`, `config.ts` | `packages/*` | shared across apps after the split |
+**Extraction plan (decided):** the workspaces are *staging*. After the eval suite (stretch, step 20), `packages/agent` moves to its own repository, is published as a versioned package, and the harness consumes it from the registry — the harness becomes consumer #1 of the framework. Publishable-ready rules apply from day one: no imports from `apps/`, dependencies declared explicitly, clean `exports` map.
 
 ## Dashboard & chat (scope decision)
 
@@ -102,6 +98,7 @@ Lands in: step 9 (lease/heartbeat/resume + journal), steps 17–18 (SSE).
 | 13 | Dashboard: threads/runs view + trace viewer + **chat interface**. Chat messages reuse the thread inbox pipeline (`chat_message` event); replies in a `messages` table. `server/` hosts api + webhooks + dashboard in one Hono app; no auth v1 (localhost) | One pipeline for every trigger — GitHub comments, CI events, and chat are all inbox events. GitHub stays the primary conversation surface; chat is the operator window | ✅ decided |
 | 14 | Realtime over **SSE** (not polling, not WebSockets): worker → Redis pub/sub → server → EventSource. Token batches = cumulative text snapshots flushed ~10/s (never per-token); streaming reply persisted as a `messages` row updated per flush; O(1) DOM updates — only the streaming node mutates | Snapshot semantics make events idempotent and gap-proof (no replay log, no deltas); batching + single-node updates kill re-render storms; refresh mid-stream loses nothing | ✅ decided |
 | 15 | **Durable execution principles** on our own stack: DB-as-truth (no browser session state), journaled steps (`trace_events`), run lease + heartbeat with auto-resume from checkpoint, idempotent effects everywhere. No serverless/hosted durable-execution platform | Crash/deploy/refresh loses nothing; resumes without human action; honors the anti-Lambda reasoning of decision #7 | ✅ decided |
+| 16 | Framework extraction: `packages/agent` develops in-repo as an npm workspace (**staging**), then is extracted to its own repo and **published** (step 20); the harness imports the published package as consumer #1. Publishable-ready rules from day one: no `apps/` imports, explicit deps, clean `exports` map | Separate repo = real boundary + own CI/docs/versioning; consumer-#1 proves reusability. Staging in-repo avoids cross-repo iteration pain during the build | ✅ decided |
 
 ## Inngest vs BullMQ (decision #7 detail)
 

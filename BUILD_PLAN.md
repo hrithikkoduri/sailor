@@ -201,6 +201,26 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   diagram, eval results, and failure-mode write-up.
 - **Done when:** README is presentable as a portfolio piece.
 
+## Phase 6 — Extraction & ecosystem (stretch, after eval results)
+
+### Step 20 — Extract the framework: own repo, published package, consumer #1
+- **What:** move `packages/agent` to its own repository (own README, docs, CI, license);
+  make it publishable (`exports` map, `files`, version 0.1.0, scope decided at publish
+  time); publish to npm/GitHub Packages; in the harness, replace the workspace dependency
+  with the published version. A minimal `examples/` runs the framework without any of our
+  infra (no GitHub, no Postgres — just a local dir + an LLM key).
+- **Done when:** a fresh clone of the harness `npm install`s the published package and all
+  tests pass without the workspace; the framework repo's CI is green; the example runs
+  standalone.
+
+### Step 21 — Second sandbox backend (E2B) — proves the pluggable claim
+- **What:** implement `E2BSandbox` (~150 lines, same four methods: start/exec/checkpoint/
+  destroy) and run a slice of the eval suite on it; publish side-by-side numbers
+  (Heyo vs E2B) in the README. Intro: `SANDBOX_BACKEND=heyo|e2b` config surface
+  (`local` remains CLI-injected, dev-only — decision #1).
+- **Done when:** `SANDBOX_BACKEND=e2b harness eval --subset` produces numbers next to the
+  Heyo run, and the interface's drop-in claim is proven by a real third-party backend.
+
 ---
 
 ## Review flow per step
