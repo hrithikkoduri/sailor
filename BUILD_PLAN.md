@@ -85,13 +85,20 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   with valid JSON arguments. Note discovered live: reasoning models spend completion
   budget on chain-of-thought — tiny max_tokens yields empty text; usage counts it.
 
-### Step 7 — Agent loop (reproduce → fix → verify) ★ vertical slice
-- **What:** the phase machine + system prompt + guardrails (step/token/$ budgets,
-  loop detection: same command 3× → force new approach). Repo map written at start.
-  Ends with `finish(summary)`. This step makes `harness run <repo> <issue>` work.
-- **Files:** `src/agent/{loop.ts,phases.ts,prompts.ts,guardrails.ts,repomap.ts}`
-- **Done when:** `harness run ./fixtures/buggy-lib "add() returns wrong sum"` opens no PR yet
-  but leaves: failing test → fix → passing test, all inside the sandbox. **First real demo.**
+### Step 7 — Agent loop (reproduce → fix → verify) ★ vertical slice ✅
+- **What:** the **engine** (`packages/agent/src/engine/`: loop, budgets, events, strategy
+  contract, protocol context) + the first built-in agent (`strategies/coding.ts`) + repo map.
+  Guardrails: step/token/$ budgets, loop detection (identical call 3× → blocked), nudges for
+  no-tool-call turns. Phase advances happen on **tool evidence** (failing/passing run_tests),
+  never on the model's claims. `harness run <repo> <issue> [--local]` is the CLI entry.
+- **Files:** `packages/agent/src/{engine/*,strategies/*}`, `apps/harness/src/commands/run.ts`,
+  `fixtures/buggy-lib/`, `packages/agent/tests/unit/engine.test.ts`
+- **Done when:** ✅ **live run 2026-10-17 (local backend):** reproduce (suite fails) → fix
+  (one minimal edit) → verify (suite green + diff review + spot checks) → finish —
+  **8 turns, 22.7k tokens, 13.2s.** Fixed live along the way: npm flag pass-through in
+  workspace scripts; `localPath` on the heyo backend now fails fast (silently empty repo
+  before); `run_tests` gained `meta.ran` so "couldn't run" ≠ "failed." Heyo-backend re-run
+  of the same demo waits on `GITHUB_TOKEN` (private repo) or a public fixture URL.
 
 ---
 
