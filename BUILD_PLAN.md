@@ -151,9 +151,28 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **Files:** `image/Dockerfile.firecracker`, build script
 - **Done when:** Heyo smoke boots from our image with zero install steps.
 
-### Step 17 — Polish + write-up
-- **What:** trace viewer HTML page (linked from PRs), turn compaction (summarize old turns
-  when context fills), README with architecture diagram, results, and failure-mode write-up.
+### Step 17 — Dashboard: API + threads/runs view + trace viewer
+- **What:** `server/api.ts` (REST over threads, runs, trace_events); static dashboard page:
+  threads list (state, budget, PR link) → runs per thread → full trace view (prompts, tool
+  calls, outputs, tokens, cost). The PR trace link (step 12) points here.
+  Small actions: cancel run, keep sandbox for debugging.
+- **Files:** `src/server/api.ts`, `src/server/dashboard/*`
+- **Done when:** after a run, the dashboard shows the thread → run → trace; the trace URL
+  from a PR opens the right run.
+
+### Step 18 — Chat interface
+- **What:** chat with the agent thread from the dashboard. A chat message is just another
+  inbox event (`chat_message`) — same one-turn-at-a-time pipeline as GitHub comments.
+  New `messages` table (author: user|agent) via `drizzle-kit generate`; agent replies are
+  written at the end of the turn. Transcript in the thread view; poll for updates (SSE stretch).
+- **Files:** `src/db/schema.ts` (+messages), `src/threads/messages.ts`, `server/api.ts` additions,
+  `src/server/dashboard/` chat UI
+- **Done when:** type a message in the dashboard → a worker turn runs → the agent's reply
+  appears in the transcript.
+
+### Step 19 — Polish + write-up
+- **What:** turn compaction (summarize old turns when context fills), README with architecture
+  diagram, eval results, and failure-mode write-up.
 - **Done when:** README is presentable as a portfolio piece.
 
 ---

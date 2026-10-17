@@ -7,10 +7,13 @@
 ## Architecture (current draft)
 
 ```
-GitHub events ──webhook──▶ intake service (Hono) ──▶ Postgres (threads, inbox, jobs, traces)
-                                                        │
-                  timer/cron ("babysit PRs") ───────────┤
-                                                        ▼
+GitHub events ──webhook──▶  ┌───────────────────────────────────┐
+Dashboard + chat ──HTTP──▶  │ server (Hono): webhooks · api ·   │  ──▶ Postgres (threads, inbox,
+                            │ dashboard + trace viewer          │      jobs, traces)
+                            └───────────────────────────────────┘
+                                                                     │
+                  timer/cron ("babysit PRs") ────────────────────────┤
+                                                                     ▼
                                     worker process (long-lived)
                                       agent thread state machine
                                       turn = agent loop (reproduce → fix → verify)
@@ -21,6 +24,40 @@ GitHub events ──webhook──▶ intake service (Hono) ──▶ Postgres (t
                                     checkpoints = git commits (forkable)
                                     secrets injected as env at boot
 ```
+
+## Repository layout (Option A — monorepo-shaped single package)
+
+Split by **runtime first, then domain**. Three runtimes — cli, worker, server — import shared infrastructure and domain modules. One-way dependencies only: `runtimes → domain → infra` (a sandbox adapter must never import the agent; a domain module must never import a runtime). The folders map 1:1 onto a future `apps/` + `packages/` monorepo split; that split happens when a trigger fires, not before.
+
+```
+src/
+  cli.ts                    entry: the `harness` command router
+  config.ts log.ts doctor.ts
+  db/ queue/ sandbox/ llm/ trace/ github/     shared infrastructure
+  agent/ tools/ threads/ eval/                shared domain
+  worker/  (index.ts + handlers/{run,babysit}.ts)      runtime: long-lived jobs
+  server/  (index.ts, webhooks.ts, api.ts, dashboard/) runtime: HTTP + web UI
+eval/tasks/   data: eval specs     image/   toolchain VM Dockerfile
+drizzle/      generated migrations  tests/{unit,integration}/
+```
+
+| Today | Future monorepo | Split trigger |
+|---|---|---|
+| `src/server/` | `apps/api/` | webhooks and dashboard API need separate deploy/scaling |
+| `src/worker/` | `apps/worker/` | multiple worker types deployed independently |
+| `src/server/dashboard/` | `apps/dashboard/` | it grows into a real React/Vite build |
+| `src/agent/` + `tools/` + `threads/` | `packages/core/` | a second consumer of the agent appears |
+| `src/{db,sandbox,llm,trace}`, `config.ts` | `packages/*` | shared across apps after the split |
+
+## Dashboard & chat (scope decision)
+
+One dashboard with three faces, all served by the same Hono server:
+
+1. **Trace viewer** — a run's full step-by-step story (prompts, tool calls, outputs, tokens, cost). The PR links here ("a link to a full trace").
+2. **Operations view** — threads list (state, budget, PR link) → runs → trace; live status. Small action endpoints (cancel run, keep sandbox) come after.
+3. **Chat interface** — talk to a thread from the browser. **A chat message is just another inbox event** (`chat_message`) flowing through the exact same pipeline as GitHub comments: inbox → one-turn-at-a-time lock → worker → agent turn. Agent replies are stored in a `messages` table (author: user|agent) and rendered as the transcript. No second execution path, no duplicated logic. Poll for updates v1 (SSE is a stretch).
+
+`messages` table arrives with the chat step via `drizzle-kit generate`. Auth v1: no auth, dashboard binds localhost only. GitHub remains the primary conversation surface for outside users (issue comments, PR reviews); chat is the operator's window into a thread.
 
 ## Confirmed decisions
 
@@ -38,6 +75,7 @@ GitHub events ──webhook──▶ intake service (Hono) ──▶ Postgres (t
 | 10 | Thread model: persistent record (Postgres) + inbox of events; one turn at a time per thread; coalesce incoming events; priorities: review comments > CI failures > chatter | Answers "review comments go to same agent thread" + dedup | ✅ agreed in principle |
 | 11 | PR babysitting: event-driven (check_run/review webhooks) + cron sweep of open PRs; bounded by thread state machine + budgets (max turns, max $) | Catches dropped webhooks/flaky CI; can't loop forever | ✅ agreed in principle |
 | 12 | LLM: provider-agnostic interface; OpenRouter/OpenAI-compatible first | Swappable; all models reachable | ✅ agreed |
+| 13 | Dashboard: threads/runs view + trace viewer + **chat interface**. Chat messages reuse the thread inbox pipeline (`chat_message` event); replies in a `messages` table. `server/` hosts api + webhooks + dashboard in one Hono app; no auth v1 (localhost) | One pipeline for every trigger — GitHub comments, CI events, and chat are all inbox events. GitHub stays the primary conversation surface; chat is the operator window | ✅ decided |
 
 ## Inngest vs BullMQ (decision #7 detail)
 
@@ -85,3 +123,4 @@ Sources: SWE-bench Lite subset + seeded bugs in repos we control.
 - Webhook dedup: `X-GitHub-Delivery` + business-key unique constraints — confirm when implementing
 - Which SWE-bench Lite subset (30–50 tasks) and how to handle per-instance setup images
 - Toolchain image contents (git, node, python, ripgrep, docker?, test runners) — finalize when we know target repos
+- Dashboard auth in production (v1 is localhost-only, no auth): token? behind Heyo's auth gate? decide when deploying
