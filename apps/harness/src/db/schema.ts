@@ -38,6 +38,10 @@ export const threads = pgTable(
     baseRef: text("base_ref").notNull().default("main"), // we never push to baseRef
     checkpointSha: text("checkpoint_sha"), // resume/fork point (git commit in the VM)
     summary: text("summary"), // running summary of the work (context compaction)
+    /** Verbatim recent conversation — the ThreadStore's storage (decision #17). */
+    messages: jsonb("messages").notNull().default(sql`'[]'::jsonb`),
+    /** The phase the thread is currently in — resume starts here. */
+    phase: text("phase"),
     budgetMaxTurns: integer("budget_max_turns").notNull().default(20),
     budgetMaxUsd: numeric("budget_max_usd", { precision: 10, scale: 4 }).notNull().default("10.0"),
     turnsUsed: integer("turns_used").notNull().default(0),
@@ -65,6 +69,8 @@ export const runs = pgTable(
     tokensOut: integer("tokens_out").notNull().default(0),
     usd: numeric("usd", { precision: 10, scale: 4 }).notNull().default("0"),
     startedAt: timestamp("started_at", { withTimezone: true }),
+    /** Lease: the worker stamps this while alive; a stale stamp means it died (sweep recovers). */
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

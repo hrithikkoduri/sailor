@@ -8,6 +8,13 @@
       "when": 1792218945067,
       "tag": "0000_smooth_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792265580952,
+      "tag": "0001_sparkling_black_panther",
+      "breakpoints": true
     }
   ]
 }
