@@ -1,0 +1,52 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Model used for new sessions: "provider/model" (optional "#variant")
+  // "model": "openrouter/xiaomi/mimo-v2.6-pro",
+
+  // Primary agent used when a session has not selected one
+  "default_agent": "build",
+
+  "agents": {
+    // --- Primary agents: DeepSeek V4.1 Flash ---
+    "build": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    },
+    "plan": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    },
+
+    // --- Subagents: DeepSeek V4.1 Flash ---
+    "general": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    },
+    "explore": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    },
+
+    // --- Hidden maintenance agents: DeepSeek V4.1 Flash ---
+    "title": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    },
+    "summary": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    },
+    "compaction": {
+      "model": "openrouter/deepseek/deepseek-v4.1-flash"
+    }
+  },
+
+  // Global permission rules (ordered; last matching rule wins)
+  // "permissions": [
+  //   { "action": "shell", "resource": "git push *", "effect": "ask" }
+  // ],
+
+  // Slash commands
+  // "commands": {},
+
+  // MCP servers
+  // "mcp": { "servers": {} },
+
+  // Plugins
+  // "plugins": []
+}
