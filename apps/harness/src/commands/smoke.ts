@@ -6,8 +6,7 @@
  * Every step is timed and printed; exit code 0 means the whole loop works.
  */
 import { loadConfig } from "../config.js";
-import { createSandbox } from "../sandbox/index.js";
-import type { Sandbox } from "../sandbox/types.js";
+import { createSandbox, type Sandbox } from "@harness/agent";
 
 interface SmokeArgs {
   repo: string;

@@ -8,10 +8,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig, loadDotEnv } from "../../src/config.js";
-import { HeyoSandbox } from "../../src/sandbox/heyo.js";
-import { toolByName } from "../../src/tools/index.js";
-import type { ToolContext } from "../../src/tools/types.js";
-import type { Tool } from "../../src/tools/types.js";
+import { HeyoSandbox, toolByName } from "@harness/agent";
+import type { Tool, ToolContext } from "@harness/agent";
 
 loadDotEnv();
 const cfg = loadConfig();

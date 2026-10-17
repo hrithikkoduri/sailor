@@ -6,11 +6,11 @@
  * Exit code 0 means the client works end-to-end against the configured model.
  */
 import { loadConfig } from "../config.js";
-import { createLLMClient } from "../llm/index.js";
+import { createLLMClient } from "@harness/agent";
 
 export async function llmSmokeCommand(): Promise<number> {
   const cfg = loadConfig();
-  const llm = createLLMClient(cfg);
+  const llm = createLLMClient(cfg.llm);
   process.stdout.write(`\nllm smoke — ${cfg.llm.baseUrl}\n  model: ${llm.model}\n\n`);
 
   const t0 = Date.now();

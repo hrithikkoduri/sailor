@@ -1,0 +1,39 @@
+{
+  "name": "@harness/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The harness product: issue-to-PR pipeline around @harness/agent.",
+  "type": "module",
+  "bin": {
+    "harness": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "harness": "tsx src/cli.ts",
+    "doctor": "tsx src/cli.ts doctor",
+    "migrate": "tsx src/cli.ts migrate",
+    "db:generate": "drizzle-kit generate",
+    "test": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@harness/agent": "*",
+    "@heyocomputer/hws": "^0.4.0",
+    "bullmq": "^6.3.16",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -8,9 +8,9 @@
  * Precedence: real environment variables win over `.env` file values (matching
  * how `node --env-file` behaves).
  */
-import { readFileSync } from "node:fs";
-
-export type HeyoSizeClass = "micro" | "mini" | "small" | "medium" | "large" | "xlarge";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import type { HeyoSizeClass } from "@harness/agent";
 
 export interface HarnessConfig {
   /** Heyo Cloud connection (Firecracker microVMs) — the only production sandbox. */
@@ -66,13 +66,28 @@ export function parseEnvFile(text: string): Record<string, string> {
   return out;
 }
 
+/** Find the nearest .env: cwd first, then parents (monorepo-friendly). */
+export function findDotEnv(startDir: string, maxLevels = 5): string | undefined {
+  let dir = path.resolve(startDir);
+  for (let i = 0; i <= maxLevels; i++) {
+    const candidate = path.join(dir, ".env");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+}
+
 /** Fill `target` from a .env file without overwriting anything already set. */
-export function loadDotEnv(path = ".env", target: NodeJS.ProcessEnv = process.env): void {
+export function loadDotEnv(explicit?: string, target: NodeJS.ProcessEnv = process.env): void {
+  const file = explicit ?? findDotEnv(process.cwd());
+  if (!file) return; // no .env anywhere up the tree is fine — env vars may be set
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = readFileSync(file, "utf8");
   } catch {
-    return; // no .env file is fine — real env vars may be set already
+    return;
   }
   for (const [key, value] of Object.entries(parseEnvFile(text))) {
     if (target[key] === undefined) target[key] = value;
