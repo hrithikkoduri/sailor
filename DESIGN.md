@@ -4,6 +4,13 @@
 
 **One-line pitch:** label a GitHub issue `agent:fix`, get a PR with the fix, passing tests, and a link to the full agent trace — all inside an isolated Firecracker microVM.
 
+## Vocabulary (kept consistent everywhere)
+
+- **Agent** — the LLM-driven worker that decides and acts.
+- **Agent harness** (a.k.a. agent framework) — everything *around* the agent that makes it work: the loop, tools, sandbox, context management, budgets, traces. **That is `packages/agent` (`@harness/agent`).** It ships with a default coding agent (the reproduce→fix→verify strategy + the coding tool set) but knows nothing about GitHub, Postgres, or this product.
+- **The product** — the issue→PR pipeline that *uses* the agent harness: threads, queues, webhooks, GitHub, dashboard. **That is `apps/harness` (`@harness/app`).**
+- **This repo** — currently both (staging monorepo); at step 20 the package moves to its own repo, is named properly (its own identity — "harness" nested inside "harness" is a staging name only), and the product consumes it as consumer #1.
+
 ## Architecture (current draft)
 
 ```
