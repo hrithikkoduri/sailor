@@ -213,8 +213,8 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   streaming node mutates).
 
 ### Step 19 — Polish + write-up
-- **What:** turn compaction (summarize old turns when context fills), README with architecture
-  diagram, eval results, and failure-mode write-up.
+- **What:** README with architecture diagram, eval results, and failure-mode write-up.
+  (Turn compaction shipped early in the engine — decision #18.)
 - **Done when:** README is presentable as a portfolio piece.
 
 ## Phase 6 — Extraction & ecosystem (stretch, after eval results)

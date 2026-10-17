@@ -127,6 +127,9 @@ function makePrinter(verbose: boolean): (e: AgentEvent) => void {
       case "guardrail":
         line(`⚠ guardrail (${e.kind}): ${e.detail}`);
         break;
+      case "compacted":
+        line(`⟳ compacted ${e.removedMessages} old messages → ${e.summaryChars}-char summary`);
+        break;
       case "run_finished": {
         const cost = e.usage.costUsd !== undefined ? `, $${e.usage.costUsd.toFixed(4)}` : "";
         line(`${e.ok ? "DONE ✓" : "STOPPED ✗"} — ${e.reason}, ${e.steps} turns, ${e.usage.totalTokens} tokens${cost}`);
