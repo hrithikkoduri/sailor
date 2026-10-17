@@ -74,6 +74,11 @@ export interface ExecuteRunOutcome {
   status: "succeeded" | "failed" | "cancelled" | "paused";
   reason: string;
   summary?: string;
+  /** Set when the agent declared one via finish(): done | watch | blocked. */
+  disposition?: "done" | "watch" | "blocked";
+  /** Product-defined watch spec (e.g. { checks: true, comments: true }). */
+  watch?: Record<string, unknown>;
+  resumeAt?: string;
 }
 
 const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
@@ -183,6 +188,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
         status,
         finishedAt: new Date(),
         phase: outcome.phase ?? null,
+        disposition: outcome.disposition ?? null,
         steps: outcome.steps,
         tokensIn: outcome.usage.promptTokens,
         tokensOut: outcome.usage.completionTokens,
@@ -195,6 +201,20 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       await db
         .update(schema.threads)
         .set({ checkpointSha: outcome.checkpointRef, updatedAt: new Date() })
+        .where(eq(schema.threads.id, thread.id));
+    }
+
+    // Standing watch intent: a "watch" conclusion is recorded for the
+    // babysitter (step 13 reads it); any other declared conclusion supersedes it.
+    if (outcome.disposition === "watch") {
+      await db
+        .update(schema.threads)
+        .set({ watch: (outcome.watch ?? {}) as Record<string, unknown>, updatedAt: new Date() })
+        .where(eq(schema.threads.id, thread.id));
+    } else if (outcome.disposition !== undefined) {
+      await db
+        .update(schema.threads)
+        .set({ watch: null, updatedAt: new Date() })
         .where(eq(schema.threads.id, thread.id));
     }
 
@@ -232,7 +252,16 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     await ensureThreadState(db, thread.id, finalState);
 
     await sandbox.destroy();
-    return { runId: run.id, threadId: thread.id, status, reason: outcome.reason, summary: outcome.summary };
+    return {
+      runId: run.id,
+      threadId: thread.id,
+      status,
+      reason: outcome.reason,
+      summary: outcome.summary,
+      disposition: outcome.disposition,
+      watch: outcome.watch,
+      resumeAt: outcome.resumeAt,
+    };
   } catch (err) {
     await sinkTail.catch(() => undefined);
     const message = err instanceof Error ? err.message : String(err);

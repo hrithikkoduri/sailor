@@ -42,6 +42,8 @@ export const threads = pgTable(
     summary: text("summary"), // running summary of the work (context compaction)
     /** Verbatim recent conversation — the ThreadStore's storage (decision #17). */
     messages: jsonb("messages").notNull().default(sql`'[]'::jsonb`),
+    /** Standing watch intent from a finish(disposition: "watch") — the babysitter reads it (step 13). */
+    watch: jsonb("watch"),
     /** The phase the thread is currently in — resume starts here. */
     phase: text("phase"),
     budgetMaxTurns: integer("budget_max_turns").notNull().default(20),
@@ -69,6 +71,8 @@ export const runs = pgTable(
     /** Where the run starts (e.g. "fix" for a resumed interjection). Null = thread position / first phase. */
     startPhase: text("start_phase"),
     phase: text("phase"), // reproduce | fix | verify (where it currently is)
+    /** How the run concluded when it declared one via finish(): done | watch | blocked. */
+    disposition: text("disposition"),
     error: text("error"),
     steps: integer("steps").notNull().default(0),
     tokensIn: integer("tokens_in").notNull().default(0),

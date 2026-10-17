@@ -68,8 +68,12 @@ export async function workerCommand(argv: string[]): Promise<number> {
     "runs",
     async (job) => {
       const outcome = await executeRun({ db, runId: job.data.runId, local, heartbeatEveryMs });
+      const watching =
+        outcome.disposition === "watch"
+          ? ` [watch${outcome.resumeAt ? ` → resume at ${outcome.resumeAt}` : ""}]`
+          : "";
       process.stdout.write(
-        `[worker] run ${job.data.runId} → ${outcome.status}${outcome.summary ? ` — ${outcome.summary.replace(/\s+/g, " ").slice(0, 90)}` : ""}\n`,
+        `[worker] run ${job.data.runId} → ${outcome.status}${outcome.summary ? ` — ${outcome.summary.replace(/\s+/g, " ").slice(0, 90)}` : ""}${watching}\n`,
       );
       // Post-turn consumer: events that queued up while this run was busy
       // become the NEXT run (coalesced into one task).

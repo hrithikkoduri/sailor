@@ -195,6 +195,9 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   the next turn — the **subsumption rule** decides whether the interrupted work resumes);
   BullMQ **repeatable job** (cron every 10 min) sweeps open agent PRs for failed checks,
   unanswered comments, merge conflicts. Budgets cap it (max turns/$ per thread).
+  **Pre-wired:** run dispositions — `finish(disposition:"watch", watch, resumeAt)` lands as
+  `runs.disposition` + `threads.watch`, and the declared resume phase survives on the thread;
+  the sweep and targeted nudges consume it here.
 - **Files:** `src/worker/babysit.ts`, `src/github/checks.ts`
 - **Done when:** push a red commit to the PR branch → agent detects + fixes → checks green.
 
