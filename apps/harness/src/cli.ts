@@ -16,7 +16,6 @@ interface PlannedCommand {
 }
 
 const PLANNED: Record<string, PlannedCommand> = {
-  run: { summary: "run the agent on a repo + issue", step: "7" },
   worker: { summary: "long-lived job worker (BullMQ queues)", step: "10" },
   serve: { summary: "GitHub webhook intake service", step: "12" },
   eval: { summary: "run the eval suite and report metrics", step: "15" },
@@ -26,8 +25,9 @@ function usage(): string {
   const rows = [
     ["doctor", "check the environment", ""],
     ["migrate", "apply database migrations (safe to re-run)", ""],
+    ["run", "run the coding agent on a repo + issue", ""],
     ["sandbox smoke", "boot a microVM → clone → test → checkpoint → destroy", ""],
-    ["llm smoke", "live round-trip of the LLM client (text + tool calls)", ""],
+    ["llm smoke", "live round-trip of the LLM client (text + stream + tools)", ""],
     ...Object.entries(PLANNED).map(([cmd, info]) => [cmd, info.summary, `planned — step ${info.step}`]),
     ["help", "show this message", ""],
   ];
@@ -90,6 +90,11 @@ async function main(): Promise<number> {
       }
       process.stderr.write(`unknown llm subcommand: ${sub ?? "(none)"} — try: harness llm smoke\n`);
       return 1;
+    }
+
+    case "run": {
+      const { runCommand } = await import("./commands/run.js");
+      return runCommand(args);
     }
 
     case "help":
