@@ -144,9 +144,9 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** the **thread** record (a conversation that lives across turns) with an event
   inbox, a per-thread lock, coalescing of incoming events, and the lifecycle state machine
   (`queued → running → pr_open → waiting_ci ⇄ fixing → merged|closed|abandoned`).
-  Cross-run conversation memory is backed by the package's **`SessionStore`** —
-  `PostgresSessionStore` implements it on the existing tables (decision #17).
-- **Files:** `src/threads/{thread.ts,inbox.ts,state.ts,session-store.ts}`, tests
+  Cross-run conversation memory is backed by the package's **`ThreadStore`** —
+  `PostgresThreadStore` implements it on the existing tables (decision #17).
+- **Files:** `src/threads/{thread.ts,inbox.ts,state.ts,thread-store.ts}`, tests
 - **Done when:** state machine tests pass; concurrent events don't spawn concurrent turns;
   run N+1 rehydrates run N's conversation through the store.
 
