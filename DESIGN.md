@@ -34,7 +34,7 @@ Dashboard + chat ──HTTP──▶  │ server (Hono): webhooks · api ·   �
 
 ## Repository layout — staging workspaces now, extraction later
 
-npm workspaces with one package + two apps. Split by **runtime first, then domain**; one-way dependencies only: `apps → packages` (a sandbox adapter must never import the agent; the package must never import the app). The package tree follows the framework layers; `engine/` is agent-agnostic, `strategies/` holds our coding agent's reproduce→fix→verify.
+npm workspaces with one package + two apps. Split by **runtime first, then domain**; one-way dependencies only: `apps → packages` (a sandbox adapter must never import the agent; the package must never import the app). The package tree follows the framework layers; `engine/` is agent-agnostic, `agents/` holds the built-in agents (coding = reproduce→fix→verify strategy + its toolbox).
 
 ```
 packages/agent/   @harness/agent — the framework (publishable-ready from day one)
@@ -42,7 +42,7 @@ packages/agent/   @harness/agent — the framework (publishable-ready from day o
   llm/              model transport (OpenAI-compatible + streaming)
   sandbox/          execution: interface + heyo + local backends
   tools/            capabilities: Tool protocol + the coding tool set
-  strategies/       behavior: coding.ts (reproduce → fix → verify) ships as default
+  agents/           built-in agents: strategy + tools bundles (coding, chat)
   trace/            structured events → JSONL + DB consumers
 apps/harness/     the product: cli, config, db, queue, worker, server, github, eval
 apps/dashboard/   Vite + React (step 17) — consumes the harness API over HTTP
