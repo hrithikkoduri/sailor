@@ -173,16 +173,18 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** PAT client (fetch issue, create branch, push commits, open PR with trace link —
   **never touches main**). Hono webhook service: signature verify, dedup
   (`X-GitHub-Delivery` + business keys), `issues: labeled` → create thread → enqueue run.
-  **Triage-lite (decision #28):** classify **self vs external** (`sender.login` vs our bot) +
-  event semantics — external reviews (ANY author: human or review bot) and human messages take the
-  **interjection path** when the thread is busy (cancel the active run; the event becomes the next
-  turn); external machine/ops events queue in the inbox (§11) and drain post-turn; **self events are
-  context-only** — journaled, folded into the next turn as confirmations, never waking a run alone.
+  **Triage-lite (decision #28):** classify by **identity + semantics** (`sender.login` vs our bot,
+  event kind) — external reviews (ANY author: human or review bot) and human messages take the
+  **interjection path** when the thread is busy (cancel; the event becomes the next turn); machine
+  events AND self events (our pushes/comments — **not suppressed**) queue and wake the agent when
+  idle; the router renders *expected behavior* per event (self push → "no action — acknowledge";
+  bot events → "fix / clarify / note as appropriate") and the agent judges. Ack-only turns write
+  to the thread, never GitHub → echo chains terminate; budgets backstop.
 - **Files:** `src/github/*.ts`, `src/server/*.ts`, interjection wiring under `src/threads/`
 - **Done when:** label an issue `agent:fix` on a test repo → a PR appears automatically.
 
 ### Step 13 — PR babysitting (timers + events)
-- **What:** handle `check_run`/`status` → **queue** (machine events, #28); `pull_request_review`
+- **What:** handle `check_run`/`status` → **queue** (machine events, #28); our own **pushes** → queue + "no action — acknowledge" render; `pull_request_review`
   + review comments — ANY author: human or review bot → **interject** (cancel the busy run; the feedback becomes
   the next turn — the **subsumption rule** decides whether the interrupted work resumes);
   BullMQ **repeatable job** (cron every 10 min) sweeps open agent PRs for failed checks,
