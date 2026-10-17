@@ -173,16 +173,17 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** PAT client (fetch issue, create branch, push commits, open PR with trace link —
   **never touches main**). Hono webhook service: signature verify, dedup
   (`X-GitHub-Delivery` + business keys), `issues: labeled` → create thread → enqueue run.
-  **Triage-lite (decision #28):** drop events authored by the bot itself (`sender.type: Bot` —
-  no self-wake loops); human-authored events arriving while the thread is busy take the
-  **interjection path** (cancel the active run; the message becomes the next turn) instead of
-  queueing; machine events land in the inbox (§11) and drain post-turn.
+  **Triage-lite (decision #28):** classify **self vs external** (`sender.login` vs our bot) +
+  event semantics — external reviews (ANY author: human or review bot) and human messages take the
+  **interjection path** when the thread is busy (cancel the active run; the event becomes the next
+  turn); external machine/ops events queue in the inbox (§11) and drain post-turn; **self events are
+  context-only** — journaled, folded into the next turn as confirmations, never waking a run alone.
 - **Files:** `src/github/*.ts`, `src/server/*.ts`, interjection wiring under `src/threads/`
 - **Done when:** label an issue `agent:fix` on a test repo → a PR appears automatically.
 
 ### Step 13 — PR babysitting (timers + events)
 - **What:** handle `check_run`/`status` → **queue** (machine events, #28); `pull_request_review`
-  + review/issue comments from humans → **interject** (cancel the busy run; the feedback becomes
+  + review comments — ANY author: human or review bot → **interject** (cancel the busy run; the feedback becomes
   the next turn — the **subsumption rule** decides whether the interrupted work resumes);
   BullMQ **repeatable job** (cron every 10 min) sweeps open agent PRs for failed checks,
   unanswered comments, merge conflicts. Budgets cap it (max turns/$ per thread).
