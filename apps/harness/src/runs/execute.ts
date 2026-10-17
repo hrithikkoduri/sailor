@@ -151,7 +151,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
             tools: allTools,
             strategy: codingStrategy,
             thread: { store: new PostgresThreadStore(db), id: thread.id },
-            startPhase: deps.startPhase,
+            startPhase: deps.startPhase ?? run.startPhase ?? undefined,
             signal: controller.signal,
             onEvent: sink,
           },

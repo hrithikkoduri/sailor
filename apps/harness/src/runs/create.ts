@@ -16,12 +16,20 @@ export interface NewRunSpec {
   trigger: string;
   /** The instruction this run works on. */
   task?: string;
+  /** Where the run starts (e.g. "fix" for a resumed interjection). */
+  startPhase?: string;
 }
 
 export async function createRun(deps: { db: Db; queues: Queues }, spec: NewRunSpec) {
   const [run] = await deps.db
     .insert(schema.runs)
-    .values({ threadId: spec.threadId, trigger: spec.trigger, task: spec.task ?? null, status: "queued" })
+    .values({
+      threadId: spec.threadId,
+      trigger: spec.trigger,
+      task: spec.task ?? null,
+      startPhase: spec.startPhase ?? null,
+      status: "queued",
+    })
     .returning();
   await deps.queues.runs.add("run", { runId: run!.id }, RUN_JOB_OPTIONS);
   return run!;
