@@ -15,7 +15,6 @@ import path from "node:path";
 import { loadConfig } from "../config.js";
 import {
   allTools,
-  buildRepoMap,
   codingStrategy,
   createLLMClient,
   createSandbox,
@@ -187,10 +186,10 @@ export async function runCommand(argv: string[]): Promise<number> {
 
   try {
     await sandbox.start();
-    const repoMap = await buildRepoMap(sandbox);
 
     const result = await runAgent(
-      { task: args.issue, context: repoMap, testCommand: args.testCmd },
+      // No explicit context: codingStrategy.prepareContext() writes the repo map.
+      { task: args.issue, testCommand: args.testCmd },
       {
         llm,
         sandbox,
