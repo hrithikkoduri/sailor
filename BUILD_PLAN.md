@@ -87,15 +87,22 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 ### Step 8 — Traces (structured JSONL + DB)
 - **What:** every step logged: prompt sent, tool called, output (truncated), tokens, latency,
   cost. Written to `traces/<run-id>.jsonl` **and** `trace_events` table.
+  This doubles as the run's **journal** for durable resume (decision #15).
 - **Files:** `src/trace/*.ts`
 - **Done when:** after a run, the trace shows the full story of what the agent did.
 
-### Step 9 — Checkpoints, resume, fork
+### Step 9 — Checkpoints, resume, and durable turns
 - **What:** auto-checkpoint after each meaningful step; `harness run --resume <run-id>`;
-  `fork(sha)` creates a new sandbox at a checkpoint (this is what best-of-N and
-  crash-recovery both stand on).
-- **Files:** `src/agent/checkpoints.ts`, CLI flags
-- **Done when:** kill a run mid-way, `--resume` finishes it from the last checkpoint.
+  `fork(sha)` creates a new sandbox at a checkpoint (the base for best-of-N).
+  **Lease + heartbeat:** the worker renews `runs.heartbeat_at` (~30s); a sweep marks stale
+  runs `interrupted` and re-enqueues a **resume** run — restore sandbox from `checkpoint_sha`,
+  rebuild context from the journal, continue. Idempotent effects: PR create/comment guarded
+  by lookups. Stretch: step-level journal memoization (replay recorded LLM calls instead of
+  re-paying for them).
+- **Files:** `src/agent/checkpoints.ts`, `src/worker/` lease helpers, `src/db/schema.ts`
+  (+`heartbeat_at` via drizzle generate), CLI flags
+- **Done when:** kill the worker mid-run → the lease goes stale → the run **auto-resumes**
+  from its last checkpoint and completes without human action.
 
 ---
 
@@ -155,20 +162,26 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** `server/api.ts` (REST over threads, runs, trace_events); static dashboard page:
   threads list (state, budget, PR link) → runs per thread → full trace view (prompts, tool
   calls, outputs, tokens, cost). The PR trace link (step 12) points here.
+  **Live SSE:** `GET /api/threads/:id/stream` + Redis pub/sub bridge (worker publishes
+  nudges; server fans out) — state changes update single nodes, per decision #14.
   Small actions: cancel run, keep sandbox for debugging.
-- **Files:** `src/server/api.ts`, `src/server/dashboard/*`
-- **Done when:** after a run, the dashboard shows the thread → run → trace; the trace URL
-  from a PR opens the right run.
+- **Files:** `src/server/api.ts`, `src/server/stream.ts`, `src/server/dashboard/*`
+- **Done when:** after a run, the dashboard shows the thread → run → trace live; the trace
+  URL from a PR opens the right run.
 
-### Step 18 — Chat interface
+### Step 18 — Chat interface (SSE streaming)
 - **What:** chat with the agent thread from the dashboard. A chat message is just another
   inbox event (`chat_message`) — same one-turn-at-a-time pipeline as GitHub comments.
-  New `messages` table (author: user|agent) via `drizzle-kit generate`; agent replies are
-  written at the end of the turn. Transcript in the thread view; poll for updates (SSE stretch).
-- **Files:** `src/db/schema.ts` (+messages), `src/threads/messages.ts`, `server/api.ts` additions,
-  `src/server/dashboard/` chat UI
-- **Done when:** type a message in the dashboard → a worker turn runs → the agent's reply
-  appears in the transcript.
+  New `messages` table (author: user|agent, status: streaming|complete) via `drizzle-kit
+  generate`; a reply row is created when the turn starts and updated on each ~100ms batch
+  flush with **cumulative text**; `complete` at turn end. SSE token batches per decision #14.
+  Rendering rules: append-only transcript, only the streaming node mutates, snapshot-replace
+  semantics (idempotent, gap-proof), refetch-on-reconnect.
+- **Files:** `src/db/schema.ts` (+messages), `src/threads/messages.ts`, `src/threads/wakeThread.ts`,
+  `src/server/api.ts` additions, `src/server/dashboard/` chat UI
+- **Done when:** type a message → the reply streams in; **refresh mid-stream** shows the
+  partial text and the stream continues; transcript never fully re-renders (only the
+  streaming node mutates).
 
 ### Step 19 — Polish + write-up
 - **What:** turn compaction (summarize old turns when context fills), README with architecture

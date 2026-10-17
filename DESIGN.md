@@ -55,11 +55,33 @@ One dashboard with three faces, all served by the same Hono server:
 
 1. **Trace viewer** — a run's full step-by-step story (prompts, tool calls, outputs, tokens, cost). The PR links here ("a link to a full trace").
 2. **Operations view** — threads list (state, budget, PR link) → runs → trace; live status. Small action endpoints (cancel run, keep sandbox) come after.
-3. **Chat interface** — talk to a thread from the browser. **A chat message is just another inbox event** (`chat_message`) flowing through the exact same pipeline as GitHub comments: inbox → one-turn-at-a-time lock → worker → agent turn. Agent replies are stored in a `messages` table (author: user|agent) and rendered as the transcript. No second execution path, no duplicated logic. Poll for updates v1 (SSE is a stretch).
+3. **Chat interface** — talk to a thread from the browser. **A chat message is just another inbox event** (`chat_message`) flowing through the exact same pipeline as GitHub comments: inbox → one-turn-at-a-time lock → worker → agent turn. Agent replies are stored in a `messages` table (author: user|agent) and rendered as the transcript. No second execution path, no duplicated logic. Live updates over **SSE** with the rendering rules below (decision #14).
 
 `messages` table arrives with the chat step via `drizzle-kit generate`. Auth v1: no auth, dashboard binds localhost only. GitHub remains the primary conversation surface for outside users (issue comments, PR reviews); chat is the operator's window into a thread.
 
-**No dedicated messaging service.** The three messaging jobs are each covered by something we already run: intake = a POST route in `server/api.ts`; delivery = BullMQ on Redis (retries, exactly-once, already proven in tests); persistence = Postgres (`events` + `messages`, the source of truth). The browser learns about replies by **polling** v1 (agent turns take minutes — 2–3s polling latency is invisible); SSE is a stretch; a broker/pub-sub platform would add ops cost for zero user-visible gain at this scale. The only coordination rule — `wakeThread(threadId)`: enqueue a run if the thread is idle, otherwise the message waits in the inbox for the current turn's coalescing — lives in `src/threads/` (step 11), shared by webhooks and chat alike.
+**No dedicated messaging service.** The three messaging jobs are each covered by something we already run: intake = a POST route in `server/api.ts`; delivery = BullMQ on Redis (retries, exactly-once, already proven in tests); persistence = Postgres (`events` + `messages`, the source of truth). The browser learns about replies over **SSE** (worker → Redis pub/sub → server → EventSource) — but Postgres stays the truth: a dropped stream or a refresh loses nothing, clients read-repair from the API. The only coordination rule — `wakeThread(threadId)`: enqueue a run if the thread is idle, otherwise the message waits in the inbox for the current turn's coalescing — lives in `src/threads/` (step 11), shared by webhooks and chat alike.
+
+## Realtime over SSE — and how we avoid re-render storms
+
+- **Transport.** `GET /api/threads/:id/stream` (SSE). The worker publishes change nudges to a Redis pub/sub channel; the server subscribes and fans out to that thread's open connections. Redis pub/sub is fire-and-forget — fine, because stream events are *accelerants, never truth*.
+- **Two event kinds.** *State nudges*: small JSON (message created/updated, run status change, trace appended) — consumers update one node. *Token batches*: the streaming reply's **cumulative text snapshot**, flushed ~every 100ms — never one event per token.
+- **Persistence.** A reply row is created the moment the turn starts (`status: streaming`) and updated on each batch flush; `complete` at turn end. Refresh mid-stream → the client renders the partial text from the row and keeps receiving batches.
+- **No-gap guarantee without replay logs.** Batches carry the **full text so far, not deltas** — a lost event can't create a gap, reconnect needs no `Last-Event-ID` replay, and a duplicate is harmless (idempotent replace). On reconnect the client simply refetches the thread state (read-repair).
+- **Rendering rules (the re-render fix).** Append-only transcript; **one DOM node per message**; during streaming *only* the streaming node mutates (append a text node — nothing else re-renders); state nudges touch only the affected node; the message list is never rebuilt on stream events. Rule of thumb: a token batch handler does O(1) DOM work.
+
+## Durable execution (Inngest-style principles, on our own stack)
+
+The "durable execution" school (Inngest, Temporal) exists to survive crashes, deploys, and retries without losing work or double-applying effects. We adopt the principles; we keep our own execution model (long-lived worker — decision #7):
+
+1. **State outside the process.** Postgres holds the truth: threads, runs, messages, events, trace_events. A worker crash, a deploy, or a browser refresh loses nothing — every reader read-repairs from the DB. *There is no browser "session" to lose: the session IS the Postgres thread row.*
+2. **Journaled steps.** `trace_events (run_id, seq)` is the run's journal: every LLM call (full prompt + response), tool call, and result, with a monotonic seq. The journal is what makes resume exact — rebuild the conversation, and (stretch) replay recorded LLM responses instead of paying for them again.
+3. **Lease + heartbeat, auto-resume.** While executing, a worker renews `runs.heartbeat_at` (~30s). A sweep marks stale runs `interrupted` and re-enqueues a resume run: restore the sandbox from `checkpoint_sha`, rebuild context from the journal, continue. Baseline = resume at checkpoint granularity; stretch = step-level memoization (replay journaled LLM calls by `(run_id, step)`).
+4. **At-least-once everywhere + idempotent effects.** Queues redeliver, webhooks repeat, workers retry — so every *effect* is guarded: PR creation checks `threads.pr_number` first, comments are looked up before posting, branch pushes are force-push idempotent, deliveries deduped by GUID, threads by `(repo, issue)`.
+5. **Turn = resumable state machine.** Inputs = pending inbox events + thread summary + journal. A turn completes and checkpoints forward, or dies and resumes — it never half-applies invisible state.
+
+**Not copied, deliberately:** serverless time-capped functions (hour-long turns are the anti-Lambda workload), hosted durable-execution platforms (our journal + leases implement the needed subset in a few hundred lines), full deterministic-replay engines (Temporal-grade machinery we don't need).
+
+Lands in: step 9 (lease/heartbeat/resume + journal), steps 17–18 (SSE).
 
 ## Confirmed decisions
 
@@ -78,6 +100,8 @@ One dashboard with three faces, all served by the same Hono server:
 | 11 | PR babysitting: event-driven (check_run/review webhooks) + cron sweep of open PRs; bounded by thread state machine + budgets (max turns, max $) | Catches dropped webhooks/flaky CI; can't loop forever | ✅ agreed in principle |
 | 12 | LLM: provider-agnostic interface; OpenRouter/OpenAI-compatible first | Swappable; all models reachable | ✅ agreed |
 | 13 | Dashboard: threads/runs view + trace viewer + **chat interface**. Chat messages reuse the thread inbox pipeline (`chat_message` event); replies in a `messages` table. `server/` hosts api + webhooks + dashboard in one Hono app; no auth v1 (localhost) | One pipeline for every trigger — GitHub comments, CI events, and chat are all inbox events. GitHub stays the primary conversation surface; chat is the operator window | ✅ decided |
+| 14 | Realtime over **SSE** (not polling, not WebSockets): worker → Redis pub/sub → server → EventSource. Token batches = cumulative text snapshots flushed ~10/s (never per-token); streaming reply persisted as a `messages` row updated per flush; O(1) DOM updates — only the streaming node mutates | Snapshot semantics make events idempotent and gap-proof (no replay log, no deltas); batching + single-node updates kill re-render storms; refresh mid-stream loses nothing | ✅ decided |
+| 15 | **Durable execution principles** on our own stack: DB-as-truth (no browser session state), journaled steps (`trace_events`), run lease + heartbeat with auto-resume from checkpoint, idempotent effects everywhere. No serverless/hosted durable-execution platform | Crash/deploy/refresh loses nothing; resumes without human action; honors the anti-Lambda reasoning of decision #7 | ✅ decided |
 
 ## Inngest vs BullMQ (decision #7 detail)
 
