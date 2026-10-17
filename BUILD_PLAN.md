@@ -62,12 +62,18 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 
 ## Phase 2 — Tools + agent brain
 
-### Step 5 — Tools (`bash`, `read_file`, `edit_file`, `search`, `run_tests`, `finish`)
+### Step 5 — Tools (`bash`, `read_file`, `edit_file`, `search`, `run_tests`, `finish`) ✅
 - **What:** every tool = a thin, safe wrapper over `sandbox.exec`. `edit_file` = exact-string
-  replace with verification (refuses ambiguous matches). All outputs pass through the
-  **truncator** (head + tail + "N lines omitted") before entering model context.
-- **Files:** `src/tools/*.ts`, `src/tools/truncate.ts`, `tests/tools.test.ts`
-- **Done when:** tests prove edit verification, search caps, truncation at limits.
+  replace with verification (refuses 0 matches and ambiguous matches; byte-verifies the
+  write with `wc -c`). All outputs pass through the **truncator** (head + tail + "N lines
+  omitted"; 300 lines / 20k chars). `search` = rg → `git grep` → `grep` ladder,
+  fixed-strings by default (regex: true opt-in), capped with an honest "+N" note.
+  `run_tests` resolves command: explicit → task spec → repo auto-detection.
+- **Files:** `src/tools/{types,truncate,bash,read-file,edit-file,search,run-tests,finish,index}.ts`,
+  `tests/unit/tools.test.ts`, `tests/integration/heyo-tools.test.ts`
+- **Done when:** ✅ 40 unit tests (edit verification, ambiguity refusal, truncation limits,
+  timeout kills, search caps) + **live conformance on a Heyo microVM** (bash/read/search/
+  edit/run_tests/checkpoint round-trip) — 9/9 integration tests green, VM cleaned up.
 
 ### Step 6 — LLM client (OpenRouter / OpenAI-compatible)
 - **What:** one `LLMClient` interface: `complete(messages, tools) → text | toolCalls + usage`.

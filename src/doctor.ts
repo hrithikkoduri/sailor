@@ -76,11 +76,17 @@ function commandAvailable(cmd: string): string | null {
 async function heyoProbe(
   server: string,
   token: string,
-): Promise<{ ok: true; namespace?: string; admin?: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; namespace?: string; admin?: string; deployments?: number } | { ok: false; error: string }> {
   const lb = new Hws({ server, token, timeoutMs: 10_000 });
   try {
     const who = await lb.whoami();
-    return { ok: true, namespace: who.namespace, admin: who.admin_scope };
+    let deployments: number | undefined;
+    try {
+      deployments = (await lb.deployments()).length;
+    } catch {
+      deployments = undefined; // token may lack list rights; whoami is the check
+    }
+    return { ok: true, namespace: who.namespace, admin: who.admin_scope, deployments };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message.split("\n")[0] ?? message };
@@ -149,15 +155,18 @@ export async function runDoctor(cfg: HarnessConfig): Promise<CheckResult[]> {
     const probe = await heyoProbe(cfg.heyo.server, cfg.heyo.token);
     if (probe.ok) {
       const mismatch = probe.namespace !== undefined && probe.namespace !== cfg.heyo.namespace;
+      const vms = probe.deployments !== undefined ? `, ${probe.deployments} deployment(s) alive` : "";
       results.push({
         name: "HEYO_TOKEN",
         status: mismatch ? "fail" : "ok",
         detail: mismatch
           ? `valid, but confined to namespace "${probe.namespace}" while HEYO_NAMESPACE is "${cfg.heyo.namespace}"`
-          : `valid — namespace ${probe.namespace ?? "(unconfined)"}, ${probe.admin ?? "?"} tier`,
+          : `valid — namespace ${probe.namespace ?? "(unconfined)"}, ${probe.admin ?? "?"} tier${vms}`,
         hint: mismatch
           ? "Align HEYO_NAMESPACE with the token's namespace, or mint a token for it."
-          : undefined,
+          : probe.deployments
+            ? "Deployments alive — sandboxes from a run are still billing. Delete with heyctl or the console."
+            : undefined,
         required: false,
       });
     } else {
