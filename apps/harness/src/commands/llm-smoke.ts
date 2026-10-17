@@ -1,7 +1,8 @@
 /**
  * `harness llm smoke` — live proof of the LLM client:
  *   1. text round-trip (reply, latency, usage, cost when pricing is set)
- *   2. tool-call round-trip (the model must call a tiny tool; the arguments
+ *   2. streaming round-trip (multiple deltas arrive incrementally)
+ *   3. tool-call round-trip (the model must call a tiny tool; the arguments
  *      must be valid JSON)
  * Exit code 0 means the client works end-to-end against the configured model.
  */
@@ -36,7 +37,38 @@ export async function llmSmokeCommand(): Promise<number> {
       return 1;
     }
 
-    // 2. Tool-call round-trip.
+    // 2. Streaming round-trip — deltas must arrive incrementally, and usage
+    //    must still come through in the final chunk.
+    let deltas = 0;
+    let streamed = "";
+    const t1 = Date.now();
+    const streamResp = await llm.stream(
+      {
+        messages: [
+          { role: "system", content: "Count from 1 to 5, separated by single spaces. Nothing else." },
+          { role: "user", content: "go" },
+        ],
+        maxTokens: 256,
+      },
+      (d) => {
+        deltas += 1;
+        streamed += d;
+      },
+    );
+    process.stdout.write(
+      `→ streaming round-trip: ${deltas} delta(s) in ${Date.now() - t1}ms, ${streamResp.usage.totalTokens} tokens\n`,
+    );
+    process.stdout.write(`  streamed: ${JSON.stringify(streamed.trim().slice(0, 40))}\n`);
+    if (deltas < 2) {
+      process.stderr.write("  ✗ expected multiple deltas — provider streamed in one piece?\n");
+      return 1;
+    }
+    if (streamResp.text !== streamed) {
+      process.stderr.write("  ✗ aggregate text does not match the deltas\n");
+      return 1;
+    }
+
+    // 3. Tool-call round-trip.
     const tool = await llm.complete({
       messages: [
         { role: "system", content: "You must use the get_weather tool to answer." },
