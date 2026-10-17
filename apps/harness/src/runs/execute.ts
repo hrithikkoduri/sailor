@@ -48,6 +48,13 @@ export interface ExecuteRunDeps {
   local?: boolean;
   /** Lease cadence (default 30s). Must stay well below the sweep's stale threshold. */
   heartbeatEveryMs?: number;
+  /**
+   * Force where the run starts (the package's startPhase). The product uses
+   * this to resume interjected work at the phase the interrupted run reports
+   * (read from its `runs.phase` column). Undefined = the thread's resume
+   * position, else the first phase.
+   */
+  startPhase?: string;
   /** Test seams. */
   llm?: LLMClient;
   sandboxFactory?: (spec: SandboxSpec) => Sandbox;
@@ -127,6 +134,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
             tools: allTools,
             strategy: codingStrategy,
             thread: { store: new PostgresThreadStore(db), id: thread.id },
+            startPhase: deps.startPhase,
             signal: controller.signal,
             onEvent: sink,
           },

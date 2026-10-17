@@ -162,3 +162,4 @@ Sources: SWE-bench Lite subset + seeded bugs in repos we control.
 - Which SWE-bench Lite subset (30–50 tasks) and how to handle per-instance setup images
 - Toolchain image contents (git, node, python, ripgrep, docker?, test runners) — finalize when we know target repos
 - Dashboard auth in production (v1 is localhost-only, no auth): token? behind Heyo's auth gate? decide when deploying
+- **Interjection continuation (step 11/18):** on cancel-to-interject, keep the sandbox instead of destroying it (local dir / heyo retained disk) so the continuation run can reattach the workspace — today the continuation rebuilds from a fresh clone and the agent re-derives edits from conversation memory; a checkpoint-restore path (`checkpoint_sha` → clone + checkout) is the backend-independent upgrade
