@@ -173,11 +173,17 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** PAT client (fetch issue, create branch, push commits, open PR with trace link —
   **never touches main**). Hono webhook service: signature verify, dedup
   (`X-GitHub-Delivery` + business keys), `issues: labeled` → create thread → enqueue run.
-- **Files:** `src/github/*.ts`, `src/server/*.ts`
+  **Triage-lite (decision #28):** drop events authored by the bot itself (`sender.type: Bot` —
+  no self-wake loops); human-authored events arriving while the thread is busy take the
+  **interjection path** (cancel the active run; the message becomes the next turn) instead of
+  queueing; machine events land in the inbox (§11) and drain post-turn.
+- **Files:** `src/github/*.ts`, `src/server/*.ts`, interjection wiring under `src/threads/`
 - **Done when:** label an issue `agent:fix` on a test repo → a PR appears automatically.
 
 ### Step 13 — PR babysitting (timers + events)
-- **What:** handle `check_run`/`status`/`pull_request_review` events → enqueue turns;
+- **What:** handle `check_run`/`status` → **queue** (machine events, #28); `pull_request_review`
+  + review/issue comments from humans → **interject** (cancel the busy run; the feedback becomes
+  the next turn — the **subsumption rule** decides whether the interrupted work resumes);
   BullMQ **repeatable job** (cron every 10 min) sweeps open agent PRs for failed checks,
   unanswered comments, merge conflicts. Budgets cap it (max turns/$ per thread).
 - **Files:** `src/worker/babysit.ts`, `src/github/checks.ts`
@@ -212,14 +218,18 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   calls, outputs, tokens, cost). The PR trace link (step 12) points here.
   **Live SSE:** `GET /api/threads/:id/stream` + Redis pub/sub bridge (worker publishes
   nudges; server fans out) — state changes update single nodes, per decision #14.
-  Small actions: cancel run, keep sandbox for debugging.
+  Small actions: cancel run, keep sandbox for debugging, **Interject** on any pending event
+  (explicit override — decision #28).
 - **Files:** `src/server/api.ts`, `src/server/stream.ts`, `src/server/dashboard/*`
 - **Done when:** after a run, the dashboard shows the thread → run → trace live; the trace
   URL from a PR opens the right run.
 
 ### Step 18 — Chat interface (SSE streaming)
 - **What:** chat with the agent thread from the dashboard. A chat message is just another
-  inbox event (`chat_message`) — same one-turn-at-a-time pipeline as GitHub comments.
+  inbox event (`chat_message`) — same one-turn-at-a-time pipeline as GitHub comments; **while
+  the bot is busy a send interjects** (#28 — human-authored): cancel the active run, the message
+  becomes the next turn. The earlier Enter=queue / double-Enter=interject sketch reconciles here
+  — a "queue instead" affordance can be reviewed with this UI.
   New `messages` table (author: user|agent, status: streaming|complete) via `drizzle-kit
   generate`; a reply row is created when the turn starts and updated on each ~100ms batch
   flush with **cumulative text**; `complete` at turn end. SSE token batches per decision #14.
