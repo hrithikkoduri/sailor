@@ -73,6 +73,8 @@ export const runs = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     /** Lease: the worker stamps this while alive; a stale stamp means it died (sweep recovers). */
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    /** Durable cancel request — settable from ANY process; the worker's watcher aborts. */
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

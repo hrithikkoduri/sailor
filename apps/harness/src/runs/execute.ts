@@ -48,13 +48,17 @@ export interface ExecuteRunDeps {
   local?: boolean;
   /** Lease cadence (default 30s). Must stay well below the sweep's stale threshold. */
   heartbeatEveryMs?: number;
-  /**
-   * Force where the run starts (the package's startPhase). The product uses
+  /** Force where the run starts (the package's startPhase). The product uses
    * this to resume interjected work at the phase the interrupted run reports
    * (read from its `runs.phase` column). Undefined = the thread's resume
-   * position, else the first phase.
-   */
+   * position, else the first phase. */
   startPhase?: string;
+  /**
+   * How often the run watches for a durable cancel request (default 2000ms).
+   * `requestCancel()` (lease.ts) works from ANY process; this watcher is the
+   * worker half. Cancel latency = this interval.
+   */
+  cancelWatchEveryMs?: number;
   /** Test seams. */
   llm?: LLMClient;
   sandboxFactory?: (spec: SandboxSpec) => Sandbox;
@@ -85,6 +89,19 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     .update(schema.runs)
     .set({ status: "running", startedAt: new Date(), error: null })
     .where(eq(schema.runs.id, run.id));
+
+  // Cross-process cancel: poll the durable flag; any process can set it.
+  const cancelWatch = setInterval(() => {
+    void db
+      .select({ requested: schema.runs.cancelRequestedAt })
+      .from(schema.runs)
+      .where(eq(schema.runs.id, run.id))
+      .then(([row]) => {
+        if (row?.requested) controller.abort();
+      })
+      .catch(() => undefined);
+  }, deps.cancelWatchEveryMs ?? 2_000);
+  cancelWatch.unref?.();
 
   // Traces: NDJSON file + trace_events rows, one sequence (step 8).
   const traceDir = path.join(process.env.INIT_CWD ?? process.cwd(), "traces");
@@ -185,6 +202,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     await sandbox.destroy().catch(() => undefined);
     return { runId: run.id, status: "failed", reason: "error" };
   } finally {
+    clearInterval(cancelWatch);
     activeControllers.delete(run.id);
   }
 }

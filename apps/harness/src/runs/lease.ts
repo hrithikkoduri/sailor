@@ -21,6 +21,16 @@ export async function heartbeatRun(db: Db, runId: string): Promise<void> {
   await db.update(schema.runs).set({ heartbeatAt: new Date() }).where(eq(schema.runs.id, runId));
 }
 
+/**
+ * Durable cancel request — callable from ANY process (the webhook server, the
+ * chat API, a CLI). The worker executing the run watches this flag and aborts.
+ * `cancelRun()` in runs/execute.ts is the in-process fast path; this is the
+ * cross-process one.
+ */
+export async function requestCancel(db: Db, runId: string): Promise<void> {
+  await db.update(schema.runs).set({ cancelRequestedAt: new Date() }).where(eq(schema.runs.id, runId));
+}
+
 /** Beat for as long as `fn` runs; stop afterwards (success or failure). */
 export async function withHeartbeat<T>(
   db: Db,

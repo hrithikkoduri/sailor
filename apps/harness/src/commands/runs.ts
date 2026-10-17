@@ -6,7 +6,8 @@
 import { and, eq } from "drizzle-orm";
 import { loadConfig } from "../config.js";
 import { createDb, createPool, schema } from "../db/index.js";
-import { createQueueConnection, createQueues, RUN_JOB_OPTIONS } from "../queue/index.js";
+import { createQueueConnection, createQueues } from "../queue/index.js";
+import { createRun } from "../runs/create.js";
 
 const USAGE = `Usage: harness runs enqueue --repo <url-or-path> --task "<text>" [options]
 
@@ -61,14 +62,9 @@ export async function runsCommand(argv: string[]): Promise<number> {
         .returning();
     }
 
-    const [run] = await db
-      .insert(schema.runs)
-      .values({ threadId: thread!.id, trigger, task, status: "queued" })
-      .returning();
+    const run = await createRun({ db, queues }, { threadId: thread!.id, trigger, task });
 
-    await queues.runs.add("run", { runId: run!.id }, RUN_JOB_OPTIONS);
-
-    process.stdout.write(`thread ${thread!.id}\nrun    ${run!.id} (queued, trigger=${trigger})\n`);
+    process.stdout.write(`thread ${thread!.id}\nrun    ${run.id} (queued, trigger=${trigger})\n`);
     return 0;
   } finally {
     await queues.close();
