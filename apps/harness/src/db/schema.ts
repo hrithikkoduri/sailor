@@ -36,6 +36,8 @@ export const threads = pgTable(
     prUrl: text("pr_url"),
     headRef: text("head_ref"), // the PR branch ("harness/issue-123")
     baseRef: text("base_ref").notNull().default("main"), // we never push to baseRef
+    /** Where the thread came from: "github" (webhook) or "local" (CLI/dev). */
+    source: text("source").notNull().default("local"),
     checkpointSha: text("checkpoint_sha"), // resume/fork point (git commit in the VM)
     summary: text("summary"), // running summary of the work (context compaction)
     /** Verbatim recent conversation — the ThreadStore's storage (decision #17). */

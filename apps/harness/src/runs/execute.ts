@@ -27,7 +27,11 @@ import {
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
+import { ensureThreadState, type ThreadState } from "../threads/state.js";
 import { TraceRecorder } from "../trace/store.js";
+import { createGitHubClient, type GitHubClient } from "../github/client.js";
+import { deliverPullRequest } from "../github/pr.js";
+import { githubRepoUrl } from "../github/repo.js";
 import { withHeartbeat } from "./lease.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
@@ -61,6 +65,7 @@ export interface ExecuteRunDeps {
   /** Test seams. */
   llm?: LLMClient;
   sandboxFactory?: (spec: SandboxSpec) => Sandbox;
+  github?: GitHubClient;
 }
 
 export interface ExecuteRunOutcome {
@@ -113,9 +118,12 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
-  const spec: SandboxSpec = isUrl(thread.repo)
-    ? { repoUrl: thread.repo }
-    : { localPath: path.resolve(baseDir, thread.repo) };
+  const spec: SandboxSpec =
+    thread.source === "github"
+      ? { repoUrl: githubRepoUrl(thread.repo) }
+      : isUrl(thread.repo)
+        ? { repoUrl: thread.repo }
+        : { localPath: path.resolve(baseDir, thread.repo) };
   const sandbox =
     deps.sandboxFactory?.(spec) ??
     createSandbox(
@@ -137,6 +145,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
   const llm = deps.llm ?? createLLMClient(cfg.llm);
 
   try {
+    await ensureThreadState(db, thread.id, "running");
     await sandbox.start();
 
     const outcome = await withHeartbeat(
@@ -189,6 +198,39 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
         .where(eq(schema.threads.id, thread.id));
     }
 
+    // The last mile (step 12): a succeeded GitHub run becomes a PR. Delivery
+    // is best-effort for the run's status, but it must happen BEFORE the
+    // sandbox dies — the work lives there.
+    let delivered: { prNumber: number; prUrl: string } | null = null;
+    if (status === "succeeded" && !thread.prNumber && thread.source === "github") {
+      const github =
+        deps.github ?? (cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined);
+      if (github) {
+        try {
+          delivered = await deliverPullRequest({
+            db,
+            sandbox,
+            github,
+            thread,
+            runId: run.id,
+            publicUrl: cfg.server.publicUrl,
+            summary: outcome.summary,
+          });
+          process.stdout.write(`[run ${run.id}] PR delivered: ${delivered?.prUrl ?? "(none)"}\n`);
+        } catch (err) {
+          const message = `pr delivery failed: ${err instanceof Error ? err.message : String(err)}`;
+          process.stdout.write(`[run ${run.id}] ${message}\n`);
+          await db.update(schema.runs).set({ error: message }).where(eq(schema.runs.id, run.id));
+        }
+      } else {
+        process.stdout.write(`[run ${run.id}] GITHUB_TOKEN not set — PR delivery skipped\n`);
+      }
+    }
+
+    const finalState: ThreadState =
+      status === "succeeded" ? (delivered || thread.prNumber ? "pr_open" : "queued") : "queued";
+    await ensureThreadState(db, thread.id, finalState);
+
     await sandbox.destroy();
     return { runId: run.id, threadId: thread.id, status, reason: outcome.reason, summary: outcome.summary };
   } catch (err) {
@@ -198,6 +240,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       .update(schema.runs)
       .set({ status: "failed", finishedAt: new Date(), error: message })
       .where(eq(schema.runs.id, run.id));
+    await ensureThreadState(db, thread.id, "queued").catch(() => undefined);
     await sandbox.destroy().catch(() => undefined);
     return { runId: run.id, threadId: thread.id, status: "failed", reason: "error" };
   } finally {

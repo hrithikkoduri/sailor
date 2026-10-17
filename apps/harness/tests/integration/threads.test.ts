@@ -106,6 +106,14 @@ describe("threads: inbox + wake lock + state machine", () => {
     expect(await pendingEvents(db, threadId)).toEqual([]);
   });
 
+  it("wakeThread refuses terminal threads (merged/closed/abandoned)", async () => {
+    const threadId = await newThread(3);
+    await db.update(schema.threads).set({ state: "merged" }).where(eq(schema.threads.id, threadId));
+
+    expect(await wakeThread({ db, queues }, threadId, { trigger: "manual", task: "x" })).toBeNull();
+    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, threadId))).toHaveLength(0);
+  });
+
   it("transitionThread validates against the machine", async () => {
     const threadId = await newThread(4);
 

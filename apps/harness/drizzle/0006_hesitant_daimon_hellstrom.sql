@@ -1,0 +1,1 @@
+ALTER TABLE "threads" ADD COLUMN "source" text DEFAULT 'local' NOT NULL;

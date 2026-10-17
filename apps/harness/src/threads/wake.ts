@@ -10,10 +10,12 @@
  * requests arriving at the same instant cannot both spawn turns. This is
  * race-safe by construction, not by check-then-act.
  */
+import { eq } from "drizzle-orm";
 import { createRun, type NewRunSpec } from "../runs/create.js";
 import type { Queues } from "../queue/index.js";
 import { isUniqueViolation } from "../db/errors.js";
 import { schema, type Db } from "../db/index.js";
+import { isTerminal } from "./state.js";
 
 export type WokenRun = typeof schema.runs.$inferSelect;
 
@@ -22,6 +24,14 @@ export async function wakeThread(
   threadId: string,
   spec: Pick<NewRunSpec, "trigger" | "task" | "startPhase">,
 ): Promise<WokenRun | null> {
+  // Dead threads stay dead (open question #2, resolved in step 12): no turns
+  // on merged/closed/abandoned work, no matter who knocks.
+  const [thread] = await deps.db
+    .select({ state: schema.threads.state })
+    .from(schema.threads)
+    .where(eq(schema.threads.id, threadId));
+  if (thread && isTerminal(thread.state)) return null;
+
   try {
     return await createRun({ db: deps.db, queues: deps.queues }, { threadId, ...spec });
   } catch (err) {

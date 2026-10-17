@@ -180,8 +180,14 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   idle; the router renders *expected behavior* per event (self push → "no action — acknowledge";
   bot events → "fix / clarify / note as appropriate") and the agent judges. Ack-only turns write
   to the thread, never GitHub → echo chains terminate; budgets backstop.
-- **Files:** `src/github/*.ts`, `src/server/*.ts`, interjection wiring under `src/threads/`
-- **Done when:** label an issue `agent:fix` on a test repo → a PR appears automatically.
+- **Files:** `src/github/{client,signature,triage,repo,pr}.ts`, `src/server/{app,serve}.ts`,
+  `src/threads/{wake,state,inbox}.ts`, `tests/{unit,integration}/github-*, webhook, pr-delivery`
+- **Done when:** ✅ built + mock-e2e tested (2026-10-17): signed webhook → thread + consumed event +
+  queued run (6 integration cases: happy path, busy-thread parking, delivery dedup, bad signature,
+  ping, terminal thread); PR delivery proven against a real bare origin + fake API (branch pushed,
+  base untouched — `rev-list` counts, trace link in the PR body, thread → `pr_open`).
+  **Live demo pending `GITHUB_TOKEN` + `GITHUB_WEBHOOK_SECRET` in `.env`:** label an issue `agent:fix`
+  → a PR appears automatically.
 
 ### Step 13 — PR babysitting (timers + events)
 - **What:** handle `check_run`/`status` → **queue** (machine events, #28); our own **pushes** → queue + "no action — acknowledge" render; `pull_request_review`

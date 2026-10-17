@@ -23,7 +23,19 @@ export interface HarnessConfig {
     diskSizeGb: number;
   };
   /** GitHub access for reading issues and opening PRs (bot account PAT). */
-  github: { token: string | undefined };
+  github: {
+    token: string | undefined;
+    /** Webhook HMAC secret (repo/org webhook config); required by `harness serve`. */
+    webhookSecret: string | undefined;
+    /** The bot's GitHub login — lets triage tag self-authored events (decision #28). */
+    botLogin: string | undefined;
+  };
+  /** Webhook server + dashboard links. */
+  server: {
+    port: number;
+    /** Base URL of the dashboard — trace links in PRs point here. */
+    publicUrl: string;
+  };
   /** LLM endpoint — any OpenAI-compatible API (OpenRouter by default). */
   llm: {
     baseUrl: string;
@@ -122,7 +134,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig 
       sizeClass: sizeClass(env.HEYO_SIZE_CLASS),
       diskSizeGb: Number(env.HEYO_DISK_GB ?? "4") || 4,
     },
-    github: { token: env.GITHUB_TOKEN || undefined },
+    github: {
+      token: env.GITHUB_TOKEN || undefined,
+      webhookSecret: env.GITHUB_WEBHOOK_SECRET || undefined,
+      botLogin: env.GITHUB_BOT_LOGIN || undefined,
+    },
+    server: {
+      port: Number(env.HARNESS_PORT ?? "8787") || 8787,
+      publicUrl: env.HARNESS_PUBLIC_URL ?? "http://localhost:5173",
+    },
     llm: {
       baseUrl: env.LLM_BASE_URL ?? "https://openrouter.ai/api/v1",
       apiKey: env.LLM_API_KEY || undefined,

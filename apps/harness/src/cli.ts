@@ -16,7 +16,6 @@ interface PlannedCommand {
 }
 
 const PLANNED: Record<string, PlannedCommand> = {
-  serve: { summary: "GitHub webhook intake service", step: "12" },
   eval: { summary: "run the eval suite and report metrics", step: "15" },
 };
 
@@ -27,6 +26,7 @@ function usage(): string {
     ["run", "run the coding agent on a repo + issue (direct, no DB)", ""],
     ["runs enqueue", "create a thread/run and queue it for the worker", ""],
     ["worker", "long-lived worker: runs queue + stale-run sweep", ""],
+    ["serve", "GitHub webhook intake: labeled issues → threads + runs", ""],
     ["sandbox smoke", "boot a microVM → clone → test → checkpoint → destroy", ""],
     ["llm smoke", "live round-trip of the LLM client (text + stream + tools)", ""],
     ...Object.entries(PLANNED).map(([cmd, info]) => [cmd, info.summary, `planned — step ${info.step}`]),
@@ -101,6 +101,11 @@ async function main(): Promise<number> {
     case "worker": {
       const { workerCommand } = await import("./worker/index.js");
       return workerCommand(args);
+    }
+
+    case "serve": {
+      const { serveCommand } = await import("./server/serve.js");
+      return serveCommand(args);
     }
 
     case "runs": {

@@ -2,7 +2,7 @@
  * Thread state machine — pure tests, no services needed.
  */
 import { describe, expect, it } from "vitest";
-import { canTransition, THREAD_STATES } from "../../src/threads/state.js";
+import { canTransition, isTerminal, THREAD_STATES } from "../../src/threads/state.js";
 
 describe("thread state machine", () => {
   it("allows the lifecycle's happy path", () => {
@@ -32,5 +32,15 @@ describe("thread state machine", () => {
       const exits = THREAD_STATES.filter((to) => canTransition(terminal, to));
       expect(exits).toEqual([]);
     }
+  });
+
+  it("isTerminal flags merged/closed/abandoned only", () => {
+    expect(isTerminal("merged")).toBe(true);
+    expect(isTerminal("closed")).toBe(true);
+    expect(isTerminal("abandoned")).toBe(true);
+    expect(isTerminal("queued")).toBe(false);
+    expect(isTerminal("running")).toBe(false);
+    expect(isTerminal("pr_open")).toBe(false);
+    expect(isTerminal("nonsense")).toBe(false);
   });
 });

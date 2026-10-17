@@ -41,6 +41,11 @@ export function canTransition(from: string, to: ThreadState): boolean {
   return (TRANSITIONS as Record<string, readonly ThreadState[] | undefined>)[from]?.includes(to) ?? false;
 }
 
+/** Terminal = no exits: merged, closed, abandoned. Dead threads take no turns. */
+export function isTerminal(state: string): boolean {
+  return (TRANSITIONS as Record<string, readonly ThreadState[] | undefined>)[state]?.length === 0;
+}
+
 /** Validated transition; throws on an illegal move or a missing thread. */
 export async function transitionThread(db: Db, threadId: string, to: ThreadState): Promise<void> {
   const [thread] = await db
@@ -55,4 +60,24 @@ export async function transitionThread(db: Db, threadId: string, to: ThreadState
     .update(schema.threads)
     .set({ state: to, updatedAt: new Date() })
     .where(eq(schema.threads.id, threadId));
+}
+
+/**
+ * Tolerant variant of transitionThread: `to === from` is a no-op (returns
+ * false) instead of an error. Used by run lifecycles that legitimately
+ * re-enter a state (e.g. resuming a run leaves `running` → `running`).
+ */
+export async function ensureThreadState(db: Db, threadId: string, to: ThreadState): Promise<boolean> {
+  const [thread] = await db
+    .select({ state: schema.threads.state })
+    .from(schema.threads)
+    .where(eq(schema.threads.id, threadId));
+  if (!thread) throw new Error(`thread ${threadId} not found`);
+  if (thread.state === to) return false;
+  if (!canTransition(thread.state, to)) throw new Error(`illegal thread transition ${thread.state} → ${to}`);
+  await db
+    .update(schema.threads)
+    .set({ state: to, updatedAt: new Date() })
+    .where(eq(schema.threads.id, threadId));
+  return true;
 }
