@@ -24,18 +24,22 @@ describe("queues", () => {
   });
 
   it("enqueues a run job and a worker picks it up", async () => {
+    // Leftovers from other test files (wakeThread adds real jobs) must not
+    // pollute the assertion.
+    await queues.runs.drain();
     const received: RunJobData[] = [];
+    const runId = `test-run-${Date.now()}`;
+
     // Workers need their own connection (blocking commands), separate from the queue's.
     const worker = new Worker<RunJobData>(
       "runs",
       async (job) => {
-        received.push(job.data);
+        if (job.data.runId === runId) received.push(job.data);
       },
       { connection: workerConnection },
     );
 
     try {
-      const runId = `test-run-${Date.now()}`;
       await queues.runs.add("run", { runId }, { removeOnComplete: true, removeOnFail: true });
 
       // Wait for the worker to pick the job up (sub-second normally).

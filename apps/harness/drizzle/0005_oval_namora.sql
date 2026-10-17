@@ -1,0 +1,2 @@
+ALTER TABLE "events" ALTER COLUMN "delivery_id" DROP NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "runs_one_active_per_thread" ON "runs" USING btree ("thread_id") WHERE status in ('queued','running');

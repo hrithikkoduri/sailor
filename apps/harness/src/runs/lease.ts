@@ -11,6 +11,7 @@
  * `pauseAfterPhase` + per-turn thread persistence + checkpoints.
  */
 import { and, eq, lt } from "drizzle-orm";
+import { isUniqueViolation } from "../db/errors.js";
 import { schema, type Db } from "../db/index.js";
 
 /** A heartbeat older than this means the worker is presumed dead. */
@@ -81,10 +82,19 @@ export async function sweepStaleRuns(db: Db, opts: { staleAfterMs?: number } = {
       .returning({ id: schema.runs.id });
     if (updated.length === 0) continue; // another sweep won the race
 
-    const [resume] = await db
-      .insert(schema.runs)
-      .values({ threadId: run.threadId, trigger: "resume", status: "queued" })
-      .returning({ id: schema.runs.id });
+    // The unique index allows one active run per thread; if something else
+    // already owns the turn, the resume is skipped (the work isn't lost —
+    // the next sweep or wake will retry).
+    let resume: { id: string } | undefined;
+    try {
+      [resume] = await db
+        .insert(schema.runs)
+        .values({ threadId: run.threadId, trigger: "resume", status: "queued" })
+        .returning({ id: schema.runs.id });
+    } catch (err) {
+      if (isUniqueViolation(err)) continue;
+      throw err;
+    }
 
     results.push({ staleRunId: run.id, threadId: run.threadId, resumeRunId: resume!.id });
   }

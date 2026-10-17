@@ -17,7 +17,7 @@
  * Budgets live as columns on threads/runs rather than a separate table: a
  * budget is meaningless detached from the thing it caps.
  */
-import { bigint, index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // uuid primary key with a random default — every table uses one
@@ -85,6 +85,12 @@ export const runs = pgTable(
     index("runs_active_idx")
       .on(t.status)
       .where(sql`status in ('queued','running')`),
+    // One-turn-at-a-time, enforced by the database: at most ONE active run per
+    // thread. wakeThread() relies on this — a second insert fails and is
+    // treated as "the event waits in the inbox".
+    uniqueIndex("runs_one_active_per_thread")
+      .on(t.threadId)
+      .where(sql`status in ('queued','running')`),
   ],
 );
 
@@ -99,9 +105,8 @@ export const events = pgTable(
   {
     id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
     threadId: uuid("thread_id").references(() => threads.id, { onDelete: "set null" }),
-    deliveryId: text("delivery_id")
-      .notNull()
-      .references(() => webhookDeliveries.deliveryId, { onDelete: "cascade" }),
+    // Webhook deliveries carry a GUID; internal events (chat, sweeper) don't.
+    deliveryId: text("delivery_id").references(() => webhookDeliveries.deliveryId, { onDelete: "cascade" }),
     kind: text("kind").notNull(), // issue_labeled | issue_comment | pr_review | check_run | ...
     payload: jsonb("payload").notNull(),
     // pending | consumed | skipped — coalescing picks up all pending at once

@@ -156,15 +156,18 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
   state lost; SIGTERM drains cleanly. Integration tests: store roundtrip, executor
   end-to-end, full recovery pipeline (stale → sweep → queue → resume at saved phase).
 
-### Step 11 — Threads: inbox, one-turn-at-a-time, state machine
-- **What:** the **thread** record (a conversation that lives across turns) with an event
-  inbox, a per-thread lock, coalescing of incoming events, and the lifecycle state machine
-  (`queued → running → pr_open → waiting_ci ⇄ fixing → merged|closed|abandoned`).
-  Cross-run conversation memory is backed by the package's **`ThreadStore`** —
-  `PostgresThreadStore` implements it on the existing tables (decision #17).
-- **Files:** `src/threads/{thread.ts,inbox.ts,state.ts,thread-store.ts}`, tests
-- **Done when:** state machine tests pass; concurrent events don't spawn concurrent turns;
-  run N+1 rehydrates run N's conversation through the store.
+### Step 11 — Threads: inbox, one-turn-at-a-time, state machine ✅
+- **App:** inbox (`appendEvent` — webhook deliveries or internal events; `pendingEvents`
+  oldest-first; `consumeEvents` = coalescing by batch); `wakeThread` with the lock enforced
+  by the **DATABASE** (partial unique index: one active run per thread — concurrent wakes
+  create exactly one run); lifecycle state machine (`threads/state.ts`, validated
+  transitions; PR states get wired by steps 12–13); the sweep tolerates the unique conflict
+  (skips when an active run owns the turn). Migration 0005: `events.delivery_id` nullable
+  (internal events have no GUID) + the unique index.
+- **Files:** `src/threads/{inbox.ts,state.ts,wake.ts,thread-store.ts}`, `src/db/errors.ts`, tests
+- **Done when:** ✅ state machine tests pass (happy path, illegal jumps, terminal states);
+  concurrent wakes create exactly one run (Promise.all integration test); run N+1 rehydrates
+  run N's conversation (covered by the store roundtrip + worker-resume tests).
 
 ### Step 12 — GitHub integration + webhooks (`harness serve`)
 - **What:** PAT client (fetch issue, create branch, push commits, open PR with trace link —
