@@ -10,9 +10,12 @@
  * The PR/webhook layers (steps 12–13) reuse exactly this path — they enqueue
  * runs instead of typing them.
  */
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../config.js";
+import { JsonlTrace } from "@harness/agent";
+import { TraceRecorder } from "../trace/store.js";
 import {
   allTools,
   codingStrategy,
@@ -113,7 +116,7 @@ function makePrinter(verbose: boolean): (e: AgentEvent) => void {
         if (verbose) process.stdout.write(e.text);
         break;
       case "llm_call_finished":
-        line(`turn ${e.step}: ${e.toolCalls} tool call(s), ${e.usage.totalTokens} tokens, ${e.latencyMs}ms`);
+        line(`turn ${e.step}: ${e.toolCallsCount} tool call(s), ${e.usage.totalTokens} tokens, ${e.latencyMs}ms`);
         break;
       case "tool_call":
         line(`→ ${e.name}: ${summarizeInput(e.input)}`);
@@ -184,6 +187,16 @@ export async function runCommand(argv: string[]): Promise<number> {
   const printer = makePrinter(args.verbose);
   const llm = createLLMClient(cfg.llm);
 
+  // Trace: NDJSON file per run (DB rows join in step 10, when a thread owns the run).
+  const runId = randomUUID();
+  const jsonl = new JsonlTrace(path.join(baseDir, "traces", `${runId}.jsonl`));
+  const recorder = new TraceRecorder({ jsonl });
+  let sinkTail: Promise<void> = Promise.resolve();
+  const sink = (e: AgentEvent) => {
+    printer(e);
+    sinkTail = sinkTail.then(() => recorder.record(e));
+  };
+
   try {
     await sandbox.start();
 
@@ -196,14 +209,17 @@ export async function runCommand(argv: string[]): Promise<number> {
         tools: allTools,
         strategy: codingStrategy,
         budgets: { maxSteps: args.maxSteps ?? 40, maxUsd: args.maxUsd ?? 5 },
-        onEvent: printer,
+        onEvent: sink,
       },
     );
 
+    await sinkTail; // flush the trace before exiting
     await sandbox.destroy();
-    if (args.keep) process.stdout.write(`\nsandbox kept: ${sandbox.id}\n`);
+    process.stdout.write(`\ntrace: ${path.relative(baseDir, jsonl.filePath)} (${recorder.events} events)\n`);
+    if (args.keep) process.stdout.write(`sandbox kept: ${sandbox.id}\n`);
     return result.ok ? 0 : 1;
   } catch (err) {
+    await sinkTail.catch(() => undefined);
     process.stderr.write(`\nrun failed: ${err instanceof Error ? err.message : String(err)}\n`);
     await sandbox.destroy().catch(() => undefined);
     return 1;

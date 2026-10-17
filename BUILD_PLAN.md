@@ -104,12 +104,18 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 
 ## Phase 3 — Observability + resilience
 
-### Step 8 — Traces (structured JSONL + DB)
-- **What:** every step logged: prompt sent, tool called, output (truncated), tokens, latency,
-  cost. Written to `traces/<run-id>.jsonl` **and** `trace_events` table.
-  This doubles as the run's **journal** for durable resume (decision #15).
-- **Files:** `src/trace/*.ts`
-- **Done when:** after a run, the trace shows the full story of what the agent did.
+### Step 8 — Traces (structured JSONL + DB) ✅
+- **What:** every step logged: prompts (reconstructable), tool calls + inputs, tool outputs
+  (truncated, with content), tokens, latency, cost, phases, guardrails. Written to
+  `traces/<run-id>.jsonl` **and** the `trace_events` table — **one sequence number owns
+  both sinks**, so file and DB always agree on order. `redact()` at the persistence
+  boundary (applb_/sk-/gh*_/Bearer/user:pass@URLs). The event stream was extended to be a
+  *complete journal* (llm `text` + `toolCalls`, tool `content`) — the replay material step 9
+  consumes. This doubles as the PR's trace link (step 12/17).
+- **Files:** `packages/agent/src/trace/{redact,jsonl}.ts`, `apps/harness/src/trace/store.ts`,
+  `tests/unit/trace.test.ts`, `tests/integration/trace.test.ts`
+- **Done when:** ✅ live run produced a 77-event trace showing the full story
+  (reproduce → fix → verify → finish), in the file *and* row-order-tested in the DB.
 
 ### Step 9 — Checkpoints, resume, and durable turns
 - **What:** auto-checkpoint after each meaningful step; `harness run --resume <run-id>`;
