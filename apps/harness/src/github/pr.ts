@@ -12,6 +12,13 @@
  * Then the thread records prNumber/prUrl and moves to `pr_open`. The first
  * delivery opens the PR; follow-ups (PR already open — babysitting) just
  * update the branch: the push IS the delivery.
+ *
+ * THE LOOP GUARD (learned live, 2026-10-18): a delivery only pushes when the
+ * staged TREE differs from the remote branch's tree. Trees, not commits —
+ * the engine's checkpoints are resume points that commit at every phase
+ * boundary even when nothing changed, and pushing those made a push webhook
+ * whose acknowledgment run delivered again: 8 no-op runs round-tripping
+ * each other. A no-op delivery now pushes NOTHING, so the cycle terminates.
  */
 import { eq } from "drizzle-orm";
 import type { Sandbox } from "@harness/agent";
@@ -47,16 +54,35 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
   const head = thread.headRef ?? headRefFor(thread.issueNumber);
   assertSafeHeadRef(head, thread.baseRef);
 
-  // Push first — for a first delivery this creates the branch; for a FOLLOW-UP
-  // (babysitting: the PR already exists) it updates it in place. Force-pushing
-  // our own harness/* branch is the idempotent thing to do.
-  const push = await sandbox.exec(`git push --force origin HEAD:refs/heads/${head}`, { timeoutSecs: 300 });
-  if (push.exitCode !== 0) {
-    throw new Error(`git push failed (${push.exitCode}): ${push.output.trim().slice(0, 500)}`);
+  // Is there anything to deliver? Stage everything, hash the working tree,
+  // and compare against the remote branch's tree (refresh the tracking ref
+  // first; missing branch = first delivery → there is work to push).
+  await sandbox.exec("git add -A >/dev/null 2>&1", { timeoutSecs: 60 });
+  await sandbox.exec(`git fetch --quiet origin "+refs/heads/${head}:refs/remotes/origin/${head}" 2>/dev/null || true`, {
+    timeoutSecs: 120,
+  });
+  const localTree = await sandbox.exec("git write-tree", { timeoutSecs: 60 });
+  const remoteTree = await sandbox.exec(`git rev-parse --verify --quiet "origin/${head}^{tree}" || true`, {
+    timeoutSecs: 60,
+  });
+  const localTreeSha = localTree.stdout.trim();
+  const remoteTreeSha = remoteTree.stdout.trim();
+  const verified = localTree.exitCode === 0 && /^[0-9a-f]{40,64}$/.test(localTreeSha);
+  const hasNewWork = !verified || remoteTreeSha === "" || localTreeSha !== remoteTreeSha;
+
+  if (hasNewWork) {
+    // Push — for a first delivery this creates the branch; for a FOLLOW-UP
+    // (babysitting: the PR already exists) it updates it in place.
+    // Force-pushing our own harness/* branch is the idempotent thing to do.
+    const push = await sandbox.exec(`git push --force origin HEAD:refs/heads/${head}`, { timeoutSecs: 300 });
+    if (push.exitCode !== 0) {
+      throw new Error(`git push failed (${push.exitCode}): ${push.output.trim().slice(0, 500)}`);
+    }
   }
 
   if (thread.prNumber) {
-    // The PR exists: the push above IS the delivery (step 13).
+    // The PR exists: the push above IS the delivery (step 13) — or, when
+    // there was nothing to push, this is a quiet no-op.
     return { prNumber: thread.prNumber, prUrl: thread.prUrl ?? "", headRef: head };
   }
 

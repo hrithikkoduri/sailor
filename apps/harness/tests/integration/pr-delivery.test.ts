@@ -160,6 +160,25 @@ describe("deliverPullRequest", () => {
     expect(created).toHaveLength(1); // no second PR
     expect(git(bare, "rev-list", "--count", "refs/heads/harness/issue-42").trim()).toBe("3");
 
+    // THE LOOP GUARD: an acknowledgment run's footprint is checkpoint commits
+    // with NO tree change. A no-op delivery must push NOTHING — otherwise its
+    // push webhook wakes another acknowledgment run, whose delivery pushes
+    // again (the live 2026-10-18 infinite loop: 8 no-op runs round-tripping).
+    const checkpoint = await sandbox.checkpoint("after verify");
+    expect(checkpoint.sha).toMatch(/^[0-9a-f]{40}$/);
+    const noop = await deliverPullRequest({
+      db,
+      sandbox,
+      github,
+      thread: fresh!,
+      runId,
+      publicUrl: "http://localhost:5173",
+      summary: "Acknowledged — no action needed.",
+    });
+    expect(noop).toMatchObject({ prNumber: 99 });
+    expect(created).toHaveLength(1);
+    expect(git(bare, "rev-list", "--count", "refs/heads/harness/issue-42").trim()).toBe("3"); // no new commits landed
+
     await sandbox.destroy();
   });
 
