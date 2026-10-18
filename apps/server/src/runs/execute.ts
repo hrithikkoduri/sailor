@@ -33,8 +33,9 @@ import {
   type SandboxProvider,
   type SandboxSpec,
 } from "@anchor/core";
-import { heyo, upsertHeyoSecret } from "@anchor/core/sandbox/heyo";
+import { upsertHeyoSecret } from "@anchor/core/sandbox/heyo";
 import { local } from "@anchor/core/sandbox/local";
+import { heyoProvider } from "../heyo-provider.js";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
@@ -179,29 +180,6 @@ export function sandboxSpecForThread(
   return isUrl(thread.repo)
     ? { repoUrl: thread.repo }
     : { localPath: path.resolve(baseDir, thread.repo) };
-}
-
-/** The heyo connection config for this product's sandboxes — credentials live
- * here and only here; the package owns what to do with them. */
-function heyoSandboxConfig(
-  cfg: ReturnType<typeof loadConfig>,
-): HeyoSandboxConfig {
-  return {
-    token: cfg.heyo.token ?? "",
-    server: cfg.heyo.server,
-    namespace: cfg.heyo.namespace,
-    image: cfg.heyo.image,
-    imageKind: cfg.heyo.imageKind,
-    ...(cfg.heyo.imageRepo ? { imageRepo: cfg.heyo.imageRepo } : {}),
-    ...(cfg.heyo.imageRef ? { imageRef: cfg.heyo.imageRef } : {}),
-    ...(cfg.heyo.imageDockerfile
-      ? { imageDockerfile: cfg.heyo.imageDockerfile }
-      : {}),
-    ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
-    ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
-    sizeClass: cfg.heyo.sizeClass,
-    diskSizeGb: cfg.heyo.diskSizeGb,
-  };
 }
 
 export async function executeRun(
@@ -390,9 +368,7 @@ export async function executeRun(
   // The provider for this run, named and explicit: the retained handle's
   // backend is passed verbatim, so a future provider can never be
   // misclassified as heyo (the old `backend === "local" ? … : "heyo"` trap).
-  const provider: SandboxProvider = deps.local
-    ? local()
-    : heyo(heyoSandboxConfig(cfg));
+  const provider: SandboxProvider = deps.local ? local() : heyoProvider(cfg);
   const make = (s: SandboxSpec): Sandbox =>
     deps.sandboxFactory?.(s) ?? provider.create(s);
   // Provider catalog (cached): the real context window and prices. Real runs
@@ -758,7 +734,7 @@ export async function releaseThreadSandbox(
   if (!thread.sandboxId) return;
   const cfg = loadConfig();
   const provider =
-    thread.sandboxBackend === "local" ? local() : heyo(heyoSandboxConfig(cfg));
+    thread.sandboxBackend === "local" ? local() : heyoProvider(cfg);
   await releaseSandbox(
     { id: thread.sandboxId, backend: thread.sandboxBackend ?? provider.name },
     { provider },

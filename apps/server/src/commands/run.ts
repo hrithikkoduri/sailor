@@ -23,7 +23,7 @@ import {
   type AgentEvent,
   type Sandbox,
 } from "@anchor/core";
-import { heyo } from "@anchor/core/sandbox/heyo";
+import { heyoProvider } from "../heyo-provider.js";
 import { local } from "@anchor/core/sandbox/local";
 
 const USAGE = `Usage: sailor run <repo> <issue> [options]
@@ -193,24 +193,7 @@ export async function runCommand(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const provider = args.local
-    ? local()
-    : heyo({
-        token: cfg.heyo.token ?? "",
-        server: cfg.heyo.server,
-        namespace: cfg.heyo.namespace,
-        image: cfg.heyo.image,
-        imageKind: cfg.heyo.imageKind,
-        ...(cfg.heyo.imageRepo ? { imageRepo: cfg.heyo.imageRepo } : {}),
-        ...(cfg.heyo.imageRef ? { imageRef: cfg.heyo.imageRef } : {}),
-        ...(cfg.heyo.imageDockerfile
-          ? { imageDockerfile: cfg.heyo.imageDockerfile }
-          : {}),
-        ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
-        ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
-        sizeClass: cfg.heyo.sizeClass,
-        diskSizeGb: cfg.heyo.diskSizeGb,
-      });
+  const provider = args.local ? local() : heyoProvider(cfg);
   const sandbox: Sandbox = provider.create(
     isUrl(args.repo)
       ? { repoUrl: args.repo, ref: args.ref, keep: args.keep }

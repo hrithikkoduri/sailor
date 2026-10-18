@@ -7,8 +7,8 @@
  */
 import { loadConfig } from "../config.js";
 import { type Sandbox } from "@anchor/core";
-import { heyo } from "@anchor/core/sandbox/heyo";
 import { local } from "@anchor/core/sandbox/local";
+import { heyoProvider } from "../heyo-provider.js";
 
 interface SmokeArgs {
   repo: string;
@@ -75,24 +75,7 @@ export async function smokeCommand(argv: string[]): Promise<number> {
   }
 
   const cfg = loadConfig();
-  const provider = args.local
-    ? local()
-    : heyo({
-        token: cfg.heyo.token ?? "",
-        server: cfg.heyo.server,
-        namespace: cfg.heyo.namespace,
-        image: cfg.heyo.image,
-        imageKind: cfg.heyo.imageKind,
-        ...(cfg.heyo.imageRepo ? { imageRepo: cfg.heyo.imageRepo } : {}),
-        ...(cfg.heyo.imageRef ? { imageRef: cfg.heyo.imageRef } : {}),
-        ...(cfg.heyo.imageDockerfile
-          ? { imageDockerfile: cfg.heyo.imageDockerfile }
-          : {}),
-        ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
-        ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
-        sizeClass: cfg.heyo.sizeClass,
-        diskSizeGb: cfg.heyo.diskSizeGb,
-      });
+  const provider = args.local ? local() : heyoProvider(cfg);
   const sandbox: Sandbox = provider.create({
     repoUrl: args.repo,
     ref: args.ref,
