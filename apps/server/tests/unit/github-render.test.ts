@@ -19,10 +19,25 @@ describe("renderGithubTask", () => {
   });
 
   it("failed checks name the checks and say to fix + push", () => {
-    const t = renderGithubTask("check_run", { checks: ["unit", "lint"], url: "https://example/ci" });
+    const t = renderGithubTask("check_run", {
+      checks: ["unit", "lint"],
+      url: "https://example/ci",
+    });
     expect(t).toContain("CI failed on your PR branch: unit, lint");
     expect(t).toContain("same PR using publish_changes");
     expect(t).not.toContain("usual phases");
+  });
+
+  it("dashboard chat messages expect a reply and do not restart old work", () => {
+    const t = renderGithubTask("chat_message", {
+      author: "hrithik",
+      body: "What up?",
+    });
+    expect(t).toContain("Message from hrithik (dashboard chat):");
+    expect(t).toContain("What up?");
+    expect(t).toContain("expects a reply in text");
+    expect(t).toContain("only if this message asks for it");
+    expect(t).not.toContain("continue toward");
   });
 
   it("our own push renders as an acknowledgment, not work", () => {

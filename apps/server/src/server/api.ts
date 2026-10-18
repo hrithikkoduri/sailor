@@ -15,7 +15,16 @@
  */
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { and, asc, desc, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  notInArray,
+  or,
+} from "drizzle-orm";
 import { projectConversation } from "../chat/projection.js";
 import { schema, type Db } from "../db/index.js";
 import type { User } from "../db/schema.js";
@@ -84,17 +93,26 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     const user = await deps.getUser(c);
     return user ?? c.json({ error: "unauthorized" }, 401);
   };
-  const ok = (value: User | Response): value is User => !(value instanceof Response);
+  const ok = (value: User | Response): value is User =>
+    !(value instanceof Response);
 
   /** v1 visibility: owned threads + installation-less (local/dev) threads. */
   const visibleWhere = (userId: string) =>
-    or(eq(schema.threads.userId, userId), isNull(schema.threads.installationId));
+    or(
+      eq(schema.threads.userId, userId),
+      isNull(schema.threads.installationId),
+    );
 
-  const threadVisibleTo = (thread: Pick<ThreadRow, "userId" | "installationId">, userId: string) =>
-    thread.userId === userId || thread.installationId === null;
+  const threadVisibleTo = (
+    thread: Pick<ThreadRow, "userId" | "installationId">,
+    userId: string,
+  ) => thread.userId === userId || thread.installationId === null;
 
   const loadThread = async (threadId: string) => {
-    const [thread] = await deps.db.select().from(schema.threads).where(eq(schema.threads.id, threadId));
+    const [thread] = await deps.db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, threadId));
     return thread;
   };
 
@@ -122,14 +140,21 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       ? await deps.db
           .select({ threadId: schema.events.threadId })
           .from(schema.events)
-          .where(and(inArray(schema.events.threadId, ids), eq(schema.events.status, "pending")))
+          .where(
+            and(
+              inArray(schema.events.threadId, ids),
+              eq(schema.events.status, "pending"),
+            ),
+          )
       : [];
 
     const latest = new Map<string, RunRow>();
-    for (const r of runs) if (!latest.has(r.threadId)) latest.set(r.threadId, r);
+    for (const r of runs)
+      if (!latest.has(r.threadId)) latest.set(r.threadId, r);
     const pendingCount = new Map<string, number>();
     for (const p of pending) {
-      if (p.threadId) pendingCount.set(p.threadId, (pendingCount.get(p.threadId) ?? 0) + 1);
+      if (p.threadId)
+        pendingCount.set(p.threadId, (pendingCount.get(p.threadId) ?? 0) + 1);
     }
 
     return c.json({
@@ -147,7 +172,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     const user = await requireUser(c);
     if (!ok(user)) return user;
     const thread = await loadThread(c.req.param("id"));
-    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "thread not found" }, 404);
 
     const runs = await deps.db
       .select()
@@ -166,28 +192,66 @@ export function createApiRoutes(deps: ApiDeps): Hono {
         ? await deps.db
             .select({ accountLogin: schema.installations.accountLogin })
             .from(schema.installations)
-            .where(eq(schema.installations.installationId, thread.installationId))
+            .where(
+              eq(schema.installations.installationId, thread.installationId),
+            )
         : [];
 
     // Finished calls carry full text; only active runs need individual deltas
     // for refresh-mid-stream hydration. One query, not one query per turn.
-    const runIds = runs.map(r => r.id);
-    const activeIds = runs.filter(r => ["queued", "running"].includes(r.status)).map(r => r.id);
-    const nonDelta = notInArray(schema.traceEvents.type, ["llm_text_delta", "llm_reasoning_delta"]);
-    const journal = runIds.length ? await deps.db.select({ runId: schema.traceEvents.runId, seq: schema.traceEvents.seq, type: schema.traceEvents.type, payload: schema.traceEvents.payload })
-      .from(schema.traceEvents).where(and(inArray(schema.traceEvents.runId, runIds), activeIds.length ? or(nonDelta, inArray(schema.traceEvents.runId, activeIds)) : nonDelta))
-      .orderBy(asc(schema.traceEvents.seq)) : [];
-    const conversations = new Map(runs.map(run => [run.id, projectConversation(journal.filter(row => row.runId === run.id), run.status)]));
+    const runIds = runs.map((r) => r.id);
+    const activeIds = runs
+      .filter((r) => ["queued", "running"].includes(r.status))
+      .map((r) => r.id);
+    const nonDelta = notInArray(schema.traceEvents.type, [
+      "llm_text_delta",
+      "llm_reasoning_delta",
+    ]);
+    const journal = runIds.length
+      ? await deps.db
+          .select({
+            runId: schema.traceEvents.runId,
+            seq: schema.traceEvents.seq,
+            type: schema.traceEvents.type,
+            payload: schema.traceEvents.payload,
+          })
+          .from(schema.traceEvents)
+          .where(
+            and(
+              inArray(schema.traceEvents.runId, runIds),
+              activeIds.length
+                ? or(nonDelta, inArray(schema.traceEvents.runId, activeIds))
+                : nonDelta,
+            ),
+          )
+          .orderBy(asc(schema.traceEvents.seq))
+      : [];
+    const conversations = new Map(
+      runs.map((run) => [
+        run.id,
+        projectConversation(
+          journal.filter((row) => row.runId === run.id),
+          run.status,
+        ),
+      ]),
+    );
 
     return c.json({
       thread: {
         ...threadSummary(thread),
         installationAccount: installation?.accountLogin ?? null,
-        issueUrl: thread.source === "github" ? `https://github.com/${thread.repo}/issues/${thread.issueNumber}` : null,
+        issueUrl:
+          thread.source === "github"
+            ? `https://github.com/${thread.repo}/issues/${thread.issueNumber}`
+            : null,
       },
       runs: runs.map((r) => ({
         ...runSummary(r),
-        agentText: conversations.get(r.id)?.parts.filter(p => p.kind === "text" && p.text?.trim()).at(-1)?.text ?? null,
+        agentText:
+          conversations
+            .get(r.id)
+            ?.parts.filter((p) => p.kind === "text" && p.text?.trim())
+            .at(-1)?.text ?? null,
         conversation: conversations.get(r.id),
       })),
       events: eventRows.map((e) => ({
@@ -212,10 +276,14 @@ export function createApiRoutes(deps: ApiDeps): Hono {
   app.get("/api/runs/:id", async (c) => {
     const user = await requireUser(c);
     if (!ok(user)) return user;
-    const [run] = await deps.db.select().from(schema.runs).where(eq(schema.runs.id, c.req.param("id")));
+    const [run] = await deps.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, c.req.param("id")));
     if (!run) return c.json({ error: "run not found" }, 404);
     const thread = await loadThread(run.threadId);
-    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "run not found" }, 404);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "run not found" }, 404);
 
     const trace = await deps.db
       .select()
@@ -235,7 +303,13 @@ export function createApiRoutes(deps: ApiDeps): Hono {
         cancelRequestedAt: run.cancelRequestedAt,
         heartbeatAt: run.heartbeatAt,
       },
-      trace: trace.map((e) => ({ id: String(e.id), seq: e.seq, type: e.type, payload: e.payload, ts: e.ts })),
+      trace: trace.map((e) => ({
+        id: String(e.id),
+        seq: e.seq,
+        type: e.type,
+        payload: e.payload,
+        ts: e.ts,
+      })),
     });
   });
 
@@ -248,7 +322,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     const user = await requireUser(c);
     if (!ok(user)) return user;
     const thread = await loadThread(c.req.param("id"));
-    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "thread not found" }, 404);
 
     const runs = await deps.db
       .select()
@@ -260,17 +335,39 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       ? await deps.db
           .select()
           .from(schema.traceEvents)
-          .where(and(inArray(schema.traceEvents.runId, runIds), notInArray(schema.traceEvents.type, ["llm_text_delta", "llm_reasoning_delta"])))
+          .where(
+            and(
+              inArray(schema.traceEvents.runId, runIds),
+              notInArray(schema.traceEvents.type, [
+                "llm_text_delta",
+                "llm_reasoning_delta",
+              ]),
+            ),
+          )
           .orderBy(asc(schema.traceEvents.runId), asc(schema.traceEvents.seq))
       : [];
 
     const spans = rows.map((e) => {
       let payload = e.payload as Record<string, unknown>;
       const content = payload.content;
-      if (e.type === "tool_result" && typeof content === "string" && content.length > 4000) {
-        payload = { ...payload, content: `${content.slice(0, 4000)}\n… (truncated)` };
+      if (
+        e.type === "tool_result" &&
+        typeof content === "string" &&
+        content.length > 4000
+      ) {
+        payload = {
+          ...payload,
+          content: `${content.slice(0, 4000)}\n… (truncated)`,
+        };
       }
-      return { id: String(e.id), runId: e.runId, seq: e.seq, type: e.type, payload, ts: e.ts };
+      return {
+        id: String(e.id),
+        runId: e.runId,
+        seq: e.seq,
+        type: e.type,
+        payload,
+        ts: e.ts,
+      };
     });
 
     const finishedRuns = runs.filter((r) => r.finishedAt);
@@ -283,8 +380,13 @@ export function createApiRoutes(deps: ApiDeps): Hono {
         tokensIn: runs.reduce((n, r) => n + r.tokensIn, 0),
         tokensOut: runs.reduce((n, r) => n + r.tokensOut, 0),
         usd: runs.reduce((n, r) => n + Number(r.usd), 0).toFixed(4),
-        startedAt: runs.find((r) => r.startedAt)?.startedAt ?? runs[0]?.createdAt ?? null,
-        finishedAt: finishedRuns.length ? finishedRuns[finishedRuns.length - 1]!.finishedAt : null,
+        startedAt:
+          runs.find((r) => r.startedAt)?.startedAt ??
+          runs[0]?.createdAt ??
+          null,
+        finishedAt: finishedRuns.length
+          ? finishedRuns[finishedRuns.length - 1]!.finishedAt
+          : null,
       },
       runs: runs.map((r) => ({
         ...runSummary(r),
@@ -303,7 +405,10 @@ export function createApiRoutes(deps: ApiDeps): Hono {
   // --- actions ----------------------------------------------------------------------
 
   const loadRunForAction = async (runId: string, userId: string) => {
-    const [run] = await deps.db.select().from(schema.runs).where(eq(schema.runs.id, runId));
+    const [run] = await deps.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, runId));
     if (!run) return undefined;
     const thread = await loadThread(run.threadId);
     if (!thread || !threadVisibleTo(thread, userId)) return undefined;
@@ -327,7 +432,11 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     if (run.status === "queued") {
       await deps.db
         .update(schema.runs)
-        .set({ status: "cancelled", finishedAt: new Date(), error: "cancelled before start" })
+        .set({
+          status: "cancelled",
+          finishedAt: new Date(),
+          error: "cancelled before start",
+        })
         .where(eq(schema.runs.id, run.id));
       hub.notify(run.threadId);
       log(`api: queued run ${run.id} cancelled`);
@@ -344,7 +453,10 @@ export function createApiRoutes(deps: ApiDeps): Hono {
 
     // Allowed before or during the run: the executor re-reads the flag right
     // before destruction, so flipping it while running wins the race.
-    await deps.db.update(schema.runs).set({ keepSandbox: true }).where(eq(schema.runs.id, run.id));
+    await deps.db
+      .update(schema.runs)
+      .set({ keepSandbox: true })
+      .where(eq(schema.runs.id, run.id));
     hub.notify(run.threadId);
     log(`api: run ${run.id} sandbox will be kept`);
     return c.json({ ok: true, action: "keep-sandbox" });
@@ -360,18 +472,26 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     } catch {
       return c.json({ error: "bad event id" }, 400);
     }
-    const [event] = await deps.db.select().from(schema.events).where(eq(schema.events.id, eventId));
+    const [event] = await deps.db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.id, eventId));
     if (!event?.threadId) return c.json({ error: "event not found" }, 404);
     const thread = await loadThread(event.threadId);
-    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "event not found" }, 404);
-    if (event.status !== "pending") return c.json({ ok: false, reason: `event is ${event.status}` }, 409);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "event not found" }, 404);
+    if (event.status !== "pending")
+      return c.json({ ok: false, reason: `event is ${event.status}` }, 409);
 
     // The explicit override (decision #28): the pending event forces its way in.
     const [active] = await deps.db
       .select({ id: schema.runs.id, status: schema.runs.status })
       .from(schema.runs)
       .where(
-        and(eq(schema.runs.threadId, thread.id), inArray(schema.runs.status, ["queued", "running"])),
+        and(
+          eq(schema.runs.threadId, thread.id),
+          inArray(schema.runs.status, ["queued", "running"]),
+        ),
       )
       .orderBy(desc(schema.runs.createdAt))
       .limit(1);
@@ -379,20 +499,35 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     if (active?.status === "running") {
       await requestCancel(deps.db, active.id);
       hub.notify(thread.id);
-      log(`api: interject on thread ${thread.id} — cancel requested on run ${active.id}`);
+      log(
+        `api: interject on thread ${thread.id} — cancel requested on run ${active.id}`,
+      );
       return c.json({ ok: true, action: "interjected", runId: active.id });
     }
     if (active?.status === "queued") {
       // The turn is already scheduled; this event will be its input (or the
       // next drain's). Nothing to force.
-      return c.json({ ok: true, action: "already-scheduled", runId: active.id });
+      return c.json({
+        ok: true,
+        action: "already-scheduled",
+        runId: active.id,
+      });
     }
 
     // Idle thread with a pending event: run it now instead of waiting.
-    const run = await drainInbox({ db: deps.db, queues: deps.queues }, thread.id);
+    const run = await drainInbox(
+      { db: deps.db, queues: deps.queues },
+      thread.id,
+    );
     hub.notify(thread.id);
-    log(`api: interject on idle thread ${thread.id} → ${run ? `run ${run.id} queued` : "no-op"}`);
-    return c.json({ ok: true, action: run ? "woken" : "no-op", runId: run?.id ?? null });
+    log(
+      `api: interject on idle thread ${thread.id} → ${run ? `run ${run.id} queued` : "no-op"}`,
+    );
+    return c.json({
+      ok: true,
+      action: run ? "woken" : "no-op",
+      runId: run?.id ?? null,
+    });
   });
 
   // --- chat (step 18): a dashboard message is an inbox event like any other ---
@@ -401,15 +536,20 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     const user = await requireUser(c);
     if (!ok(user)) return user;
     const thread = await loadThread(c.req.param("id"));
-    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "thread not found" }, 404);
     if (isTerminal(thread.state)) {
-      return c.json({ error: `thread is ${thread.state} — it takes no more turns` }, 409);
+      return c.json(
+        { error: `thread is ${thread.state} — it takes no more turns` },
+        409,
+      );
     }
 
     const body = (await c.req.json().catch(() => ({}))) as { text?: unknown };
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) return c.json({ error: "empty message" }, 400);
-    if (text.length > 8000) return c.json({ error: "message too long (8000 characters max)" }, 400);
+    if (text.length > 8000)
+      return c.json({ error: "message too long (8000 characters max)" }, 400);
 
     const author = user.login ?? user.name ?? user.email ?? "you";
     const evt = await appendEvent(deps.db, {
@@ -418,30 +558,46 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       payload: { body: text, author, via: "dashboard" },
     });
 
-    // Same policy as human GitHub comments (decision #28): while a run is
-    // active the message INTERJECTS — cancel the run; the event becomes the
-    // next turn (resumed at the cancelled run's phase). Idle → run it now.
+    // Dashboard messages QUEUE. A busy thread keeps its current run — sending
+    // is never an implicit cancellation. Interjection stays a separate,
+    // explicit action (double-Enter / the composer chip →
+    // POST /api/events/:id/interject); when a run finishes the worker drains
+    // pending events into the next turn.
     const [active] = await deps.db
       .select({ id: schema.runs.id, status: schema.runs.status })
       .from(schema.runs)
-      .where(and(eq(schema.runs.threadId, thread.id), inArray(schema.runs.status, ["queued", "running"])))
+      .where(
+        and(
+          eq(schema.runs.threadId, thread.id),
+          inArray(schema.runs.status, ["queued", "running"]),
+        ),
+      )
       .orderBy(desc(schema.runs.createdAt))
       .limit(1);
 
-    let interjected = false;
     let runId: string | null = active?.id ?? null;
-    if (active?.status === "running") {
-      await requestCancel(deps.db, active.id);
-      interjected = true;
-      log(`api: chat message on thread ${thread.id} — interject, cancel requested on run ${active.id}`);
-    } else if (active?.status !== "queued") {
-      const run = await drainInbox({ db: deps.db, queues: deps.queues }, thread.id);
+    if (active?.status === "running" || active?.status === "queued") {
+      log(
+        `api: chat message on thread ${thread.id} — queued behind run ${active.id}`,
+      );
+    } else {
+      const run = await drainInbox(
+        { db: deps.db, queues: deps.queues },
+        thread.id,
+      );
       runId = run?.id ?? null;
-      log(`api: chat message on idle thread ${thread.id} → ${run ? `run ${run.id} queued` : "no-op"}`);
+      log(
+        `api: chat message on idle thread ${thread.id} → ${run ? `run ${run.id} queued` : "no-op"}`,
+      );
     }
 
     hub.notify(thread.id);
-    return c.json({ ok: true, eventId: String(evt.id), interjected, runId });
+    return c.json({
+      ok: true,
+      eventId: String(evt.id),
+      interjected: false,
+      runId,
+    });
   });
 
   // --- SSE (nudges only — the client refetches) --------------------------------------
@@ -450,7 +606,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     const user = await requireUser(c);
     if (!ok(user)) return user;
     const thread = await loadThread(c.req.param("id"));
-    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "thread not found" }, 404);
     const threadId = thread.id;
     c.header("Cache-Control", "no-cache, no-transform");
     c.header("X-Accel-Buffering", "no");

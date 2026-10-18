@@ -201,6 +201,18 @@ export function buildThreadTree(
           }
           break;
         }
+        case "advisory": {
+          container().children.push({
+            id: `s${e.id}`,
+            kind: "note",
+            name: `advisory · ${str(p, "kind") ?? ""}`.replace(/_/g, " "),
+            status: "neutral",
+            startMs: start,
+            detail: { output: str(p, "detail"), metadata: { kind: p.kind } },
+            children: [],
+          });
+          break;
+        }
         case "guardrail": {
           container().children.push({
             id: `s${e.id}`,

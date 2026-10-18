@@ -6,7 +6,10 @@
  * JSON. Shared by the webhook door, the pre-turn inbox renderer, and the
  * babysitter sweep — one place, one voice.
  */
-export function renderGithubTask(kind: string, payload: Record<string, unknown>): string {
+export function renderGithubTask(
+  kind: string,
+  payload: Record<string, unknown>,
+): string {
   const s = (k: string): string | undefined =>
     typeof payload[k] === "string" ? (payload[k] as string) : undefined;
   const n = (k: string): number | undefined =>
@@ -49,7 +52,9 @@ export function renderGithubTask(kind: string, payload: Record<string, unknown>)
       const author = s("author") ?? "the operator";
       const body = s("body")?.trim() ?? "";
       return (
-        `Message from ${author} (dashboard chat):\n\n${body.slice(0, 4000)}`
+        `Message from ${author} (dashboard chat):\n\n${body.slice(0, 4000)}` +
+        `\n\nThis is a direct message in the conversation — it expects a reply in text.` +
+        `\nRepository work continues only if this message asks for it.`
       );
     }
     case "push": {

@@ -483,6 +483,31 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   Unknown completion is not reported as a confirmed kill. Live VM tests now
   require an explicit `RUN_LIVE_HEYO_TESTS=1`, not just credentials in .env.
 
+### Conversation-loop corrections (from the WebRover spiral review)
+
+- **Dashboard messages queue; sending never cancels.** The `/messages` endpoint
+  appends the event and, only on an idle thread, drains it into a run; a busy
+  thread logs "queued behind run X". Interjection stays explicit
+  (`POST /api/events/:id/interject` via double-Enter or the composer chip), and
+  the worker drains pending events into the next turn. The old behavior was a
+  drift from decision #28 — which applies to incoming GitHub comments, not the
+  composer. Tests: busy send leaves `cancel_requested_at` null and both messages
+  pending.
+- **Chat turns carry reply framing.** `renderGithubTask` for `chat_message`
+  now states the message expects a reply in text and that repository work
+  continues only if the message asks for it — the missing signal that let
+  "What up?" be adopted as "continue the interrupted fix".
+- **Materialization advisory.** After N consecutive tool-only turns with no
+  visible text (default 8; `guardrails.toolOnlyNudgeLimit`, `false` disables),
+  the engine injects one runtime-only advisory (`origin: "engine"` — never
+  persisted, never resent as user memory) asking for a reply or a visible
+  status; it is recorded as a neutral `advisory` trace span. Advisory only: it
+  never blocks actions or ends the run.
+- Why this matters: a reasoning model's hidden chain is stateless between API
+  calls, so nothing visible means nothing materialized. The 40-step spiral had
+  no framing, no forcing function, and folded its own findings away (compaction,
+  since raised to 256k/64k).
+
 ### Live phase trail above the composer
 
 - The running run's approach is visible where direction is given: a small
