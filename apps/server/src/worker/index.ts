@@ -74,6 +74,9 @@ export async function workerCommand(argv: string[]): Promise<number> {
           privateKey: cfg.github.privateKey,
         })
       : undefined;
+  // Rename-proof bot identity (GET /app) — same source as serve; env fallback.
+  const resolvedSlug = githubApp ? await githubApp.appSlug() : undefined;
+  const botLogin = resolvedSlug ? `${resolvedSlug}[bot]` : cfg.github.botLogin;
 
   const queueConnection = createQueueConnection(cfg.redis.url);
   const queues = createQueues(queueConnection);
@@ -147,7 +150,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
       if (job.name === "babysit") {
         if (!githubApp) return; // no App configured — nothing to inspect
         const results = await runBabysitSweep(
-          { db, queues, githubApp, botLogin: cfg.github.botLogin },
+          { db, queues, githubApp, botLogin },
           { threadId: job.data.threadId },
         );
         const notable = results.filter(

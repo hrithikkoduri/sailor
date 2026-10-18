@@ -99,6 +99,7 @@ describe("publication is separate from turn completion", () => {
     app = {
       tokenFor: async () => "fake-installation-token",
       clientFor: async () => github,
+      appSlug: async () => undefined,
       getInstallation: async () => ({
         id: seeded.installationId,
         account: { login: "test", type: "Organization" },

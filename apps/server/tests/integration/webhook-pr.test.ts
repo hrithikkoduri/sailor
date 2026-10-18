@@ -8,13 +8,18 @@ import { eq, inArray } from "drizzle-orm";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
+import {
+  createQueueConnection,
+  createQueues,
+  type Queues,
+} from "../../src/queue/index.js";
 import { createServerApp } from "../../src/server/app.js";
 import { loadConfig } from "../../src/config.js";
 import { seedRepo } from "../helpers/github-fixtures.js";
 
 const SECRET = "test-webhook-secret";
-const sign = (body: string) => `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
+const sign = (body: string) =>
+  `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
 
 describe("webhook: PR lifecycle", () => {
   let pool: Pool;
@@ -36,16 +41,29 @@ describe("webhook: PR lifecycle", () => {
     db = createDb(pool);
     await runMigrations(db);
     queues = createQueues(createQueueConnection(loadConfig().redis.url));
-    app = createServerApp({ db, queues, webhookSecret: SECRET, botLogin: "sailor-bot", log: () => undefined });
+    app = createServerApp({
+      db,
+      queues,
+      webhookSecret: SECRET,
+      botLogin: "sailor-bot",
+      log: () => undefined,
+    });
   });
 
   afterAll(async () => {
-    if (threadIds.length > 0) await db.delete(schema.threads).where(inArray(schema.threads.id, threadIds));
+    if (threadIds.length > 0)
+      await db
+        .delete(schema.threads)
+        .where(inArray(schema.threads.id, threadIds));
     if (installationRowIds.length > 0) {
-      await db.delete(schema.installations).where(inArray(schema.installations.id, installationRowIds));
+      await db
+        .delete(schema.installations)
+        .where(inArray(schema.installations.id, installationRowIds));
     }
     if (deliveryIds.length > 0) {
-      await db.delete(schema.webhookDeliveries).where(inArray(schema.webhookDeliveries.deliveryId, deliveryIds));
+      await db
+        .delete(schema.webhookDeliveries)
+        .where(inArray(schema.webhookDeliveries.deliveryId, deliveryIds));
     }
     await queues.close();
     await pool.end();
@@ -100,12 +118,18 @@ describe("webhook: PR lifecycle", () => {
       sender: { login: "ci-bot", type: "Bot" },
     });
 
-    const res = await post(body, { event: "check_run", delivery: nextDelivery() });
+    const res = await post(body, {
+      event: "check_run",
+      delivery: nextDelivery(),
+    });
     expect(res.status).toBe(202);
     const json = (await res.json()) as { threadId: string; runId: string };
     expect(json.runId).toBeTruthy();
 
-    const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, json.runId));
+    const [run] = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, json.runId));
     expect(run!.trigger).toBe("babysit_ci");
     expect(run!.task).toContain("CI failed");
     expect(run!.task).toContain("unit");
@@ -115,7 +139,12 @@ describe("webhook: PR lifecycle", () => {
     const thread = await newThread("review", 41);
     const [active] = await db
       .insert(schema.runs)
-      .values({ threadId: thread.id, trigger: "manual", status: "running", heartbeatAt: new Date() })
+      .values({
+        threadId: thread.id,
+        trigger: "manual",
+        status: "running",
+        heartbeatAt: new Date(),
+      })
       .returning();
 
     const body = JSON.stringify({
@@ -132,15 +161,27 @@ describe("webhook: PR lifecycle", () => {
       sender: { login: "octocat", type: "User" },
     });
 
-    const res = await post(body, { event: "pull_request_review", delivery: nextDelivery() });
+    const res = await post(body, {
+      event: "pull_request_review",
+      delivery: nextDelivery(),
+    });
     expect(res.status).toBe(202);
-    const json = (await res.json()) as { threadId: string; runId: string | null };
+    const json = (await res.json()) as {
+      threadId: string;
+      runId: string | null;
+    };
     expect(json.runId).toBeNull(); // parked behind the active run
 
-    const [after] = await db.select().from(schema.runs).where(eq(schema.runs.id, active!.id));
+    const [after] = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, active!.id));
     expect(after!.cancelRequestedAt).not.toBeNull(); // the durable interject flag
 
-    const events = await db.select().from(schema.events).where(eq(schema.events.threadId, thread.id));
+    const events = await db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.threadId, thread.id));
     expect(events.map((e) => e.status)).toEqual(["pending"]);
     expect(events[0]!.kind).toBe("pull_request_review");
   });
@@ -159,10 +200,45 @@ describe("webhook: PR lifecycle", () => {
     const res = await post(body, { event: "push", delivery: nextDelivery() });
     expect(res.status).toBe(202);
     const json = (await res.json()) as { runId: string };
-    const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, json.runId));
+    const [run] = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, json.runId));
     expect(run!.trigger).toBe("inbox");
     expect(run!.task).toContain("No action needed");
     expect(run!.task).toContain("2 commits");
+  });
+
+  it("our own comment → acknowledge-only; never instructed to reply on GitHub", async () => {
+    const thread = await newThread("self-comment", 46);
+    const body = JSON.stringify({
+      action: "created",
+      comment: {
+        body: "Thanks — the fix is in.",
+        html_url: "https://example/c/self",
+        user: { login: "sailor-bot", type: "Bot" },
+      },
+      issue: { number: 46, pull_request: { url: "https://example/pr/46" } },
+      repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
+      sender: { login: "sailor-bot", type: "Bot" },
+    });
+
+    const res = await post(body, {
+      event: "issue_comment",
+      delivery: nextDelivery(),
+    });
+    expect(res.status).toBe(202);
+    const json = (await res.json()) as { runId: string };
+    const [run] = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, json.runId));
+    // The echo harness: an ack in the thread (no webhook) — a GitHub reply
+    // would echo back and loop (the WebRover #24 chain).
+    expect(run!.task).toContain("No action needed");
+    expect(run!.task).toContain("Do not reply on GitHub");
+    expect(run!.task).not.toContain("Respond on the PR");
   });
 
   it("foreign pushes are ignored", async () => {
@@ -179,24 +255,39 @@ describe("webhook: PR lifecycle", () => {
     const res = await post(body, { event: "push", delivery: nextDelivery() });
     expect(res.status).toBe(202);
     expect(((await res.json()) as { ignored?: boolean }).ignored).toBe(true);
-    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id))).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.runs)
+        .where(eq(schema.runs.threadId, thread.id)),
+    ).toHaveLength(0);
   });
 
   it("human comment on the PR (idle) → a turn with the comment is queued", async () => {
     const thread = await newThread("comment", 45);
     const body = JSON.stringify({
       action: "created",
-      comment: { body: "why does X behave this way?", html_url: "https://example/c/1", user: { login: "octocat", type: "User" } },
+      comment: {
+        body: "why does X behave this way?",
+        html_url: "https://example/c/1",
+        user: { login: "octocat", type: "User" },
+      },
       issue: { number: 45, pull_request: { url: "https://example/pr/45" } },
       repository: { full_name: thread.repo },
       installation: { id: thread.installationId! },
       sender: { login: "octocat", type: "User" },
     });
 
-    const res = await post(body, { event: "issue_comment", delivery: nextDelivery() });
+    const res = await post(body, {
+      event: "issue_comment",
+      delivery: nextDelivery(),
+    });
     expect(res.status).toBe(202);
     const json = (await res.json()) as { runId: string };
-    const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, json.runId));
+    const [run] = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.id, json.runId));
     expect(run!.trigger).toBe("babysit_comment");
     expect(run!.task).toContain("why does X behave this way?");
   });
@@ -205,15 +296,26 @@ describe("webhook: PR lifecycle", () => {
     const thread = await newThread("merged", 44);
     const body = JSON.stringify({
       action: "closed",
-      pull_request: { number: 44, merged: true, html_url: "https://example/pr/44", head: { ref: "sailor/issue-44" } },
+      pull_request: {
+        number: 44,
+        merged: true,
+        html_url: "https://example/pr/44",
+        head: { ref: "sailor/issue-44" },
+      },
       repository: { full_name: thread.repo },
       installation: { id: thread.installationId! },
       sender: { login: "octocat", type: "User" },
     });
 
-    const res = await post(body, { event: "pull_request", delivery: nextDelivery() });
+    const res = await post(body, {
+      event: "pull_request",
+      delivery: nextDelivery(),
+    });
     expect(res.status).toBe(200);
-    const [after] = await db.select().from(schema.threads).where(eq(schema.threads.id, thread.id));
+    const [after] = await db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, thread.id));
     expect(after!.state).toBe("merged");
   });
 });

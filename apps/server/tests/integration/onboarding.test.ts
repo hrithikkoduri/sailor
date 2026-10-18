@@ -38,6 +38,7 @@ describe("onboarding", () => {
     getInstallation: async () => ({ id: INSTALLATION, account: { login: "acme", type: "Organization" } }),
     clientFor: async () => fakeClient,
     tokenFor: async () => "fake-token",
+    appSlug: async () => undefined,
   };
 
   beforeAll(async () => {

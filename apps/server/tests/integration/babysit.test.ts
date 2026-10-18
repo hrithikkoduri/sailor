@@ -88,6 +88,7 @@ let issueSeq = 50;
   const fakeApp = (github: GitHubClient): GitHubAppService => ({
     clientFor: async () => github,
     tokenFor: async () => "fake-token",
+    appSlug: async () => undefined,
     getInstallation: async () => {
       throw new Error("not used");
     },
