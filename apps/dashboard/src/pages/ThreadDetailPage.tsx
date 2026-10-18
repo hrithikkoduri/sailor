@@ -357,7 +357,7 @@ export function ThreadDetailPage() {
 
             {pendingEvents.length > 0 && (
               <section>
-                <h3 className="font-mono text-[10.5px] tracking-widest text-amber-300/90 uppercase">
+                <h3 className="font-mono text-[10.5px] tracking-widest text-muted-foreground uppercase">
                   Pending ({pendingEvents.length})
                 </h3>
                 <div className="mt-3 space-y-2">
@@ -369,10 +369,10 @@ export function ThreadDetailPage() {
                       (typeof p.ref === "string" && `push ${p.ref}`) ||
                       event.kind;
                     return (
-                      <div key={event.id} className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2.5">
-                        <div className="flex items-center gap-2 font-mono text-[10.5px] text-amber-200/90">
+                      <div key={event.id} className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+                        <div className="flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground">
                           <span>{event.kind}</span>
-                          <span className="text-amber-200/50">{timeAgo(event.receivedAt)}</span>
+                          <span className="text-muted-foreground/60">{timeAgo(event.receivedAt)}</span>
                         </div>
                         <div className="mt-1 line-clamp-2 text-xs text-slate-300">{String(preview).slice(0, 160)}</div>
                         <button

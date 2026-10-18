@@ -89,7 +89,7 @@ export async function sweepStaleRuns(db: Db, opts: { staleAfterMs?: number } = {
     try {
       [resume] = await db
         .insert(schema.runs)
-        .values({ threadId: run.threadId, trigger: "resume", status: "queued" })
+        .values({ threadId: run.threadId, trigger: "resume", agent: run.agent, status: "queued" })
         .returning({ id: schema.runs.id });
     } catch (err) {
       if (isUniqueViolation(err)) continue;

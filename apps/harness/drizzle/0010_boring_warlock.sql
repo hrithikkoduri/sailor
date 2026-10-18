@@ -1,0 +1,1 @@
+ALTER TABLE "runs" ADD COLUMN "agent" text DEFAULT 'coding' NOT NULL;

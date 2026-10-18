@@ -12,13 +12,16 @@
  * the matching run status. A cancel button elsewhere calls cancelRun(runId).
  */
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
+  chatStrategy,
   codingAgent,
+  codingTools,
   createLLMClient,
   createSandbox,
   runAgent,
+  type Agent,
   type AgentEvent,
   type LLMClient,
   type Sandbox,
@@ -136,7 +139,21 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     .update(schema.runs)
     .set({ status: "running", startedAt: new Date(), error: null })
     .where(eq(schema.runs.id, run.id));
+  await db
+    .update(schema.threads)
+    .set({ turnsUsed: sql`${schema.threads.turnsUsed} + 1`, updatedAt: new Date() })
+    .where(eq(schema.threads.id, thread.id));
   deps.notify?.(thread.id);
+
+  // Which agent takes this turn (decision #48): a chat-only batch replies
+  // conversationally — one "respond" phase, the text ends the run — so a
+  // question never re-enters the coding phase machine. Everything else runs
+  // the coding agent. Cross-strategy resume is safe: when the thread's saved
+  // phase doesn't exist in the running strategy, the engine starts at the
+  // first phase (loop.ts).
+  const isChat = run.agent === "chat";
+  const agent: Agent = isChat ? { name: "chat", strategy: chatStrategy, tools: codingTools } : codingAgent;
+  const startPhase = isChat ? undefined : (deps.startPhase ?? run.startPhase ?? undefined);
 
   // Cross-process cancel: poll the durable flag; any process can set it.
   const cancelWatch = setInterval(() => {
@@ -281,9 +298,9 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
           {
             llm,
             sandbox,
-            agent: codingAgent,
+            agent,
             thread: { store: new PostgresThreadStore(db), id: thread.id },
-            startPhase: deps.startPhase ?? run.startPhase ?? undefined,
+            startPhase,
             signal: controller.signal,
             onEvent: sink,
           },
@@ -320,6 +337,15 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       await db
         .update(schema.threads)
         .set({ checkpointSha: outcome.checkpointRef, updatedAt: new Date() })
+        .where(eq(schema.threads.id, thread.id));
+    }
+
+    // Honest accounting: the run's cost accrues to the thread (the budget cap
+    // and the dashboard read these).
+    if (outcome.usage.costUsd !== undefined) {
+      await db
+        .update(schema.threads)
+        .set({ usdSpent: sql`${schema.threads.usdSpent} + ${outcome.usage.costUsd}`, updatedAt: new Date() })
         .where(eq(schema.threads.id, thread.id));
     }
 

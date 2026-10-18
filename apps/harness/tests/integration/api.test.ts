@@ -271,6 +271,7 @@ describe("dashboard api", () => {
 
     const [chatRun] = await db.select().from(schema.runs).where(eq(schema.runs.threadId, chatThreadId));
     expect(chatRun!.trigger).toBe("inbox");
+    expect(chatRun!.agent).toBe("chat"); // a chat-only batch runs the chat agent (decision #48)
     const [chatEvent] = await db
       .select()
       .from(schema.events)
@@ -363,6 +364,7 @@ describe("dashboard api", () => {
     expect(runs).toHaveLength(2); // the cancelled queued one + the woken one
     const [woken] = runs.filter((r) => r.id !== runQueuedId);
     expect(woken!.trigger).toBe("inbox");
+    expect(woken!.agent).toBe("coding"); // a GitHub event is a coding turn
     const [event] = await db.select().from(schema.events).where(eq(schema.events.id, pending!.id));
     expect(event!.status).toBe("consumed");
   });

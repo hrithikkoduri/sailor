@@ -22,7 +22,7 @@ export type WokenRun = typeof schema.runs.$inferSelect;
 export async function wakeThread(
   deps: { db: Db; queues: Queues },
   threadId: string,
-  spec: Pick<NewRunSpec, "trigger" | "task" | "startPhase">,
+  spec: Pick<NewRunSpec, "trigger" | "task" | "startPhase" | "agent">,
 ): Promise<WokenRun | null> {
   // Dead threads stay dead (open question #2, resolved in step 12): no turns
   // on merged/closed/abandoned work, no matter who knocks.

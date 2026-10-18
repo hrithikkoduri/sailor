@@ -317,8 +317,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   (**65 integration tests**). A "refresh mid-stream" story comes free: state re-derives from
   the DB, the live bubble rebuilds from the stream.
 
-### Step 18b — UI rebuild on a designed system ✅ (same-day, from review)
-- **What:** the dashboard got a real design system, not vibes: the **ui-ux-pro-max skill**
+### Step 18b — UI rebuild on a designed system ✅ (same-day, from review)- **What:** the dashboard got a real design system, not vibes: the **ui-ux-pro-max skill**
   (vendored at `.opencode/skills/`, design system persisted at `design-system/harness/MASTER.md`)
   chose the direction — *"Code dark + run green"*: slate-OLED surfaces, run-green CTA,
   JetBrains Mono + IBM Plex Sans, dense dashboard scale, stagger-list motion, explicit
@@ -330,6 +329,25 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   `pages/*`, vendored skill + MASTER.md
 - **Done when:** ✅ typecheck + build green; login → threads → thread chat → trace → settings
   all live on the new system.
+
+### Step 18c — chat turns are CHAT turns ✅ (same-day, from review)
+- **What:** a run now records **which agent** takes it (`runs.agent`, migration 0010). Batches of
+  nothing but `chat_message` events run the **chat agent** (`chatStrategy` + the coding tools —
+  single `respond` phase, a text-only turn ends the run, tools available so it can look things
+  up or act when asked); any GitHub/machine event keeps the **coding agent**. Resumes inherit
+  the original run's agent; cross-strategy phase resume is safe (the engine starts at the
+  strategy's first phase when the saved phase doesn't exist). Fixes the "asked a question, got
+  a reproduce→fix→verify loop" review finding. Honest accounting too: `threads.turns_used`
+  increments per run and `usd_spent` accrues per run's cost.
+- **Also (from the same review):** status pills are now neutral + one semantic dot (only
+  *running* gets a tint — color means something, nothing is decorated); consecutive push notes
+  merge into one "×N" line; system events render as quiet centered hairlines; agent messages
+  are plain text with an avatar (no boxes) and user messages are right-aligned bubbles — the
+  thread reads like a chat, not a log.
+- **Files:** `schema.ts` + migration `0010`, `runs/create.ts`, `threads/{inbox,wake}.ts`,
+  `runs/lease.ts`, `runs/execute.ts`, dashboard `status.tsx` / `conversation.tsx`
+- **Done when:** ✅ integration tests pin the routing (chat-only → `agent: chat`, GitHub event
+  → `agent: coding`) and the full suites stay green (95 + 40 + 65).
 
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.

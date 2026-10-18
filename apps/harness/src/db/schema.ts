@@ -129,7 +129,9 @@ export const runs = pgTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     // queued | running | succeeded | failed | cancelled | budget_exhausted | interrupted | paused
     status: text("status").notNull().default("queued"),
-    trigger: text("trigger").notNull(), // label | manual | babysit_ci | babysit_comment | review | resume
+    trigger: text("trigger").notNull(), // label | manual | babysit_ci | babysit_comment | review | resume | inbox
+    /** Which agent takes this turn (decision #48): "coding" (phase machine) or "chat" (answering). */
+    agent: text("agent").notNull().default("coding"),
     /** The instruction this run works on (from the issue, or a follow-up comment). */
     task: text("task"),
     /** Where the run starts (e.g. "fix" for a resumed interjection). Null = thread position / first phase. */

@@ -18,6 +18,8 @@ export interface NewRunSpec {
   task?: string;
   /** Where the run starts (e.g. "fix" for a resumed interjection). */
   startPhase?: string;
+  /** Which built-in agent takes this turn: "coding" (default) or "chat". */
+  agent?: string;
 }
 
 export async function createRun(deps: { db: Db; queues: Queues }, spec: NewRunSpec) {
@@ -26,6 +28,7 @@ export async function createRun(deps: { db: Db; queues: Queues }, spec: NewRunSp
     .values({
       threadId: spec.threadId,
       trigger: spec.trigger,
+      agent: spec.agent ?? "coding",
       task: spec.task ?? null,
       startPhase: spec.startPhase ?? null,
       status: "queued",
