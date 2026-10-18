@@ -154,7 +154,8 @@ export const threads = pgTable(
     /** The phase the thread is currently in — resume starts here. */
     phase: text("phase"),
     budgetMaxTurns: integer("budget_max_turns").notNull().default(20),
-    /** Total the thread may spend across runs — the revival chain's stop. */
+    /** Total the thread may spend across runs — the revival chain's stop
+     * (≈5 runs at the default $5-per-run budget). */
     budgetMaxUsd: numeric("budget_max_usd", { precision: 10, scale: 4 })
       .notNull()
       .default("25.0"),

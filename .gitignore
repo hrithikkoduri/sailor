@@ -6,3 +6,5 @@ traces/
 *.log
 test-results/
 playwright-report/
+.opencode/
+image/.build/

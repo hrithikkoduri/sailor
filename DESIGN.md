@@ -192,7 +192,9 @@ earlier decisions; no legacy workflow runner is retained.
   and (debug mode) the folded transcript.
 - **Budget dials:** engine defaults stay conservative package policy; Sailor
   raises them for long-horizon work (`SAILOR_MAX_STEPS` / `SAILOR_MAX_TOKENS` /
-  `SAILOR_MAX_USD`, defaults 300 / 150M / 25; overnight 1200 / 400M / 50).
+  `SAILOR_MAX_USD`, defaults 300 / 150M / $5 per run — a fraction of the
+  thread's $25 so revivals have room; overnight 1200 / 400M / 50. Defaults
+  assume deepseek-flash prices: on a pricier model dollars bind first).
   Cumulative tokens grow with every call no matter how well compaction bounds
   the per-call context, so steps and dollars are the real dials — the token cap
   is only a runaway backstop.

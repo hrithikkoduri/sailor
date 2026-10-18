@@ -169,6 +169,64 @@ describe("budget revival", () => {
     expect(source!.revived).toBe(true);
   });
 
+  it("dollar cap binds first: the death is dollars and the thread still has room to revive", async () => {
+    const thread = await newThread();
+    const run = await newRun(thread.id);
+    const cost = { costUsd: 0.3 };
+    const outcome = await executeRun({
+      db,
+      runId: run.id,
+      local: true,
+      llm: scriptedLLM([
+        ...Array.from({ length: 3 }, (_, index) => ({
+          tools: [
+            {
+              name: "bash",
+              arguments: JSON.stringify({ command: `echo d ${index}` }),
+            },
+          ],
+          usage: cost,
+        })),
+        {
+          tools: [
+            {
+              name: "request_revival",
+              arguments: JSON.stringify({
+                remaining: "finish under the dollar cap",
+              }),
+            },
+          ],
+          usage: cost,
+        },
+        {
+          tools: [
+            {
+              name: "bash",
+              arguments: JSON.stringify({ command: "echo d tail" }),
+            },
+          ],
+          usage: cost,
+        },
+      ]),
+      budgets: { maxUsd: 1, maxTokens: 1_000_000_000, maxSteps: 100 },
+    });
+    expect(outcome.status).toBe("budget_exhausted");
+    expect(outcome.reason).toBe("budget_exceeded");
+    expect(outcome.revival?.remaining).toBe("finish under the dollar cap");
+
+    // The death was dollars: cost accrued to the thread…
+    const [after] = await db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, thread.id));
+    expect(Number(after!.usdSpent)).toBeGreaterThan(0.85); // 4 × $0.30
+
+    // …and because the run cap ($1 here, $5 by default) is a fraction of the
+    // thread's ($25), the aftermath still has room to revive.
+    const aftermath = await handleBudgetAftermath(db, run.id);
+    expect(aftermath.revivedRunId).toBeTruthy();
+  });
+
   it("stops at the thread budget with a needs-human note instead", async () => {
     const thread = await newThread({ budgetMaxUsd: "0.00" });
     const run = await newRun(thread.id);

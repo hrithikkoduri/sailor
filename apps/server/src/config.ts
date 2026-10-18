@@ -229,12 +229,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       priceOutPerMTok: optionalNumber(env.LLM_PRICE_OUT_PER_MTOK),
     },
     budget: {
-      // Long-horizon defaults: a realistic issue-fix runs 100+ calls; an
-      // overnight run can take several hundred. Steps and dollars are the
-      // real dials (deepseek-flash costs ~$0.04/M in, ~$0.14/M out).
+      // Per-RUN dials, defaulted for deepseek-v4.1-flash prices (~$0.04/M in,
+      // ~$0.14/M out). On a pricier model the dollar cap binds first — set
+      // SAILOR_MAX_USD deliberately before switching LLM_MODEL.
+      //
+      // $5 per run is deliberately a FRACTION of the thread's own budget
+      // (threads.budgetMaxUsd, default $25): a run that hits its cap must
+      // leave room for revivals, or the chain can never start.
       maxSteps: optionalNumber(env.SAILOR_MAX_STEPS) ?? 300,
       maxTokens: optionalNumber(env.SAILOR_MAX_TOKENS) ?? 150_000_000,
-      maxUsd: optionalNumber(env.SAILOR_MAX_USD) ?? 25,
+      maxUsd: optionalNumber(env.SAILOR_MAX_USD) ?? 5,
       /**
        * Budget revival: a run that ends out of budget with a handoff
        * (revival request and/or a checkpoint) continues on its own — same

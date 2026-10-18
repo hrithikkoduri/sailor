@@ -4,9 +4,22 @@
  */
 import type { LLMClient, LLMRequest, LLMResponse } from "@anchor/core";
 
-export type Scripted = { text?: string; tools?: Array<{ name: string; arguments: string }> };
+export type Scripted = {
+  text?: string;
+  tools?: Array<{ name: string; arguments: string }>;
+  /** Per-turn usage overrides — e.g. costUsd to make dollar caps bind. */
+  usage?: Partial<{
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    costUsd: number;
+    reasoningTokens: number;
+  }>;
+};
 
-export function scriptedLLM(queue: Scripted[]): LLMClient & { seen: LLMRequest[] } {
+export function scriptedLLM(
+  queue: Scripted[],
+): LLMClient & { seen: LLMRequest[] } {
   const seen: LLMRequest[] = [];
   const next = (): LLMResponse => {
     const item = queue.shift();
@@ -18,7 +31,12 @@ export function scriptedLLM(queue: Scripted[]): LLMClient & { seen: LLMRequest[]
         name: t.name,
         arguments: t.arguments,
       })),
-      usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+      usage: {
+        promptTokens: 100,
+        completionTokens: 10,
+        totalTokens: 110,
+        ...(item.usage ?? {}),
+      },
       model: "scripted",
       finishReason: "stop",
       latencyMs: 1,
@@ -49,7 +67,8 @@ export const FIX_FIXTURE_SCRIPT: Scripted[] = [
         name: "edit_file",
         arguments: JSON.stringify({
           path: "src/sum.js",
-          old_string: "numbers.filter((n) => n >= 0).reduce((a, b) => a + b, 0)",
+          old_string:
+            "numbers.filter((n) => n >= 0).reduce((a, b) => a + b, 0)",
           new_string: "numbers.reduce((a, b) => a + b, 0)",
         }),
       },

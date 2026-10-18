@@ -540,7 +540,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   same follow-unless-scrolled-up rule as the thread.
 - **Budget dials are product policy.** The engine keeps conservative package
   defaults (40 steps / 1.5M tokens / $5), and Sailor configures long-horizon
-  limits (default 300 steps / 150M tokens / $25 via `SAILOR_MAX_STEPS`,
+  limits (default 300 steps / 150M tokens / $5 per run via `SAILOR_MAX_STEPS`,
   `SAILOR_MAX_TOKENS`, `SAILOR_MAX_USD`; an overnight profile of 1200 / 400M /
   $50 is documented in `.env.example`). Token usage is *cumulative* across the
   run's calls — compaction bounds the per-call context and cannot slow the sum
