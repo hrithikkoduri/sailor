@@ -28,9 +28,19 @@ if (fromIndex !== -1) {
   const lines = (await readFile(file, "utf8")).trim().split("\n").filter(Boolean);
   ids = lines.map((line) => JSON.parse(line).instance_id);
 }
+const fromTasksIndex = argv.indexOf("--from-tasks");
+if (fromTasksIndex !== -1) {
+  const file = argv[fromTasksIndex + 1];
+  if (!file) {
+    console.error("--from-tasks needs a path");
+    process.exit(1);
+  }
+  const lines = (await readFile(file, "utf8")).trim().split("\n").filter(Boolean);
+  ids = lines.map((line) => JSON.parse(line).instance_id);
+}
 if (ids.length === 0) {
   console.error(
-    "usage: prepull-images.mjs <instance_id...> | --from-predictions <file>",
+    "usage: prepull-images.mjs <instance_id...> | --from-tasks <file> | --from-predictions <file>",
   );
   process.exit(1);
 }
