@@ -215,7 +215,16 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** task JSON schema; SWE-bench Lite subset loader (30–50 tasks) + seeded bugs in
   fixtures we own; `harness eval` runs everything → solve rate, $/task, p50/p95 time,
   **failure-mode breakdown** (repro-failed / wrong-fix / timeout / budget / loop / tool-error).
-- **Files:** `src/eval/*`, `eval/tasks/*.json`
+- **Pre-eval requirements (from review — blocking):**
+  - Baseline capture in `reproduce`: the first full-suite run records per-test results, so
+    pre-existing failures/flakes on `main` never block the phase machine.
+  - Success = SWE-bench model: **FAIL_TO_PASS** (task-provided targets from the task JSON, or
+    "≥1 baseline-failing test now passes" when absent) **AND PASS_TO_PASS** (no baseline-passing
+    test regresses). Exit codes only as the fallback when no per-test data exists.
+  - `run_tests` gains structured results: `junit_path` → `meta.tests` (regex-parsed JUnit XML,
+    zero-dep); task JSON carries `failToPass`/`passToPass`.
+  - Optional de-flake: rerun baseline failures once before recording.
+- **Files:** `src/eval/*`, `eval/tasks/*.json`, `packages/agent` (run_tests + coding strategy gates)
 - **Done when:** one command produces the full report + per-task traces.
 
 ### Step 16 — Toolchain VM image
