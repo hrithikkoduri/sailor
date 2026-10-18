@@ -121,7 +121,9 @@ export function SpanRow({
             title={node.status}
           />
           <span className="hidden w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground sm:block">
-            {tokens ? fmtTokens(tokens) : "—"}
+            {tokens
+              ? `${node.tokensEstimated ? "~" : ""}${fmtTokens(tokens)}`
+              : "—"}
           </span>
           <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
             {node.estimated ? "~" : ""}

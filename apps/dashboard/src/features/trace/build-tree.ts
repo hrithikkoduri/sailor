@@ -24,6 +24,8 @@ export interface SpanNode {
   estimated?: boolean;
   tokensIn?: number;
   tokensOut?: number;
+  /** Tokens are an estimate (tool results: chars/4 of what they add to context). */
+  tokensEstimated?: boolean;
   detail: {
     input?: unknown;
     output?: unknown;
@@ -196,10 +198,21 @@ export function buildThreadTree(
             );
             node.status = p.ok === true ? "ok" : "fail";
             node.detail.output = { content: str(p, "content") ?? "" };
+            // What this result adds to the NEXT call's context, estimated from
+            // the recorded char count (tokens belong to model calls; a tool's
+            // footprint is the context it contributes). Marked `~` like
+            // estimated durations.
+            const resultChars =
+              num(p, "contentChars") ?? str(p, "content")?.length ?? 0;
+            if (resultChars > 0) {
+              node.tokensIn = Math.round(resultChars / 4);
+              node.tokensEstimated = true;
+            }
             node.detail.metadata = {
               ...node.detail.metadata,
               ok: p.ok,
               meta: p.meta,
+              ...(resultChars > 0 ? { resultChars } : {}),
             };
           }
           break;
@@ -292,6 +305,17 @@ export function buildThreadTree(
     }
 
     estimateDurations(root, runEnd);
+    // Phases label progress; their token line sums the model calls inside —
+    // tool estimates are context for the NEXT call (shown on the tool row),
+    // so they are deliberately not added again here.
+    for (const child of root.children) {
+      if (child.kind !== "phase") continue;
+      const summed = sumLlmTokens(child);
+      if (summed.tokensIn > 0 || summed.tokensOut > 0) {
+        child.tokensIn = summed.tokensIn;
+        child.tokensOut = summed.tokensOut;
+      }
+    }
     // An unfinished run never leaves "running" children behind visually.
     if (root.status !== "running") settleRunning(root);
 
@@ -330,4 +354,17 @@ function settleRunning(node: SpanNode): void {
     if (child.status === "running") child.status = "neutral";
     settleRunning(child);
   }
+}
+
+/** Model-call token totals under a node (tool estimates excluded — they are
+ * already part of the following call's input). */
+function sumLlmTokens(node: SpanNode): { tokensIn: number; tokensOut: number } {
+  let tokensIn = node.kind === "llm" ? (node.tokensIn ?? 0) : 0;
+  let tokensOut = node.kind === "llm" ? (node.tokensOut ?? 0) : 0;
+  for (const child of node.children) {
+    const sub = sumLlmTokens(child);
+    tokensIn += sub.tokensIn;
+    tokensOut += sub.tokensOut;
+  }
+  return { tokensIn, tokensOut };
 }

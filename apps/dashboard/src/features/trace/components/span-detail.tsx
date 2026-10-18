@@ -54,6 +54,7 @@ export function SpanDetail({ node }: { node: SpanNode }) {
             )}
             {node.tokensIn !== undefined && (
               <span>
+                {node.tokensEstimated ? "~" : ""}
                 {fmtTokens(node.tokensIn + (node.tokensOut ?? 0))} tokens
                 {typeof node.detail.metadata.inputCached === "number" &&
                   ` · ${fmtTokens(node.detail.metadata.inputCached)} cached`}
