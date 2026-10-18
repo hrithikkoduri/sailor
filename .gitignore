@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .anchor/
+.eval-runs/
 traces/
 .env
 *.log
