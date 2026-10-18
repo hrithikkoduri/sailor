@@ -13,7 +13,7 @@ import { cn } from "@/utils/cn";
 
 export function SpanDetail({ node }: { node: SpanNode }) {
   const output = node.detail.output as
-    | { text?: string; toolCalls?: unknown[] }
+    | { text?: string; toolCalls?: unknown[]; reasoning?: string }
     | undefined;
   const failed = node.status === "fail";
   const meta = (node.detail.metadata.meta ?? {}) as Record<string, unknown>;
@@ -21,6 +21,10 @@ export function SpanDetail({ node }: { node: SpanNode }) {
     typeof node.detail.metadata.error === "string"
       ? node.detail.metadata.error
       : undefined;
+  // Same display vocabulary as the tree rows — one name everywhere.
+  const displayName = node.name
+    .replace("agent · step", "Model call")
+    .replace("phase · ", "");
   return (
     <div className="mx-auto max-w-3xl px-5 py-4 md:px-6 md:py-5">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -28,7 +32,7 @@ export function SpanDetail({ node }: { node: SpanNode }) {
           <p className="eyebrow mb-2">
             {node.kind === "run" ? "Turn details" : `${node.kind} span`}
           </p>
-          <h2 className="text-lg font-medium tracking-tight">{node.name}</h2>
+          <h2 className="text-lg font-medium tracking-tight">{displayName}</h2>
           <p className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span
               className={cn(
@@ -109,9 +113,18 @@ export function SpanDetail({ node }: { node: SpanNode }) {
             Output
           </AccordionTrigger>
           <AccordionContent>
-            {node.kind === "llm" && output?.text ? (
+            {node.kind === "llm" && (output?.text || output?.reasoning) ? (
               <div className="space-y-4 rounded-xl border border-border bg-card p-5">
-                <Markdown text={output.text} />
+                {output.reasoning && (
+                  <div className="border-l-2 border-border pl-3">
+                    <p className="eyebrow mb-2">Reasoning</p>
+                    <Markdown
+                      text={output.reasoning}
+                      className="text-xs text-muted-foreground"
+                    />
+                  </div>
+                )}
+                {output.text && <Markdown text={output.text} />}
                 {!!output.toolCalls?.length && (
                   <TraceValue value={output.toolCalls} />
                 )}

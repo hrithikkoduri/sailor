@@ -100,6 +100,11 @@ coverage checks the failure state and contrast in both themes.
 
 ## Local debug display
 
+Trace model spans expose provider reasoning as a muted Reasoning block plus a
+`reasoningTokens` metadata row, sourced from the same journal events as the
+chat's Provider reasoning blocks — never fabricated when a provider withholds it,
+and never resent to the model (provider protocol practice).
+
 Press **⌘⇧D** (Mac) or **Ctrl+Shift+D** (Windows/Linux) to toggle debug mode.
 The account menu offers the same action; an active Debug button in the header
 can switch it off. The preference persists locally across refresh/navigation.

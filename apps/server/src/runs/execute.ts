@@ -320,7 +320,10 @@ export async function executeRun(
             agent,
             startPhase,
             thread: { store: new PostgresThreadStore(db), id: thread.id },
-            compaction: { maxEstimatedTokens: 24_000, keepRecentTokens: 8_000 },
+            // Big context, big memory: fold only when the conversation truly
+            // grows past the model's working window, so long investigations
+            // keep their accumulated findings instead of re-deriving them.
+            compaction: { maxEstimatedTokens: 256_000, keepRecentTokens: 64_000 },
             signal: controller.signal,
             onEvent: sink,
           },

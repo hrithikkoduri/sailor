@@ -10,7 +10,7 @@
  * context does — CLI-only runs write the file alone; worker runs (step 10)
  * write both.
  */
-import { JsonlTrace, type AgentEvent } from "@anchor/core";
+import { JsonlTrace, redact, type AgentEvent } from "@anchor/core";
 import { schema, type Db } from "../db/index.js";
 
 export interface TraceTargets {
@@ -43,7 +43,12 @@ export class TraceRecorder {
         runId: this.targets.runId,
         seq,
         type: event.type,
-        payload: event as unknown as Record<string, unknown>,
+        // The same redaction as the NDJSON sink — no persistence path may
+        // forget it (folding previews and summaries can quote tool output).
+        payload: JSON.parse(redact(JSON.stringify(event))) as Record<
+          string,
+          unknown
+        >,
       });
     }
 

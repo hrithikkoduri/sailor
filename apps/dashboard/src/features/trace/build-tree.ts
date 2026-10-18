@@ -150,10 +150,15 @@ export function buildThreadTree(
           node.tokensIn = num(usage, "promptTokens");
           node.tokensOut = num(usage, "completionTokens");
           node.status = "ok";
+          const reasoning = str(p, "reasoning");
           node.detail.output = {
             text: str(p, "text") ?? "",
+            ...(reasoning ? { reasoning } : {}),
             toolCalls: Array.isArray(p.toolCalls) ? p.toolCalls : [],
           };
+          const reasoningTokens = num(usage, "reasoningTokens");
+          if (reasoningTokens !== undefined)
+            node.detail.metadata.reasoningTokens = reasoningTokens;
           if (node.kind === "llm") lastLlm = node;
           break;
         }
@@ -228,7 +233,13 @@ export function buildThreadTree(
             status: "neutral",
             startMs: start,
             detail: {
-              metadata: { removed: p.removedMessages, kept: p.keptMessages },
+              ...(str(p, "folding") ? { input: str(p, "folding") } : {}),
+              ...(str(p, "summary") ? { output: str(p, "summary") } : {}),
+              metadata: {
+                removed: p.removedMessages,
+                kept: p.keptMessages,
+                summaryChars: p.summaryChars,
+              },
             },
             children: [],
           });

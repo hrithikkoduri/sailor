@@ -503,6 +503,17 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   open groups with per-tool expandable input/output and red failure details.
 - Failed trace spans have a red icon/name, an explicit Failed label, a red
   waterfall segment, and a visible failure summary in the detail pane.
+- Model spans in the trace expose provider reasoning: the full recorded text as
+  a muted Reasoning block inside Output, plus `reasoningTokens` metadata when the
+  provider reported usage — the same journal rows the chat's Provider reasoning
+  blocks read. Nothing is fabricated when a provider withholds reasoning; the
+  reasoning channel is never resent to the model (provider protocol practice).
+- Compaction is legible in the trace: the compacted span's Input is the
+  folded-transcript preview (capped at 6k) and Output is the summary that
+  replaced it; counts stay in Metadata. The DB journal now applies the same
+  redaction rules as the NDJSON sink. Sailor compaction runs at 256k estimated
+  tokens with a 64k verbatim tail (was 24k/8k — the flap that made long
+  investigations re-read folded-away findings).
 - Removed the three duplicate source snapshots (`loop 2.ts`, `strategy 2.ts`,
   `strategy 3.ts`) and their temporary typecheck exclusions after confirmation.
 
