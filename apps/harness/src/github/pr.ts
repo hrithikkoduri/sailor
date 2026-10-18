@@ -13,12 +13,12 @@
  * delivery opens the PR; follow-ups (PR already open — babysitting) just
  * update the branch: the push IS the delivery.
  *
- * THE LOOP GUARD (learned live, 2026-10-18): a delivery only pushes when the
- * staged TREE differs from the remote branch's tree. Trees, not commits —
- * the engine's checkpoints are resume points that commit at every phase
- * boundary even when nothing changed, and pushing those made a push webhook
- * whose acknowledgment run delivered again: 8 no-op runs round-tripping
- * each other. A no-op delivery now pushes NOTHING, so the cycle terminates.
+ * WHAT GETS DELIVERED (the 2026-10-18 loop guard): only when the CONTENT
+ * changed — `sandbox.hasChangesFrom()` compares trees, never commit lists,
+ * because the engine's checkpoints commit at every phase boundary without
+ * changing content. A no-op delivery pushes NOTHING: no push webhook, no
+ * acknowledgment wake, no feedback loop. (The trap is sealed in the Sandbox
+ * interface now; this file just uses it.)
  */
 import { eq } from "drizzle-orm";
 import type { Sandbox } from "@harness/agent";
@@ -54,22 +54,12 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
   const head = thread.headRef ?? headRefFor(thread.issueNumber);
   assertSafeHeadRef(head, thread.baseRef);
 
-  // Is there anything to deliver? Stage everything, hash the working tree,
-  // and compare against the remote branch's tree (refresh the tracking ref
-  // first; missing branch = first delivery → there is work to push).
-  await sandbox.exec("git add -A >/dev/null 2>&1", { timeoutSecs: 60 });
-  await sandbox.exec(`git fetch --quiet origin "+refs/heads/${head}:refs/remotes/origin/${head}" 2>/dev/null || true`, {
-    timeoutSecs: 120,
-  });
-  const localTree = await sandbox.exec("git write-tree", { timeoutSecs: 60 });
-  const remoteTree = await sandbox.exec(`git rev-parse --verify --quiet "origin/${head}^{tree}" || true`, {
-    timeoutSecs: 60,
-  });
-  const localTreeSha = localTree.stdout.trim();
-  const remoteTreeSha = remoteTree.stdout.trim();
-  const verified = localTree.exitCode === 0 && /^[0-9a-f]{40,64}$/.test(localTreeSha);
-  const hasNewWork = !verified || remoteTreeSha === "" || localTreeSha !== remoteTreeSha;
-
+  // Is there anything to DELIVER? Ask the sandbox by CONTENT — trees, never
+  // commits (Sandbox.hasChangesFrom): checkpoints create commits at phase
+  // boundaries without content changes, and pushing those fired a push
+  // webhook whose acknowledgment run delivered again (the 2026-10-18 loop).
+  // Nothing new → no push → no webhook → no loop.
+  const hasNewWork = await sandbox.hasChangesFrom(`origin/${head}`);
   if (hasNewWork) {
     // Push — for a first delivery this creates the branch; for a FOLLOW-UP
     // (babysitting: the PR already exists) it updates it in place.
