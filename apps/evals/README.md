@@ -82,13 +82,23 @@ is fully decoupled from grading — Docker quirks can never corrupt a run.
 
 ## Baseline arm
 
+The baseline runs through the **same runner** as anchor — same task images,
+same container, same model, same patch extraction — so the only variable
+between the two table rows is the agent design:
+
 ```bash
-apps/evals/scripts/run-mini-baseline.sh [filter-regex]
+DOCKER_BIN=… npm run eval -w apps/evals -- \
+  --tasks data/swebench-lite-10.jsonl --provider docker \
+  --model <model> --arm mini --image-tag mini-eval
 ```
 
-Runs **mini-swe-agent's own harness** (`mini-extra swebench`) in its own Docker
-environments, on the same instances and the same model — the "minimal harness
-A%" number. Predictions land in `.eval-runs/mini/`.
+mini is embedded via its python bindings (with its own `swebench.yaml`
+templates) into prewarmed images (`scripts/prewarm-mini-images.mjs`), so no
+setup cost lands inside the measured run.
+
+`scripts/run-mini-baseline.sh` remains as an **optional cross-check**: it
+drives mini's own CLI harness in its own Docker environments — a different
+environment by construction, useful for sanity, not the report row.
 
 ## Watch the agents
 
@@ -105,15 +115,15 @@ node apps/evals/scripts/show-trace.mjs .eval-runs/<run>/artifacts/mini-<task>.js
 
 ## Protocol
 
-- **One attempt per task per arm** is the primary protocol; its result is
-  always visible.
-- **Retry pass (disclosed):** one second attempt is allowed — for both arms
-  equally — when an attempt produced **no patch**, and when a produced patch
-  was **unresolved**. A real retry patch is graded; the report discloses
-  attempt counts per task, so "fixed on attempt 2" never masquerades as
-  one-shot.
-- Retries are *not* best-of-N: no parallel racing, just a single follow-up
-  attempt. (Best-of-N is a deferred package feature — `fork()`.)
+- **One report run per arm**, on the same task set, same model, same task
+  images, same grader. That run's result is the number — no tuned/untuned
+  variants, no cherry-picking across attempts or runs.
+- A patch is re-produced or re-graded **only when the tooling lost it** (e.g.
+  a failed extraction destroyed a real diff) — that is a bug being repaired,
+  not scoring policy.
+- Retries are *not* best-of-N, and best-of-N is not used here at all: no
+  parallel racing, no second attempts for score. (Best-of-N is a deferred
+  package feature — `fork()`.)
 - **Timing caveat:** this batch ran both arms (plus setup jobs) on one
   machine under emulation. Resolve rate is the primary metric; wall-times are
   indicative, not clean-room (a strictly serial, quiet-machine run is the
