@@ -387,6 +387,41 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   Metadata** as sections instead of tabs (the LangSmith reading pattern). Old
   context-rail/runs-list/pending-events components deleted.
 
+### UI refinement — neutral workspace + browser verification
+- Replaced the rejected navy/green treatment with porcelain/graphite themes;
+  self-hosted Inter, code-only monospace, shared Animate UI buttons, tabs,
+  menus, tooltips, switches, dialogs, copy controls, and stacked accordions.
+- Chat preserves drafts on failure, handles IME correctly, and follows output
+  only while the reader is near the bottom. Settings supports search, discard,
+  and disabling all repositories; onboarding shares the same repo picker.
+- Review corrections: neutral single keyboard-focus ring (no purple halo),
+  clipped icon-only sidebar with explicitly hidden labels, a 48px workspace
+  header, one title/actions/view toolbar, and compact inline trace totals.
+  The desktop trace workspace starts within 165px of the viewport top.
+- Verification: six Playwright scenarios with mocked APIs (no actual agent
+  runs), light/dark axe audits, mobile/reduced-motion coverage, screenshots,
+  sidebar bounds checks and a content-area regression assertion. Run with
+  `npm run test:ui -w apps/dashboard`. Root build/typecheck pass. Package unit
+  suite passes with `--maxWorkers=2`; the default parallel run hit the existing
+  git-sandbox timeout/cleanup flake. No package/backend logic changed here.
+
+### Streaming reliability + structured tool activity
+- Live text/reasoning publication is no longer blocked on journal I/O. Each
+  frame includes its step and sequence; the final aggregate flushes short tails.
+- Initial loads and refreshes reconstruct ordered assistant/tool/assistant parts
+  from the journal. SSE reconnect, bounded throttling, and periodic reconciliation
+  recover missed starts and completion notifications without a manual refresh.
+- Package additions: provider reasoning callback/usage, tool `verb` metadata and
+  call IDs on call/result events. Tool verbs are developer metadata (with useful
+  built-in defaults), not an extra parameter the model must generate.
+- Chat renders grouped, expandable tool activity between assistant messages;
+  active groups open while working and collapse as the next answer starts.
+  Provider reasoning is separate; token counts appear only when supplied.
+- Regression coverage includes lost-start and lost-finish browser scenarios,
+  refresh replay, tool-ID pairing, reasoning parsing, immediate publication,
+  and real HTTP SSE delivery. Integration checks use an isolated test database
+  and Redis DB 15, not the live worker queue.
+
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.
   (Turn compaction shipped early in the engine — decision #18.)

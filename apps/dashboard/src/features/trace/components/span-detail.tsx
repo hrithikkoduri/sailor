@@ -1,0 +1,124 @@
+import { CopyButton } from "@/components/animate-ui/components/buttons/copy";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/animate-ui/components/radix/accordion";
+import { Markdown } from "@/elements/markdown";
+import type { SpanNode } from "../build-tree";
+import { fmtTokens } from "@/utils/format";
+
+export function SpanDetail({ node }: { node: SpanNode }) {
+  const output = node.detail.output as
+    | { text?: string; toolCalls?: unknown[] }
+    | undefined;
+  return (
+    <div className="mx-auto max-w-3xl px-5 py-4 md:px-6 md:py-5">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow mb-2">
+            {node.kind === "run" ? "Turn details" : `${node.kind} span`}
+          </p>
+          <h2 className="text-lg font-medium tracking-tight">{node.name}</h2>
+          <p className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+            <span className="capitalize">
+              {node.status === "ok" ? "Completed" : node.status}
+            </span>
+            {node.durationMs !== undefined && (
+              <span>
+                {node.estimated ? "~" : ""}
+                {(node.durationMs / 1000).toFixed(2)}s
+              </span>
+            )}
+            {node.tokensIn !== undefined && (
+              <span>
+                {fmtTokens(node.tokensIn + (node.tokensOut ?? 0))} tokens
+              </span>
+            )}
+            {node.badge && <span>{node.badge.replace(/_/g, " ")}</span>}
+          </p>
+        </div>
+        <CopyButton
+          content={JSON.stringify(node.detail, null, 2)}
+          variant="ghost"
+          size="sm"
+          aria-label="Copy span details"
+        />
+      </div>
+      <Accordion
+        key={node.id}
+        type="multiple"
+        defaultValue={["input", "output", "metadata"]}
+      >
+        <AccordionItem value="input">
+          <AccordionTrigger className="py-4 text-[13px] hover:no-underline">
+            Input
+          </AccordionTrigger>
+          <AccordionContent>
+            <TraceValue value={node.detail.input} />
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="output">
+          <AccordionTrigger className="py-4 text-[13px] hover:no-underline">
+            Output
+          </AccordionTrigger>
+          <AccordionContent>
+            {node.kind === "llm" && output?.text ? (
+              <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+                <Markdown text={output.text} />
+                {!!output.toolCalls?.length && (
+                  <TraceValue value={output.toolCalls} />
+                )}
+              </div>
+            ) : (
+              <TraceValue value={node.detail.output} />
+            )}
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="metadata">
+          <AccordionTrigger className="py-4 text-[13px] hover:no-underline">
+            Metadata
+          </AccordionTrigger>
+          <AccordionContent>
+            <dl className="space-y-3">
+              {Object.entries(node.detail.metadata)
+                .filter(([, v]) => v != null)
+                .map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="grid grid-cols-[minmax(90px,1fr)_minmax(0,2fr)] gap-5 border-b border-border/60 pb-3 text-xs"
+                  >
+                    <dt className="text-muted-foreground">{key}</dt>
+                    <dd className="min-w-0 break-words">
+                      {typeof value === "object" ? (
+                        <TraceValue value={value} />
+                      ) : (
+                        String(value)
+                      )}
+                    </dd>
+                  </div>
+                ))}
+            </dl>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    </div>
+  );
+}
+
+function TraceValue({ value }: { value: unknown }) {
+  if (value == null)
+    return (
+      <p className="py-2 text-xs text-muted-foreground">
+        Not recorded for this span.
+      </p>
+    );
+  const text =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return (
+    <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-muted/35 p-4 font-mono text-[11px] leading-[1.9]">
+      {text}
+    </pre>
+  );
+}

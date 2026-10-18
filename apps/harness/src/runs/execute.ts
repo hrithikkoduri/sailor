@@ -36,6 +36,7 @@ import type { GitHubAppService } from "../github/app.js";
 import { deliverPullRequest } from "../github/pr.js";
 import { githubRepoUrl } from "../github/repo.js";
 import { withHeartbeat } from "./lease.js";
+import { createLiveProjector } from "./live-projector.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
 const activeControllers = new Map<string, AbortController>();
@@ -176,63 +177,16 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
 
   // Live projections for the chat stream (step 18): cumulative assistant text
   // at ~10/s + activity markers. Fire-and-forget; the trace is the truth.
-  let deltaBuffer = "";
-  let lastDeltaPublish = 0;
   const live = (payload: Record<string, unknown>) => deps.live?.(thread.id, { runId: run.id, ...payload });
-  const projectLive = (e: AgentEvent): void => {
-    switch (e.type) {
-      case "llm_call_started":
-        deltaBuffer = "";
-        live({ kind: "llm_started", phase: e.phase, step: e.step });
-        break;
-      case "llm_text_delta": {
-        deltaBuffer += e.text;
-        const now = Date.now();
-        if (now - lastDeltaPublish >= 100) {
-          lastDeltaPublish = now;
-          live({ kind: "delta", text: deltaBuffer });
-        }
-        break;
-      }
-      case "llm_call_finished":
-        live({ kind: "assistant_done", text: e.text, tools: e.toolCalls.map((t) => t.name) });
-        break;
-      case "tool_call":
-        live({ kind: "tool_call", name: e.name });
-        break;
-      case "tool_result":
-        live({ kind: "tool_result", name: e.name, ok: e.ok, content: e.content.slice(0, 400) });
-        break;
-      case "phase_started":
-        live({ kind: "phase", phase: e.phase, via: e.via ?? null });
-        break;
-      case "guardrail":
-        live({ kind: "guardrail", guardrail: e.kind, detail: e.detail });
-        break;
-      case "run_finished":
-        live({
-          kind: "run_finished",
-          ok: e.ok,
-          reason: e.reason,
-          disposition: e.disposition ?? null,
-          summary: e.summary ?? null,
-        });
-        break;
-      case "error":
-        live({ kind: "error", message: e.message });
-        break;
-      default:
-        break;
-    }
-  };
+  const projectLive = createLiveProjector(live);
 
   const sink = (e: AgentEvent) => {
+    projectLive(e);
     sinkTail = sinkTail
       .then(() => recorder.record(e))
       .then(() => {
         // Every recorded step nudges the dashboard watching this thread.
-        deps.notify?.(thread.id);
-        projectLive(e);
+        if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta") deps.notify?.(thread.id);
       })
       .catch(() => undefined);
   };

@@ -1,9 +1,10 @@
-/** Message primitives for the conversation feed. */
-import { Bot } from "lucide-react";
+import { Check, CheckCheck, Layers2, Loader2, Workflow } from "lucide-react";
 import { Markdown } from "@/elements/markdown";
-import { StatusPill } from "@/elements/status-pill";
-import { shortId, timeAgo } from "@/utils/format";
-import { cn } from "@/utils/cn";
+import { Button } from "@/elements/button";
+import { CopyButton } from "@/components/animate-ui/components/buttons/copy";
+import { timeAgo } from "@/utils/format";
+import { TurnContent } from "./turn-content";
+import type { ConversationPart } from "../types";
 
 export function HumanMessage({
   author,
@@ -17,28 +18,24 @@ export function HumanMessage({
   at: string;
 }) {
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%]">
-        <div className="mb-1 flex items-center justify-end gap-2 font-mono text-[10.5px] text-muted-foreground">
-          <span className="text-slate-300">{author}</span>
-          <span className="rounded bg-muted/60 px-1.5 py-px text-[10px]">{label}</span>
-          <span>{timeAgo(at)}</span>
-        </div>
-        <div className="rounded-2xl rounded-br-md border border-border/60 bg-muted/25 px-4 py-2.5">
-          <Markdown text={body} className="text-[13.5px]" />
-        </div>
+    <article
+      className="ml-auto max-w-[90%] sm:max-w-[80%]"
+      aria-label={`Message from ${author}`}
+    >
+      <div className="mb-2 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
+        <span>{label === "dashboard" ? "You" : author}</span>
+        <span>·</span>
+        <time dateTime={at}>{timeAgo(at)}</time>
       </div>
-    </div>
+      <div className="rounded-2xl rounded-br-md bg-muted px-5 py-3.5">
+        <Markdown text={body} className="text-[14px]" />
+      </div>
+    </article>
   );
 }
 
-/**
- * One agent turn: avatar + meta line + markdown. The same component renders
- * the live streaming bubble (`streaming` + phase + in-flight tool chips).
- */
 export function AgentMessage({
   status,
-  disposition,
   at,
   text,
   runId,
@@ -46,6 +43,7 @@ export function AgentMessage({
   streaming = false,
   phase,
   tools = [],
+  parts,
 }: {
   status: string;
   disposition?: string | null;
@@ -56,70 +54,109 @@ export function AgentMessage({
   streaming?: boolean;
   phase?: string | null;
   tools?: Array<{ name: string; ok?: boolean }>;
+  parts?: ConversationPart[];
 }) {
+  const copyText =
+    parts
+      ?.filter((part) => part.kind === "text" && part.text)
+      .map((part) => part.text)
+      .join("\n\n") || text;
   return (
-    <div className="flex gap-3.5">
-      <span className="mt-6 flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10">
-        <Bot className={cn("size-3.5 text-primary", streaming && "animate-pulse")} />
+    <article className="group flex gap-4" aria-label="Agent response">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
+        <Layers2 className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground">
-          <span className="text-slate-300">harness</span>
-          <StatusPill status={status} />
-          {disposition && <span>{disposition}</span>}
-          {streaming && phase && <span className="text-primary/80">{phase}</span>}
-          {at && <span>{timeAgo(at)}</span>}
-          {!streaming && runId && onOpenRun && (
-            <button
-              onClick={() => onOpenRun(runId)}
-              className="ml-auto cursor-pointer underline decoration-dotted transition-colors hover:text-primary"
-            >
-              trace {shortId(runId)}
-            </button>
+        <div className="mb-3 flex h-6 items-center gap-2 text-xs">
+          <span className="font-semibold">Harness</span>
+          <span className="text-[11px] text-muted-foreground">
+            {streaming ? "Working on it" : at ? timeAgo(at) : ""}
+          </span>
+          {streaming && (
+            <Loader2 className="size-3 animate-spin text-muted-foreground" />
           )}
         </div>
-        {text ? (
-          <>
-            <Markdown text={text} className="text-[13.5px]" />
+        {parts?.length ? (
+          <TurnContent parts={parts} running={streaming} />
+        ) : text ? (
+          <div className="text-[14px]">
+            <Markdown text={text} />
             {streaming && <span className="streaming-caret" />}
-          </>
-        ) : (
-          <div className="font-mono text-xs text-muted-foreground">
-            thinking<span className="streaming-caret" />
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Thinking
+            <span className="streaming-caret" />
+          </p>
         )}
         {streaming && tools.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-4 flex flex-wrap gap-2">
             {tools.map((tool, i) => (
               <span
                 key={`${tool.name}-${i}`}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/25 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground",
-                  tool.ok === false && "border-destructive/40 text-red-300/90",
-                )}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground"
               >
-                {tool.name}
-                {tool.ok === false && " ✗"}
-                {tool.ok === true && " ✓"}
+                {tool.ok === undefined ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Check className="size-3" />
+                )}
+                <span className="font-mono text-[11px]">{tool.name}</span>
               </span>
             ))}
           </div>
         )}
+        {!streaming && (
+          <div className="mt-3 flex items-center gap-1 text-muted-foreground">
+            <CopyButton
+              content={copyText}
+              variant="ghost"
+              size="xs"
+              aria-label="Copy response"
+            />
+            <span className="mx-1 h-3 w-px bg-border" />
+            {runId && onOpenRun && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
+                onClick={() => onOpenRun(runId)}
+              >
+                <Workflow className="size-3" />
+                View trace
+              </Button>
+            )}
+            {status === "failed" && (
+              <span className="ml-2 text-xs text-destructive">
+                Stopped with an error
+              </span>
+            )}
+          </div>
+        )}
       </div>
-    </div>
+    </article>
   );
 }
 
-/** Quiet centered system line (labels, CI, pushes). */
-export function SystemNote({ text, count, at }: { text: string; count?: number; at: string }) {
+export function SystemNote({
+  text,
+  count,
+  at,
+}: {
+  text: string;
+  count?: number;
+  at: string;
+}) {
   return (
-    <div className="flex items-center justify-center gap-2 font-mono text-[10.5px] text-muted-foreground/70">
-      <span className="h-px w-8 bg-border/60" />
+    <div className="flex items-start gap-2 pl-12 text-[11px] leading-relaxed text-muted-foreground">
+      <CheckCheck className="mt-0.5 size-3 shrink-0" />
       <span>
         {text}
-        {count !== undefined && count > 1 && <span className="text-muted-foreground/50"> ×{count}</span>} · {timeAgo(at)}
+        {count && count > 1 ? ` · ${count} updates` : ""}
       </span>
-      <span className="h-px w-8 bg-border/60" />
+      <time className="ml-auto shrink-0" dateTime={at}>
+        {timeAgo(at)}
+      </time>
     </div>
   );
 }

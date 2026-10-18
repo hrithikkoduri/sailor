@@ -1,154 +1,202 @@
-/**
- * RepoPicker — THE gate's control surface, shared by onboarding and settings.
- *
- * Owns the selection state, the dirty check, and the save loop; parents own
- * the surrounding card/step and react to `onSaved`. Both flows previously
- * had their own copy of this logic — one picker, one behavior.
- */
 import { useEffect, useMemo, useState } from "react";
-import { getGate, saveRepos, type GateData } from "@/features/repos/api";
+import { Check, GitBranch, Loader2, Search } from "lucide-react";
+import { saveRepos, type GateData } from "../api";
 import { Switch } from "@/components/animate-ui/components/radix/switch";
-import { ApiError } from "@/utils/api-client";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/elements/button";
 
-const selectionFrom = (data: GateData): Record<number, Set<string>> => {
-  const init: Record<number, Set<string>> = {};
-  for (const inst of data.installations) {
-    init[inst.installationId] = new Set(inst.repos.filter((r) => r.enabled).map((r) => r.fullName));
-  }
-  return init;
-};
+const selectionFrom = (data: GateData) =>
+  Object.fromEntries(
+    data.installations.map((inst) => [
+      inst.installationId,
+      new Set(inst.repos.filter((r) => r.enabled).map((r) => r.fullName)),
+    ]),
+  );
 
+/** One repository control surface for settings and onboarding. */
 export function RepoPicker({
   data,
   onSaved,
   saveLabel,
+  requireSelection = false,
 }: {
   data: GateData;
-  onSaved?: () => void;
-  /** Static text, or a function of the selected count. Defaults to "Save changes". */
+  onSaved?: () => void | Promise<void>;
   saveLabel?: string | ((count: number) => string);
+  requireSelection?: boolean;
 }) {
-  const [selected, setSelected] = useState<Record<number, Set<string>>>(() => selectionFrom(data));
+  const [selected, setSelected] = useState<Record<number, Set<string>>>(() =>
+    selectionFrom(data),
+  );
+  const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Re-sync when the parent reloads the gate (fresh server truth wins).
+  const [error, setError] = useState("");
   useEffect(() => {
     setSelected(selectionFrom(data));
   }, [data]);
-
-  const enabledCount = useMemo(
-    () => Object.values(selected).reduce((n, set) => n + set.size, 0),
-    [selected],
+  const enabled = Object.values(selected).reduce(
+    (sum, repos) => sum + repos.size,
+    0,
   );
-
-  const isDirty = useMemo(
+  const dirty = useMemo(
     () =>
-      data.installations.some((inst) => {
-        const now = selected[inst.installationId] ?? new Set<string>();
-        const current = new Set(inst.repos.filter((r) => r.enabled).map((r) => r.fullName));
-        return now.size !== current.size || [...now].some((name) => !current.has(name));
-      }),
+      data.installations.some((inst) =>
+        inst.repos.some(
+          (repo) =>
+            repo.enabled !==
+            (selected[inst.installationId]?.has(repo.fullName) ?? false),
+        ),
+      ),
     [data, selected],
   );
-
-  const toggle = (installationId: number, fullName: string) => {
+  const toggle = (id: number, name: string) => {
     setSaved(false);
     setSelected((prev) => {
-      const set = new Set(prev[installationId] ?? []);
-      if (set.has(fullName)) set.delete(fullName);
-      else set.add(fullName);
-      return { ...prev, [installationId]: set };
+      const next = new Set(prev[id]);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return { ...prev, [id]: next };
     });
   };
-
   const save = async () => {
     setSaving(true);
-    setError(null);
+    setError("");
     try {
-      for (const inst of data.installations) {
-        await saveRepos(inst.installationId, [...(selected[inst.installationId] ?? [])]);
-      }
+      for (const inst of data.installations)
+        await saveRepos(inst.installationId, [
+          ...(selected[inst.installationId] ?? []),
+        ]);
+      await onSaved?.();
       setSaved(true);
-      onSaved?.();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save changes.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Changes could not be saved. Please retry.",
+      );
     } finally {
       setSaving(false);
     }
   };
-
   return (
-    <>
+    <div>
+      <div className="relative mb-5">
+        <Search className="pointer-events-none absolute top-3 left-3 size-3.5 text-muted-foreground" />
+        <Input
+          aria-label="Search repositories"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find a repository…"
+          className="h-10 rounded-lg bg-background pl-9 text-xs shadow-none"
+        />
+      </div>
       {data.installations.map((inst) => (
-        <div key={inst.installationId} className="mt-5">
-          <div className="flex items-center justify-between">
-            <h3 className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
+        <section key={inst.installationId} className="mb-5">
+          <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+            <span className="font-medium">
               {inst.accountLogin}
-              {inst.suspended && <span className="ml-2 text-amber-300">suspended</span>}
-            </h3>
-            <span className="font-mono text-[10.5px] text-muted-foreground">
-              {selected[inst.installationId]?.size ?? 0}/{inst.repos.length} enabled
+              {inst.suspended ? " · Suspended" : ""}
+            </span>
+            <span>
+              {selected[inst.installationId]?.size ?? 0} of {inst.repos.length}{" "}
+              enabled
             </span>
           </div>
-          <div className="mt-2.5 space-y-1.5">
-            {inst.repos.length === 0 && (
-              <p className="text-sm text-muted-foreground">No repositories visible to this installation.</p>
+          <div className="overflow-hidden rounded-xl border border-border">
+            {inst.repos
+              .filter((repo) =>
+                repo.fullName.toLowerCase().includes(query.toLowerCase()),
+              )
+              .map((repo) => {
+                const on =
+                  selected[inst.installationId]?.has(repo.fullName) ?? false;
+                const controlId = `repo-${inst.installationId}-${repo.fullName.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+                return (
+                  <div
+                    key={repo.fullName}
+                    className="flex items-center gap-3 border-b border-border bg-card px-4 py-4 last:border-0 hover:bg-muted/20"
+                  >
+                    <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+                    <label
+                      htmlFor={controlId}
+                      className="min-w-0 flex-1 cursor-pointer"
+                    >
+                      <span className="block truncate text-[13px] font-medium">
+                        {repo.fullName}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-muted-foreground">
+                        {repo.defaultBranch ?? "Default branch"}
+                      </span>
+                    </label>
+                    <Switch
+                      id={controlId}
+                      aria-label={`Enable ${repo.fullName}`}
+                      checked={on}
+                      disabled={saving || inst.suspended}
+                      onCheckedChange={() =>
+                        toggle(inst.installationId, repo.fullName)
+                      }
+                    />
+                  </div>
+                );
+              })}
+            {!inst.repos.some((repo) =>
+              repo.fullName.toLowerCase().includes(query.toLowerCase()),
+            ) && (
+              <p className="p-5 text-sm text-muted-foreground">
+                No repositories match your search.
+              </p>
             )}
-            {inst.repos.map((repo) => {
-              const on = selected[inst.installationId]?.has(repo.fullName) ?? false;
-              return (
-                <div
-                  key={repo.fullName}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => toggle(inst.installationId, repo.fullName)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      toggle(inst.installationId, repo.fullName);
-                    }
-                  }}
-                  className={`flex cursor-pointer items-center justify-between rounded-lg border px-3.5 py-2.5 transition-colors duration-200 ${
-                    on ? "border-primary/40 bg-primary/10" : "border-border/70 bg-muted/20 hover:bg-muted/40"
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{repo.fullName}</span>
-                    <span className="font-mono text-[10.5px] text-muted-foreground">{repo.defaultBranch ?? "—"}</span>
-                  </span>
-                  <Switch
-                    checked={on}
-                    onCheckedChange={() => toggle(inst.installationId, repo.fullName)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-              );
-            })}
           </div>
-        </div>
+        </section>
       ))}
-
       {error && (
-        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-red-300">
+        <p role="alert" className="mb-4 text-xs text-destructive">
           {error}
-        </div>
+        </p>
       )}
-
-      <div className="mt-6 flex items-center justify-end gap-3">
-        {saved && !isDirty && <span className="text-xs text-primary">Saved ✓</span>}
-        <button
-          onClick={() => void save()}
-          disabled={saving || !isDirty || enabledCount === 0}
-          className="cursor-pointer rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {saving ? "Saving…" : typeof saveLabel === "function" ? saveLabel(enabledCount) : (saveLabel ?? "Save changes")}
-        </button>
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-5">
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {saved && !dirty ? (
+            <span className="flex items-center gap-1.5">
+              <Check className="size-3.5" />
+              Changes saved
+            </span>
+          ) : dirty ? (
+            "You have unsaved changes"
+          ) : (
+            `${enabled} repositories enabled`
+          )}
+        </p>
+        <div className="flex gap-2">
+          {dirty && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              onClick={() => {
+                setSelected(selectionFrom(data));
+                setSaved(false);
+              }}
+            >
+              Discard
+            </Button>
+          )}
+          <Button
+            size="sm"
+            disabled={saving || !dirty || (requireSelection && enabled === 0)}
+            onClick={() => void save()}
+          >
+            {saving && <Loader2 className="size-3.5 animate-spin" />}
+            {saving
+              ? "Saving…"
+              : typeof saveLabel === "function"
+                ? saveLabel(enabled)
+                : (saveLabel ?? "Save changes")}
+          </Button>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
-
-/** Convenience for full-page loads (kept beside the picker so both flows share it). */
-export const loadGate = getGate;

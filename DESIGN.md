@@ -140,6 +140,31 @@ Lands in: step 9 (lease/heartbeat/resume + journal), steps 17–18 (SSE).
 | 48 | **A run remembers WHICH agent takes it — chat turns are chat turns (from the same-day UI review).** New `runs.agent` column (default `coding`): `drainInbox` classifies the batch — nothing but `chat_message` events → **chat agent** (`chatStrategy` + the coding tools: one `respond` phase, a text-only reply ends the run; tools stay available so it can read the repo or act when asked); any GitHub/machine event → **coding agent**. Webhook-delivered turns are coding; crash resumes inherit the original run's agent. Cross-strategy resume is safe by construction (unknown saved phase → the strategy's first phase). Closes the review finding *"I asked 'what did you do' and got the whole reproduce→fix→verify loop"*: a question now produces a conversational reply, and its trace is a clean single-turn `respond`. **Restraint pass in the same breath:** status pills = neutral + one semantic dot (only `running` is tinted — color carries meaning, not decoration); consecutive push notes merge (`×N`); system events render as quiet centered hairlines; agent messages are plain text with an avatar (no boxes), user messages are right-aligned bubbles. **Honest accounting:** `threads.turns_used` increments per run; `usd_spent` accrues each run's cost — the rail is no longer cosmetic | The review's core insight — mechanics and conversation were conflated — is fixed at the source: the agent is a property of the work, not a hardcoded pipeline; and the thread finally reads like a conversation with an engineer, not a CI log | ✅ decided |
 | 49 | **The Trace tab is a whole-thread span explorer (from the same-day UI review, LangSmith-inspired).** `GET /api/threads/:id/trace` ships every run + all spans + **thread-level totals** in one payload — token deltas excluded (reconstructable, payload-dominating) and tool output trimmed to 4k for transport. The client builds the tree (run → phase → agent step → tool call; tool results paired by name; guardrails/checkpoints/errors attach to the innermost open container; missing durations estimated from sibling chronology, marked `~`) and renders it LangSmith-style: tree pane with status dot, token chip, duration, and an aligned **mini waterfall bar** per row; detail pane with **Input / Output / Metadata** (agent text as markdown). `?run=` focuses a run (PR links + conversation chips land correctly); the header shows runs (coding/chat), tokens, cost, wall time, turns. Not a general tracing backend — a faithful render of exactly what we record. | Review verdict accepted: per-run trace + scattered thread stats had no novelty in the UI; ONE tree over the thread, aggregates on top, detail on the right is the honest way to show recorded truth | ✅ decided |
 
+## Streaming and activity follow-up (2026-10-18)
+
+- **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
+  only provider-returned reasoning text/summary fields are forwarded. Optional
+  `reasoningTokens` comes from provider usage and is already part of completion
+  tokens, not added a second time. Each tool-call/result event carries its
+  `callId` and a human-readable `verb`. Tools may configure a static or
+  input-dependent verb through `defineTool(..., { verb })`; display metadata
+  is not included in the provider's function schema.
+- **Product transport:** publish live projections before queued trace writes.
+  Snapshots include step and sequence so one model call cannot overwrite another.
+  Journal replay produces ordered text, reasoning, and tool parts on initial load
+  and refresh; finished calls use full aggregates, active ones also replay deltas.
+- **Client recovery:** accept deltas even if the call-start frame was missed.
+  Refetch on SSE connect/reconnect, throttle nudges with bounded latency, and
+  reconcile active turns every two seconds (idle threads every ten seconds).
+  This covers missed completion notifications and dev-server restarts without
+  requiring a browser refresh. Persisted and live parts merge by stable IDs and
+  sequence; a stale snapshot cannot roll the visible answer backward.
+- **Interaction:** render text → tool activity → text in order. Activity stays
+  open while working, collapses when the next assistant message starts, and can
+  be reopened for tool input/output and errors. Reasoning is a separate
+  expandable section, with token counts only when reported. Hidden/unreturned
+  reasoning is not fabricated. No new messages table is needed.
+
 ## Inngest vs BullMQ (decision #7 detail)
 
 - **BullMQ (Redis)**: job queue library. You write a worker process that pulls jobs. Retries, backoff, priorities, rate limits, **repeatable (cron) jobs** = our timers. Self-hosted, boring, full control. Long-running jobs fine — the worker just runs them.

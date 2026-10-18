@@ -4,3 +4,5 @@ dist/
 traces/
 .env
 *.log
+test-results/
+playwright-report/

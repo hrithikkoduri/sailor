@@ -4,7 +4,7 @@
  * rows, and the checkpoint pointer all recorded.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
@@ -44,7 +44,16 @@ describe("executeRun", () => {
   });
 
   it("executes a run end-to-end and records everything", async () => {
-    const outcome = await executeRun({ db, runId, local: true, llm: scriptedLLM(FIX_FIXTURE_SCRIPT) });
+    const frames: Record<string, unknown>[] = [];
+    const llm = scriptedLLM(FIX_FIXTURE_SCRIPT);
+    const stream = llm.stream.bind(llm);
+    llm.stream = async (request, onDelta, options) => {
+      onDelta("Live progress");
+      // Publication is synchronous, not queued behind the journal's DB I/O.
+      expect(frames.at(-1)).toMatchObject({ kind: "delta", text: "Live progress" });
+      return stream(request, onDelta, options);
+    };
+    const outcome = await executeRun({ db, runId, local: true, llm, live: (_threadId, frame) => frames.push(frame) });
 
     expect(outcome.status).toBe("succeeded");
     expect(outcome.summary).toContain("fixed negatives");
@@ -69,8 +78,9 @@ describe("executeRun", () => {
     expect(threadRow!.checkpointSha).toMatch(/^[0-9a-f]{40}$/);
 
     // Traces landed in the DB (the journal).
-    const traceRows = await db.select().from(schema.traceEvents).where(eq(schema.traceEvents.runId, runId));
+    const traceRows = await db.select().from(schema.traceEvents).where(eq(schema.traceEvents.runId, runId)).orderBy(asc(schema.traceEvents.seq));
     expect(traceRows.length).toBeGreaterThanOrEqual(10);
-    expect(traceRows.map((r) => r.seq)).toEqual([...traceRows.map((r) => r.seq)].sort((a, b) => a - b));
+    // SQL has no implicit row ordering; assert the explicit journal sequence.
+    expect(traceRows.map((r) => r.seq)).toEqual(Array.from({ length: traceRows.length }, (_, i) => i));
   }, 120_000);
 });

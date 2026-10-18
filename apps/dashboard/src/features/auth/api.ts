@@ -12,9 +12,16 @@ export interface SessionUser {
 export const getMe = () => api<{ user: SessionUser }>("/auth/me");
 
 export const login = (email: string, password: string) =>
-  api<{ user: SessionUser }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+  api<{ user: SessionUser }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
 
 export const signup = (email: string, password: string) =>
-  api<{ user: SessionUser }>("/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) });
+  api<{ user: SessionUser }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
 
-export const logout = () => api<{ ok: boolean }>("/auth/logout", { method: "POST" });
+export const logout = () =>
+  api<{ ok: boolean }>("/auth/logout", { method: "POST" });

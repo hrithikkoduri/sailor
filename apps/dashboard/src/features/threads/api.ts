@@ -1,5 +1,6 @@
 /** Threads surface: the list, one thread's detail, and its small actions. */
 import { api } from "@/utils/api-client";
+import type { RunConversation } from "@/features/chat/types";
 
 export interface RunSummary {
   id: string;
@@ -17,6 +18,7 @@ export interface RunSummary {
 }
 
 export interface ThreadRun extends RunSummary {
+  conversation?: RunConversation;
   /** The run's final assistant text (its "message" in the conversation). */
   agentText: string | null;
 }
@@ -65,15 +67,22 @@ export interface ThreadEventRow {
 }
 
 export interface ThreadDetail {
-  thread: ThreadSummary & { installationAccount: string | null; issueUrl: string | null };
+  thread: ThreadSummary & {
+    installationAccount: string | null;
+    issueUrl: string | null;
+  };
   runs: ThreadRun[];
   events: ThreadEventRow[];
   pendingEvents: PendingEvent[];
 }
 
-export const getThreads = () => api<{ threads: ThreadListItem[] }>("/api/threads");
-export const getThread = (id: string) => api<ThreadDetail>(`/api/threads/${id}`);
+export const getThreads = () =>
+  api<{ threads: ThreadListItem[] }>("/api/threads");
+export const getThread = (id: string) =>
+  api<ThreadDetail>(`/api/threads/${id}`, { signal: AbortSignal.timeout(10000) });
 export const cancelRun = (id: string) =>
-  api<{ ok: boolean; action: string }>(`/api/runs/${id}/cancel`, { method: "POST" });
+  api<{ ok: boolean; action: string }>(`/api/runs/${id}/cancel`, {
+    method: "POST",
+  });
 export const keepSandbox = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/keep-sandbox`, { method: "POST" });

@@ -1,98 +1,180 @@
-/** Threads — every issue conversation the agent has, newest first. */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion } from "motion/react";
-import { Inbox, RefreshCw } from "lucide-react";
+import { Inbox, RefreshCw, Search, ArrowUpRight } from "lucide-react";
 import { getThreads, type ThreadListItem } from "@/features/threads/api";
-import { ThreadRow } from "@/features/threads/components/thread-row";
+import { ThreadRow } from "./components/thread-row";
 import { AppShell } from "@/features/shell/app-shell";
-import { EmptyState } from "@/elements/empty-state";
+import { Button } from "@/elements/button";
+import { IconButton } from "@/elements/icon-button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/animate-ui/components/radix/tabs";
 import { usePoll } from "@/hooks/use-poll";
 import { ApiError } from "@/utils/api-client";
-
-const listVariants = { hidden: {}, show: { transition: { staggerChildren: 0.045 } } };
 
 export function ThreadsPage() {
   const navigate = useNavigate();
   const [threads, setThreads] = useState<ThreadListItem[] | null>(null);
-
+  const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
       setThreads((await getThreads()).threads);
+      setError("");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) navigate("/login");
+      else setError("Threads could not be loaded. Try refreshing.");
     }
   }, [navigate]);
-
-  usePoll(load, 5_000);
-
-  const active = threads?.filter((t) => t.latestRun && ["running", "queued"].includes(t.latestRun.status)).length ?? 0;
-  const pending = threads?.reduce((n, t) => n + t.pendingEvents, 0) ?? 0;
+  usePoll(load, 5000);
+  const active = (t: ThreadListItem) =>
+    ["queued", "running"].includes(t.latestRun?.status ?? "");
+  const visible = useMemo(
+    () =>
+      (threads ?? []).filter(
+        (t) =>
+          (filter !== "active" || active(t)) &&
+          (filter !== "prs" || !!t.prUrl) &&
+          `${t.repo} ${t.issueNumber} ${t.latestRun?.task ?? ""}`
+            .toLowerCase()
+            .includes(query.toLowerCase()),
+      ),
+    [threads, filter, query],
+  );
 
   return (
     <AppShell
-      topbar={<span className="font-mono text-[11.5px] tracking-wide text-muted-foreground">workspace / threads</span>}
+      topbar={
+        <span className="text-sm text-muted-foreground">
+          Workspace <span className="mx-2 text-input">/</span>{" "}
+          <span className="text-foreground">Threads</span>
+        </span>
+      }
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl px-6 py-8">
-          <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
+          <div className="mb-9 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="font-mono text-xl font-semibold tracking-tight">Threads</h1>
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                One conversation per issue — label it{" "}
-                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-primary">agent:fix</span> on
-                GitHub to start one.
+              <p className="eyebrow mb-2">Your agent workspace</p>
+              <h1 className="page-heading">A place for every fix.</h1>
+              <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
+                Follow the work, join the conversation, and see exactly how your
+                agent got there.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {threads && threads.length > 0 && (
-                <div className="mr-1 flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
-                  <span>
-                    <span className={active > 0 ? "text-primary" : ""}>{active}</span> active
+            <Button variant="outline" asChild>
+              <Link to="/settings">
+                Manage repositories
+                <ArrowUpRight className="size-3.5" />
+              </Link>
+            </Button>
+          </div>
+          <Tabs value={filter} onValueChange={setFilter} className="gap-0">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <TabsList
+                aria-label="Filter threads"
+                className="h-10 bg-muted/60"
+              >
+                <TabsTrigger value="all" className="px-3 text-xs">
+                  All threads{" "}
+                  <span className="ml-1 text-muted-foreground">
+                    {threads?.length ?? 0}
                   </span>
-                  <span>
-                    <span className={pending > 0 ? "text-amber-300" : ""}>{pending}</span> pending
+                </TabsTrigger>
+                <TabsTrigger value="active" className="px-3 text-xs">
+                  Active{" "}
+                  <span className="ml-1 text-muted-foreground">
+                    {threads?.filter(active).length ?? 0}
                   </span>
-                  <span>{threads.length} total</span>
+                </TabsTrigger>
+                <TabsTrigger value="prs" className="px-3 text-xs">
+                  Pull requests
+                </TabsTrigger>
+              </TabsList>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground" />
+                  <Input
+                    aria-label="Search threads"
+                    placeholder="Search threads…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="h-9 w-52 rounded-lg bg-card pl-9 text-xs shadow-none"
+                  />
+                </div>
+                <IconButton label="Refresh threads" onClick={() => void load()}>
+                  <RefreshCw />
+                </IconButton>
+              </div>
+            </div>
+            <TabsContent
+              value={filter}
+              className="mt-0"
+              transition={{ duration: 0.15 }}
+            >
+              {error && (
+                <p role="alert" className="mb-4 text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              {threads === null ? (
+                <div className="space-y-2">
+                  {[0, 1, 2].map((i) => (
+                    <Skeleton key={i} className="h-20 rounded-xl" />
+                  ))}
+                </div>
+              ) : visible.length ? (
+                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                  <div className="flex items-center justify-between border-b border-border bg-muted/20 px-5 py-3 text-[11px] font-medium text-muted-foreground">
+                    <span>CONVERSATIONS</span>
+                    <span>
+                      {visible.length} thread{visible.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {visible.map((t) => (
+                    <ThreadRow key={t.id} thread={t} />
+                  ))}
+                </div>
+              ) : (
+                <div className="surface flex flex-col items-center px-6 py-20 text-center">
+                  <Inbox className="mb-5 size-7 text-muted-foreground" />
+                  <h2 className="text-base font-medium">
+                    {query || filter !== "all"
+                      ? "No matching threads"
+                      : "Your next fix starts here"}
+                  </h2>
+                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+                    {query || filter !== "all" ? (
+                      "Try another search or choose a different view."
+                    ) : (
+                      <>
+                        Enable a repository, then label an issue{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                          agent:fix
+                        </code>
+                        . We’ll take it from there.
+                      </>
+                    )}
+                  </p>
+                  {!query && filter === "all" && (
+                    <Button className="mt-6" asChild>
+                      <Link to="/settings">Connect a repository</Link>
+                    </Button>
+                  )}
                 </div>
               )}
-              <button
-                onClick={() => void load()}
-                aria-label="Refresh"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <RefreshCw className="size-3.5" />
-              </button>
-            </div>
-          </header>
-
-          {threads === null ? (
-            <div className="mt-8 space-y-2.5">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-[86px] rounded-xl bg-card/60" />
-              ))}
-            </div>
-          ) : threads.length === 0 ? (
-            <EmptyState
-              icon={Inbox}
-              title="No threads yet"
-              description="Enable a repository in Settings, then label an issue — the agent picks it up and opens the PR."
-            >
-              <Link
-                to="/settings"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                Open Settings
-              </Link>
-            </EmptyState>
-          ) : (
-            <motion.div initial="hidden" animate="show" variants={listVariants} className="mt-7 space-y-2.5">
-              {threads.map((thread) => (
-                <ThreadRow key={thread.id} thread={thread} />
-              ))}
-            </motion.div>
-          )}
+            </TabsContent>
+          </Tabs>
+          <p className="mt-5 text-xs text-muted-foreground">
+            Updates automatically · Only your enabled repositories can start new
+            work.
+          </p>
         </div>
       </div>
     </AppShell>

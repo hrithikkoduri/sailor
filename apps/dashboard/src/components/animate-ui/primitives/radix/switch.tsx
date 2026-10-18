@@ -29,19 +29,19 @@ type SwitchProps = Omit<
 > &
   HTMLMotionProps<'button'>;
 
-function Switch(props: SwitchProps) {
+function Switch({ checked, defaultChecked, onCheckedChange, ...props }: SwitchProps) {
   const [isPressed, setIsPressed] = React.useState(false);
   const [isChecked, setIsChecked] = useControlledState({
-    value: props.checked,
-    defaultValue: props.defaultChecked,
-    onChange: props.onCheckedChange,
+    value: checked,
+    defaultValue: defaultChecked,
+    onChange: onCheckedChange,
   });
 
   return (
     <SwitchProvider
       value={{ isChecked, setIsChecked, isPressed, setIsPressed }}
     >
-      <SwitchPrimitives.Root {...props} onCheckedChange={setIsChecked} asChild>
+      <SwitchPrimitives.Root {...props} checked={isChecked} onCheckedChange={setIsChecked} asChild>
         <motion.button
           data-slot="switch"
           whileTap="tap"

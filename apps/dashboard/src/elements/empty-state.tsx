@@ -20,7 +20,9 @@ export function EmptyState({
       </span>
       <div>
         <h2 className="font-medium">{title}</h2>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          {description}
+        </p>
       </div>
       {children}
     </div>

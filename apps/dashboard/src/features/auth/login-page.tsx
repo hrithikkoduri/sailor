@@ -1,120 +1,182 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login, signup } from "@/features/auth/api";
+import { ArrowRight, Layers2, Loader2 } from "lucide-react";
+import { login, signup } from "./api";
 import { ApiError } from "@/utils/api-client";
-import { GithubMark, Wordmark } from "@/elements/brand";
-
-const inputClass =
-  "w-full rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-2 focus:ring-primary/20";
+import { GithubMark } from "@/elements/brand";
+import { Button } from "@/elements/button";
+import { Input } from "@/components/ui/input";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/animate-ui/components/radix/tabs";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await (mode === "signin" ? login : signup)(email, password);
-      navigate("/onboarding");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong — try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
-    <div className="bg-ambient flex min-h-dvh items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <Wordmark />
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card/40 p-8 shadow-2xl shadow-black/40 backdrop-blur">
-          <h1 className="text-xl font-semibold tracking-tight">
-            {mode === "signin" ? "Welcome back" : "Create your account"}
+    <main className="grid min-h-svh lg:grid-cols-[1fr_1.15fr]">
+      <section className="relative hidden flex-col justify-between border-r border-border bg-sidebar p-12 lg:flex">
+        <a
+          href="/"
+          className="flex items-center gap-2 text-lg font-semibold tracking-tight"
+        >
+          <Layers2 className="size-5" />
+          harness.
+        </a>
+        <div className="max-w-md">
+          <p className="eyebrow mb-6">More context. Less busywork.</p>
+          <h1 className="text-[44px] leading-[1.15] font-medium tracking-[-.055em]">
+            Good software starts
+            <br />
+            with a conversation.
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {mode === "signin"
-              ? "Sign in to watch your agent work."
-              : "An agent that fixes issues, tests its own work, and opens the PR."}
+          <p className="mt-6 max-w-sm text-base leading-relaxed text-muted-foreground">
+            Turn issues into thoughtful fixes. Guide your agent, follow the
+            work, and review every step.
           </p>
-
-          <div className="mt-6 grid grid-cols-2 rounded-lg border border-border bg-card/40 p-1 text-sm">
-            {(["signin", "signup"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m);
-                  setError(null);
-                }}
-                className={`rounded-md py-1.5 font-medium transition ${
-                  mode === m ? "bg-muted text-foreground" : "text-muted-foreground hover:text-slate-200"
-                }`}
-              >
-                {m === "signin" ? "Sign in" : "Sign up"}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={submit} className="mt-6 space-y-3">
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={inputClass}
-            />
-            <input
-              type="password"
-              required
-              minLength={8}
-              autoComplete={mode === "signin" ? "current-password" : "new-password"}
-              placeholder={mode === "signup" ? "Password (8+ characters)" : "Password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
-            />
-            {error && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {error}
-              </div>
-            )}
-            <button
-              disabled={busy}
-              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-            >
-              {busy ? "One moment…" : mode === "signin" ? "Sign in" : "Create account"}
-            </button>
-          </form>
-
-          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="h-px flex-1 bg-muted" />
-            or
-            <div className="h-px flex-1 bg-muted" />
-          </div>
-
-          <a
-            href="/auth/github"
-            className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-muted/40 py-2.5 text-sm font-medium transition hover:bg-accent"
-          >
-            <GithubMark /> Continue with GitHub
-          </a>
         </div>
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Passwords are hashed with argon2id; sessions store only a token hash.
+        <p className="text-xs text-muted-foreground">
+          Your repositories. Your direction. Every step visible.
         </p>
-      </div>
-    </div>
+      </section>
+      <section className="flex items-center justify-center p-6 py-16">
+        <div className="w-full max-w-[360px]">
+          <Layers2 className="mb-8 size-7 lg:hidden" />
+          <h2 className="text-2xl font-medium tracking-[-.04em]">
+            {mode === "signin" ? "Welcome back." : "Make room for better work."}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {mode === "signin"
+              ? "Your workspace is right where you left it."
+              : "Create your workspace. Connect your repositories."}
+          </p>
+          <Tabs
+            value={mode}
+            onValueChange={(value) => {
+              setMode(value);
+              setError("");
+            }}
+            className="mt-7"
+          >
+            <TabsList className="w-full" aria-label="Authentication method">
+              <TabsTrigger value="signin" className="text-xs">
+                Sign in
+              </TabsTrigger>
+              <TabsTrigger value="signup" className="text-xs">
+                Create account
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value={mode} className="sr-only">
+              {mode === "signin" ? "Sign in" : "Create account"} using the form
+              below.
+            </TabsContent>
+          </Tabs>
+          <Button variant="outline" asChild className="mt-6 w-full">
+            <a href="/auth/github">
+              <GithubMark size={16} />
+              Continue with GitHub
+            </a>
+          </Button>
+          <div className="my-5 flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or with email
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <form
+            className="space-y-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              setError("");
+              try {
+                await (mode === "signin" ? login : signup)(email, password);
+                navigate("/onboarding");
+              } catch (err) {
+                setError(
+                  err instanceof ApiError
+                    ? err.message
+                    : "Something went wrong. Please try again.",
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <div>
+              <label htmlFor="email" className="mb-2 block text-xs font-medium">
+                Email address
+              </label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="h-10 rounded-lg bg-card text-sm shadow-none"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="password"
+                className="mb-2 block text-xs font-medium"
+              >
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete={
+                  mode === "signin" ? "current-password" : "new-password"
+                }
+                minLength={8}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-describedby={error ? "login-error" : undefined}
+                className="h-10 rounded-lg bg-card shadow-none"
+              />
+              {mode === "signup" && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  At least 8 characters.
+                </p>
+              )}
+            </div>
+            {error && (
+              <p
+                id="login-error"
+                role="alert"
+                className="text-xs text-destructive"
+              >
+                {error}
+              </p>
+            )}
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <>
+                  {mode === "signin"
+                    ? "Sign in to your workspace"
+                    : "Create workspace"}
+                  <ArrowRight className="ml-auto size-4" />
+                </>
+              )}
+            </Button>
+          </form>
+          <p className="mt-6 text-center text-[11px] text-muted-foreground">
+            Secure sign-in. No GitHub tokens stored.
+          </p>
+        </div>
+      </section>
+    </main>
   );
 }

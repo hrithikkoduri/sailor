@@ -18,7 +18,13 @@ export interface GateInstallation {
 }
 
 export interface GateData {
-  user: { id: string; email: string | null; login: string | null; name: string | null; avatarUrl: string | null };
+  user: {
+    id: string;
+    email: string | null;
+    login: string | null;
+    name: string | null;
+    avatarUrl: string | null;
+  };
   githubAppConfigured: boolean;
   installations: GateInstallation[];
 }

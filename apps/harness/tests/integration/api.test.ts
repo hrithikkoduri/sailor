@@ -236,6 +236,21 @@ describe("dashboard api", () => {
     expect((await app.request(`/api/threads/${hiddenThreadId}`, { headers: { cookie } })).status).toBe(404);
   });
 
+  it("refresh mid-stream reconstructs partial text and reasoning from persisted chunks", async () => {
+    await db.insert(schema.traceEvents).values([
+      { runId: runLiveId, seq: 0, type: "llm_call_started", payload: { step: 1, phase: "respond" } },
+      { runId: runLiveId, seq: 1, type: "llm_reasoning_delta", payload: { text: "Checking earlier work." } },
+      { runId: runLiveId, seq: 2, type: "llm_text_delta", payload: { text: "Here is the partial reply." } },
+    ]);
+    const res = await app.request(`/api/threads/${threadId}`, { headers: { cookie } });
+    const body = await res.json() as { runs: Array<{ id: string; conversation: { parts: Array<{ kind: string; text: string }>; sequence: number; finished: boolean } }> };
+    const live = body.runs.find(run => run.id === runLiveId)!.conversation;
+    expect(live.parts.map(part => part.kind)).toEqual(["reasoning", "text"]);
+    expect(live.parts[1]!.text).toBe("Here is the partial reply.");
+    expect(live.finished).toBe(false);
+    expect(live.sequence).toBe(2);
+  });
+
   it("run detail: full trace in sequence order", async () => {
     const res = await app.request(`/api/runs/${runOkId}`, { headers: { cookie } });
     expect(res.status).toBe(200);
@@ -406,6 +421,7 @@ describe("dashboard api", () => {
         headers: { cookie: `harness_session=${cookie.split("=")[1]}` },
       });
       expect(res.status).toBe(200);
+      expect(res.headers.get("x-accel-buffering")).toBe("no");
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -424,6 +440,8 @@ describe("dashboard api", () => {
       expect(await readUntil("event: hello")).toBe(true);
       hub.notify(threadId);
       expect(await readUntil("event: update")).toBe(true);
+      hub.send(threadId, `event: live\ndata: ${JSON.stringify({ threadId, runId: runLiveId, step: 1, kind: "delta", text: "Partial reply" })}\n\n`);
+      expect(await readUntil("Partial reply")).toBe(true);
       await reader.cancel().catch(() => undefined);
     } finally {
       server.close();

@@ -39,4 +39,5 @@ export interface ThreadTrace {
   spans: TraceSpan[];
 }
 
-export const getThreadTrace = (id: string) => api<ThreadTrace>(`/api/threads/${id}/trace`);
+export const getThreadTrace = (id: string) =>
+  api<ThreadTrace>(`/api/threads/${id}/trace`);

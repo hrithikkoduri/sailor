@@ -483,7 +483,8 @@ function HighlightItem<T extends React.ElementType>({
 
   const dataAttributes = {
     'data-active': isActive ? 'true' : 'false',
-    'aria-selected': isActive,
+    // Visual highlight is not a selection widget. Radix tabs/menu items own
+    // their appropriate ARIA state; adding aria-selected to divs/links is invalid.
     'data-disabled': isDisabled,
     'data-value': childValue,
     'data-highlight': true,

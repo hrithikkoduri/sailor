@@ -15,7 +15,8 @@
  */
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
+import { projectConversation } from "../chat/projection.js";
 import { schema, type Db } from "../db/index.js";
 import type { User } from "../db/schema.js";
 import type { Queues } from "../queue/index.js";
@@ -168,19 +169,15 @@ export function createApiRoutes(deps: ApiDeps): Hono {
             .where(eq(schema.installations.installationId, thread.installationId))
         : [];
 
-    // The conversation's agent side: each run's last assistant text (the
-    // finish summary covers runs that ended without one — step 18).
-    const agentText = new Map<string, string>();
-    for (const run of runs) {
-      const [last] = await deps.db
-        .select({ payload: schema.traceEvents.payload })
-        .from(schema.traceEvents)
-        .where(and(eq(schema.traceEvents.runId, run.id), eq(schema.traceEvents.type, "llm_call_finished")))
-        .orderBy(desc(schema.traceEvents.seq))
-        .limit(1);
-      const text = (last?.payload as { text?: string } | undefined)?.text?.trim();
-      agentText.set(run.id, text && text.length > 0 ? text : "");
-    }
+    // Finished calls carry full text; only active runs need individual deltas
+    // for refresh-mid-stream hydration. One query, not one query per turn.
+    const runIds = runs.map(r => r.id);
+    const activeIds = runs.filter(r => ["queued", "running"].includes(r.status)).map(r => r.id);
+    const nonDelta = notInArray(schema.traceEvents.type, ["llm_text_delta", "llm_reasoning_delta"]);
+    const journal = runIds.length ? await deps.db.select({ runId: schema.traceEvents.runId, seq: schema.traceEvents.seq, type: schema.traceEvents.type, payload: schema.traceEvents.payload })
+      .from(schema.traceEvents).where(and(inArray(schema.traceEvents.runId, runIds), activeIds.length ? or(nonDelta, inArray(schema.traceEvents.runId, activeIds)) : nonDelta))
+      .orderBy(asc(schema.traceEvents.seq)) : [];
+    const conversations = new Map(runs.map(run => [run.id, projectConversation(journal.filter(row => row.runId === run.id), run.status)]));
 
     return c.json({
       thread: {
@@ -190,7 +187,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       },
       runs: runs.map((r) => ({
         ...runSummary(r),
-        agentText: agentText.get(r.id) || null,
+        agentText: conversations.get(r.id)?.parts.filter(p => p.kind === "text" && p.text?.trim()).at(-1)?.text ?? null,
+        conversation: conversations.get(r.id),
       })),
       events: eventRows.map((e) => ({
         id: String(e.id),
@@ -262,7 +260,7 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       ? await deps.db
           .select()
           .from(schema.traceEvents)
-          .where(and(inArray(schema.traceEvents.runId, runIds), ne(schema.traceEvents.type, "llm_text_delta")))
+          .where(and(inArray(schema.traceEvents.runId, runIds), notInArray(schema.traceEvents.type, ["llm_text_delta", "llm_reasoning_delta"])))
           .orderBy(asc(schema.traceEvents.runId), asc(schema.traceEvents.seq))
       : [];
 
@@ -454,6 +452,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     const thread = await loadThread(c.req.param("id"));
     if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
     const threadId = thread.id;
+    c.header("Cache-Control", "no-cache, no-transform");
+    c.header("X-Accel-Buffering", "no");
 
     return streamSSE(c, async (stream) => {
       const unregister = hub.register(threadId, (line) => {

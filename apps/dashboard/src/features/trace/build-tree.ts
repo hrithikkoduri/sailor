@@ -24,7 +24,11 @@ export interface SpanNode {
   estimated?: boolean;
   tokensIn?: number;
   tokensOut?: number;
-  detail: { input?: unknown; output?: unknown; metadata: Record<string, unknown> };
+  detail: {
+    input?: unknown;
+    output?: unknown;
+    metadata: Record<string, unknown>;
+  };
   children: SpanNode[];
 }
 
@@ -35,9 +39,12 @@ export interface ThreadTree {
   runWindows: Map<string, { start: number; end: number }>;
 }
 
-const at = (v: string | null | undefined): number => (v ? new Date(v).getTime() : Date.now());
-const str = (p: Record<string, unknown>, k: string) => (typeof p[k] === "string" ? (p[k] as string) : undefined);
-const num = (p: Record<string, unknown>, k: string) => (typeof p[k] === "number" ? (p[k] as number) : undefined);
+const at = (v: string | null | undefined): number =>
+  v ? new Date(v).getTime() : Date.now();
+const str = (p: Record<string, unknown>, k: string) =>
+  typeof p[k] === "string" ? (p[k] as string) : undefined;
+const num = (p: Record<string, unknown>, k: string) =>
+  typeof p[k] === "number" ? (p[k] as number) : undefined;
 
 const runStatus = (status: string): SpanStatus =>
   status === "succeeded"
@@ -48,7 +55,10 @@ const runStatus = (status: string): SpanStatus =>
         ? "running"
         : "neutral";
 
-export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTree {
+export function buildThreadTree(
+  runs: TraceRun[],
+  spans: TraceSpan[],
+): ThreadTree {
   const byRun = new Map<string, TraceSpan[]>();
   for (const span of spans) {
     const list = byRun.get(span.runId);
@@ -67,7 +77,8 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
     const root: SpanNode = {
       id: `run-${run.id}`,
       kind: "run",
-      name: run.agent === "chat" ? `chat · ${run.trigger}` : `run · ${run.trigger}`,
+      name:
+        run.agent === "chat" ? `chat · ${run.trigger}` : `run · ${run.trigger}`,
       badge: run.phase ?? undefined,
       status: runStatus(run.status),
       startMs: runStart,
@@ -133,13 +144,16 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
           break;
         }
         case "llm_call_finished": {
-          const node: SpanNode = pendingLlm.pop() ?? lastLlm ?? (phase ?? root);
+          const node: SpanNode = pendingLlm.pop() ?? lastLlm ?? phase ?? root;
           const usage = (p.usage ?? {}) as Record<string, unknown>;
           node.durationMs = num(p, "latencyMs");
           node.tokensIn = num(usage, "promptTokens");
           node.tokensOut = num(usage, "completionTokens");
           node.status = "ok";
-          node.detail.output = { text: str(p, "text") ?? "", toolCalls: Array.isArray(p.toolCalls) ? p.toolCalls : [] };
+          node.detail.output = {
+            text: str(p, "text") ?? "",
+            toolCalls: Array.isArray(p.toolCalls) ? p.toolCalls : [],
+          };
           if (node.kind === "llm") lastLlm = node;
           break;
         }
@@ -150,7 +164,10 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
             name: str(p, "name") ?? "tool",
             status: "running",
             startMs: start,
-            detail: { input: p.input, metadata: { phase: p.phase, step: p.step } },
+            detail: {
+              input: p.input,
+              metadata: { phase: p.phase, step: p.step },
+            },
             children: [],
           };
           container().children.push(node);
@@ -165,10 +182,17 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
           const node = queue.shift();
           pendingTools.set(name, queue);
           if (node) {
-            node.durationMs = num((p.meta ?? {}) as Record<string, unknown>, "durationMs");
+            node.durationMs = num(
+              (p.meta ?? {}) as Record<string, unknown>,
+              "durationMs",
+            );
             node.status = p.ok === true ? "ok" : "fail";
             node.detail.output = { content: str(p, "content") ?? "" };
-            node.detail.metadata = { ...node.detail.metadata, ok: p.ok, meta: p.meta };
+            node.detail.metadata = {
+              ...node.detail.metadata,
+              ok: p.ok,
+              meta: p.meta,
+            };
           }
           break;
         }
@@ -203,7 +227,9 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
             name: "conversation compacted",
             status: "neutral",
             startMs: start,
-            detail: { metadata: { removed: p.removedMessages, kept: p.keptMessages } },
+            detail: {
+              metadata: { removed: p.removedMessages, kept: p.keptMessages },
+            },
             children: [],
           });
           break;
@@ -215,7 +241,11 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
             disposition: p.disposition,
             summary: str(p, "summary"),
           };
-          root.detail.metadata = { ...root.detail.metadata, ok: p.ok, reason: p.reason };
+          root.detail.metadata = {
+            ...root.detail.metadata,
+            ok: p.ok,
+            reason: p.reason,
+          };
           break;
         }
         case "error": {
@@ -242,7 +272,10 @@ export function buildThreadTree(runs: TraceRun[], spans: TraceSpan[]): ThreadTre
     roots.push(root);
     const first = events[0] ? at(events[0].ts) : runStart;
     const last = events.length > 0 ? at(events[events.length - 1]!.ts) : runEnd;
-    runWindows.set(run.id, { start: Math.min(runStart, first), end: Math.max(runEnd, last) });
+    runWindows.set(run.id, {
+      start: Math.min(runStart, first),
+      end: Math.max(runEnd, last),
+    });
   }
 
   roots.reverse(); // newest story first

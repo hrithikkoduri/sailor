@@ -3,7 +3,7 @@
 The Harness product UI — consumer #1 of `@harness/agent`. React 19 + Vite 8 +
 Tailwind v4, with **Animate UI** (shadcn registry) primitives and a design
 system sourced from the **ui-ux-pro-max** skill (constitution:
-`../../design-system/harness/MASTER.md` — "code dark + run green").
+`../../design-system/harness/MASTER.md` — porcelain / graphite).
 
 ## Structure (and the rules that keep it honest)
 
@@ -12,7 +12,7 @@ src/
   main.tsx                entry
   index.css               design tokens (the only place colors/fonts are defined)
 
-  app/                    routing — the app's shape, nothing else
+  app/                    routing + shared application providers
     App.tsx
 
   features/               one folder per product capability; a feature OWNS:
@@ -30,7 +30,7 @@ src/
       <feature>/use-*.ts    hooks that need this feature's context
 
   elements/               visual atoms of OUR making (no data fetching):
-    brand, markdown, status-pill, empty-state
+    button, icon-button, brand, markdown, status-pill, empty-state
 
   components/             GENERATED primitives — registry-managed:
     ui/                     shadcn base (button, input, skeleton, separator)
@@ -40,7 +40,7 @@ src/
   hooks/                  shared stateful helpers (use-user, use-poll, use-action)
                           (the registry-generated use-mobile/use-* live here too)
 
-  utils/                  PURE functions only — no React, no fetching:
+  utils/                  cross-cutting utilities, no feature state:
     cn.ts                   class merge (the registry's `utils` alias points here)
     format.ts               time/duration/token/… formatting
     api-client.ts           the one fetch wrapper (+ ApiError)
@@ -58,8 +58,8 @@ Where does a new thing go?
 Reusability in practice: `RepoPicker` (features/repos) is THE repo-gate UI —
 onboarding and settings both mount it; `useThreadStream` (features/chat) is
 the only SSE wiring; `AgentMessage` renders both finished and streaming turns;
-`SystemNote` renders every system event; `eventPreview`/`eventAuthor`
-(utils/events) feed the feed AND the rail.
+`SystemNote` renders every system event; event payload utilities support both
+the conversation and the queued-update dialog. The old context rail is gone.
 
 ## Commands (from the repo root)
 
@@ -68,4 +68,32 @@ npm run dev                        # full stack; this app on :5173 (proxies /api
 npm run build -w apps/dashboard    # production bundle → dist/
 npm run preview -w apps/dashboard  # serve the bundle (:5173, API proxy) against a running serve
 npm run typecheck -w apps/dashboard
+npm run test:ui -w apps/dashboard  # isolated Vite (:5186), mocked APIs; no worker needed
 ```
+
+The UI suite uses Playwright Chromium (`npx playwright install chromium` once).
+It exercises both themes, mobile/reduced-motion navigation, chat error recovery
+and interjection, repository search/discard/disable-all, and thread trace inspection.
+Screenshots and failed-test traces go to the gitignored `test-results/` folder.
+Axe audits cover the threads, trace, and settings views in both themes.
+
+Chat stream regressions also exercise missing call-start frames, reasoning/text
+separation, tool verbs between assistant messages, automatic activity collapse,
+refresh replay, and completion recovery with no SSE notification. Live updates
+are step/sequence scoped; a two-second active-turn reconciliation prevents the
+UI getting stranded on “Thinking” if a notification is dropped.
+
+## Vendored Animate UI fixes
+
+Copy-first components are source we own, not an unmodifiable dependency. Keep
+these corrections when updating from the registry:
+
+- Sidebar: Radix tooltip uses `delayDuration`; placement belongs on content.
+- Highlight: don't add `aria-selected` to arbitrary divs or links. The underlying
+  tab/menu primitive supplies the appropriate accessible state.
+- Switch: keep `onCheckedChange`, `checked`, `defaultChecked` off the motion DOM
+  button; Radix owns checked state and emits the callback.
+- Registry helpers use `@/utils`, as configured in `components.json`.
+- Tabs: use one neutral keyboard-focus ring, not layered outline/ring treatments.
+- Sidebar: icon-only mode explicitly hides labels and clips the inner content;
+  navigation uses its active state instead of a hover highlight overlay.

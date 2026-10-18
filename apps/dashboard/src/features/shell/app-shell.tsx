@@ -1,13 +1,19 @@
-/**
- * AppShell — the product-suite chrome: a collapsible Animate UI sidebar
- * (workspace nav + account) around the active view. Pages own their headers;
- * `topbar` slots breadcrumbs/actions next to the sidebar trigger.
- */
-import type { ReactNode } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
-import { LogOut, MessageSquareText, Settings2, TerminalSquare } from "lucide-react";
+/** Persistent visual vocabulary for every workspace view. */
+import type { CSSProperties, ReactNode } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import {
+  ChevronDown,
+  Layers2,
+  LogOut,
+  MessageSquare,
+  Moon,
+  Settings2,
+  Sun,
+} from "lucide-react";
 import { logout } from "@/features/auth/api";
 import { useUser } from "@/hooks/use-user";
+import { useTheme } from "@/app/theme-provider";
+import { IconButton } from "@/elements/icon-button";
 import { cn } from "@/utils/cn";
 import {
   Sidebar,
@@ -25,66 +31,90 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/animate-ui/components/radix/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/animate-ui/components/radix/dropdown-menu";
 
-const NAV = [
-  { to: "/", label: "Threads", icon: MessageSquareText, end: true },
-  { to: "/settings", label: "Settings", icon: Settings2, end: false },
-] as const;
-
-export function AppShell({ children, topbar }: { children: ReactNode; topbar?: ReactNode }) {
+export function AppShell({
+  children,
+  topbar,
+}: {
+  children: ReactNode;
+  topbar?: ReactNode;
+}) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { user } = useUser();
-
-  const signOut = async () => {
-    await logout().catch(() => undefined);
-    navigate("/login");
-  };
-
-  const displayName = user?.name ?? user?.login ?? user?.email ?? "…";
-
+  const { theme, setTheme } = useTheme();
+  const name = user?.name ?? user?.login ?? user?.email ?? "Your workspace";
   return (
-    <SidebarProvider className="h-svh overflow-hidden">
-      <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-        <SidebarHeader>
+    <SidebarProvider
+      className="h-svh min-h-0 overflow-hidden"
+      style={{ "--sidebar-width": "232px" } as CSSProperties}
+    >
+      <Sidebar collapsible="icon" animateOnHover={false} className="border-r border-border">
+        <SidebarHeader className="px-3 pt-4 pb-4 group-data-[collapsible=icon]:px-2">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild className="hover:bg-sidebar-accent">
-                <NavLink to="/" className="gap-2.5">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/15">
-                    <TerminalSquare className="size-4 text-primary" />
+              <SidebarMenuButton
+                size="lg"
+                asChild
+                className="h-11 hover:bg-transparent"
+              >
+                <NavLink to="/" aria-label="Harness home">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <Layers2 className="size-4" />
                   </span>
-                  <span className="flex min-w-0 flex-col items-start leading-tight">
-                    <span className="font-mono text-[13px] font-semibold tracking-tight">harness</span>
-                    <span className="truncate text-[10.5px] text-muted-foreground">issue → PR agent</span>
+                  <span data-sidebar-label className="text-base font-semibold tracking-[-.04em]">
+                    harness<span className="text-muted-foreground">.</span>
                   </span>
                 </NavLink>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
-
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel className="font-mono text-[10.5px] tracking-widest uppercase">
+          <SidebarGroup className="px-3 group-data-[collapsible=icon]:px-2">
+            <SidebarGroupLabel className="px-2 text-[11px] font-medium text-muted-foreground">
               Workspace
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {NAV.map((item) => (
+              <SidebarMenu className="gap-1">
+                {[
+                  {
+                    to: "/",
+                    label: "Threads",
+                    icon: MessageSquare,
+                    active:
+                      pathname === "/" || pathname.startsWith("/threads/"),
+                  },
+                  {
+                    to: "/settings",
+                    label: "Settings",
+                    icon: Settings2,
+                    active: pathname.startsWith("/settings"),
+                  },
+                ].map((item) => (
                   <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton asChild tooltip={item.label}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={item.active}
+                      tooltip={item.label}
+                      className="h-10 rounded-lg px-2.5 text-[13px] data-[active=true]:bg-card data-[active=true]:shadow-xs"
+                    >
                       <NavLink
                         to={item.to}
-                        end={item.end}
-                        className={({ isActive }) =>
-                          cn(
-                            "gap-2.5 transition-colors",
-                            isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-                          )
-                        }
+                        aria-label={item.label}
+                        aria-current={item.active ? "page" : undefined}
+                        className="gap-3"
                       >
-                        <item.icon className="size-4" />
-                        <span>{item.label}</span>
+                        <item.icon className="size-4 text-muted-foreground" />
+                        <span data-sidebar-label>{item.label}</span>
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -92,43 +122,92 @@ export function AppShell({ children, topbar }: { children: ReactNode; topbar?: R
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <div data-sidebar-label className="mt-auto px-5 pb-6 group-data-[collapsible=icon]:hidden">
+            <p className="text-xs font-medium">A little less busywork.</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              From an issue to a reviewed fix.
+              <br />
+              With every step accounted for.
+            </p>
+          </div>
         </SidebarContent>
-
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" className="cursor-default hover:bg-transparent">
+        <SidebarFooter className="border-t border-border p-3 group-data-[collapsible=icon]:p-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                size="lg"
+                className="gap-2.5 rounded-lg"
+                aria-label="Account menu"
+              >
                 {user?.avatarUrl ? (
-                  <img src={user.avatarUrl} alt="" className="size-8 shrink-0 rounded-lg" />
+                  <img
+                    src={user.avatarUrl}
+                    alt=""
+                    className="size-8 rounded-full"
+                  />
                 ) : (
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted font-mono text-xs font-semibold uppercase">
-                    {displayName.slice(0, 1)}
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium">
+                    {name.slice(0, 1)}
                   </span>
                 )}
-                <span className="flex min-w-0 flex-col items-start leading-tight">
-                  <span className="truncate text-[13px] font-medium">{displayName}</span>
-                  <span className="truncate text-[10.5px] text-muted-foreground">{user?.email ?? "signed in"}</span>
+                <span data-sidebar-label className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-xs font-medium">
+                    {name}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    Personal workspace
+                  </span>
                 </span>
+                <ChevronDown data-sidebar-label className="size-3 text-muted-foreground" />
               </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={signOut} tooltip="Sign out" className="gap-2.5 text-muted-foreground">
-                <LogOut className="size-4" />
-                <span>Sign out</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="w-56 rounded-xl p-1.5"
+            >
+              <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">
+                {user?.email ?? name}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => navigate("/settings")}>
+                <Settings2 />
+                Workspace settings
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setTheme(theme === "light" ? "dark" : "light")}
+              >
+                {theme === "light" ? <Moon /> : <Sun />}Switch to{" "}
+                {theme === "light" ? "dark" : "light"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  void logout().then(() => navigate("/login"));
+                }}
+              >
+                <LogOut />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
-
-      <SidebarInset className="flex min-h-0 flex-col overflow-hidden bg-background">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-          <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
-          <div className="h-4 w-px bg-border/70" />
+      <SidebarInset className="min-w-0 overflow-hidden bg-background">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 md:px-6">
+          <SidebarTrigger className="size-8 text-muted-foreground" />
+          <div className="h-4 w-px bg-border" />
           <div className="flex min-w-0 flex-1 items-center gap-2">{topbar}</div>
+          <IconButton
+            label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            className="shrink-0 text-muted-foreground"
+          >
+            {theme === "light" ? <Moon /> : <Sun />}
+          </IconButton>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        <div className={cn("flex min-h-0 flex-1 flex-col")}>{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

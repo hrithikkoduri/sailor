@@ -6,23 +6,31 @@ import { CopyButton } from "@/components/animate-ui/components/buttons/copy";
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
-    <div className="my-2 overflow-hidden rounded-lg border border-border bg-[#0b1322]">
+    <div className="my-3 overflow-hidden rounded-lg border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border/70 px-3 py-1">
-        <span className="font-mono text-[10.5px] tracking-wide text-muted-foreground">{lang ?? "text"}</span>
+        <span className="font-mono text-[10.5px] tracking-wide text-muted-foreground">
+          {lang ?? "text"}
+        </span>
         <CopyButton
           content={code}
           size="xs"
           className="size-6 cursor-pointer bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
         />
       </div>
-      <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed text-slate-200">
+      <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-foreground">
         <code>{code}</code>
       </pre>
     </div>
   );
 }
 
-export function Markdown({ text, className }: { text: string; className?: string }) {
+export function Markdown({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
   return (
     <div className={`prose-harness text-sm text-foreground ${className ?? ""}`}>
       <ReactMarkdown
@@ -34,9 +42,14 @@ export function Markdown({ text, className }: { text: string; className?: string
               {children}
             </a>
           ),
-          code: ({ className: codeClassName, children, ...props }: ComponentProps<"code">) => {
+          code: ({
+            className: codeClassName,
+            children,
+            ...props
+          }: ComponentProps<"code">) => {
             const raw = String(children ?? "");
-            const isBlock = /language-/.test(codeClassName ?? "") || raw.includes("\n");
+            const isBlock =
+              /language-/.test(codeClassName ?? "") || raw.includes("\n");
             if (!isBlock) {
               return (
                 <code className={codeClassName} {...props}>
