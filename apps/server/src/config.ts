@@ -66,6 +66,10 @@ export interface SailorConfig {
     /** USD per million tokens; enables cost accounting when both are set. */
     priceInPerMTok?: number;
     priceOutPerMTok?: number;
+    /** USD per million cached input tokens (prompt-cache reads). */
+    priceCacheReadPerMTok?: number;
+    /** Ask the provider for a usage block carrying the real cost (OpenRouter). */
+    includeUsageCost: boolean;
   };
   /**
    * Run budgets — long-horizon dials, cumulative per run. The engine ships
@@ -248,6 +252,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       model: env.LLM_MODEL || undefined,
       priceInPerMTok: optionalNumber(env.LLM_PRICE_IN_PER_MTOK),
       priceOutPerMTok: optionalNumber(env.LLM_PRICE_OUT_PER_MTOK),
+      priceCacheReadPerMTok: optionalNumber(env.LLM_PRICE_CACHE_READ),
+      // OpenRouter reports the real per-request cost when asked — prefer it
+      // over any table (and it accounts for cache reads exactly).
+      includeUsageCost: (
+        env.LLM_BASE_URL ?? "https://openrouter.ai/api/v1"
+      ).includes("openrouter"),
     },
     budget: {
       // Per-RUN dials, defaulted for deepseek-v4.1-flash prices (~$0.04/M in,

@@ -159,6 +159,9 @@ export function buildThreadTree(
           const reasoningTokens = num(usage, "reasoningTokens");
           if (reasoningTokens !== undefined)
             node.detail.metadata.reasoningTokens = reasoningTokens;
+          const cachedTokens = num(usage, "cachedTokens");
+          if (cachedTokens !== undefined && cachedTokens > 0)
+            node.detail.metadata.inputCached = cachedTokens;
           if (node.kind === "llm") lastLlm = node;
           break;
         }

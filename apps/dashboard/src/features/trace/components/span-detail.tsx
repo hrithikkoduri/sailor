@@ -55,6 +55,8 @@ export function SpanDetail({ node }: { node: SpanNode }) {
             {node.tokensIn !== undefined && (
               <span>
                 {fmtTokens(node.tokensIn + (node.tokensOut ?? 0))} tokens
+                {typeof node.detail.metadata.inputCached === "number" &&
+                  ` · ${fmtTokens(node.detail.metadata.inputCached)} cached`}
               </span>
             )}
             {node.badge && <span>{node.badge.replace(/_/g, " ")}</span>}
