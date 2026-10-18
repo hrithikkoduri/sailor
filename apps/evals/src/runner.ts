@@ -95,13 +95,24 @@ async function extractPatch(
     `git add -A && git diff --cached --binary ${headRef}`,
     { timeoutSecs: 120 },
   );
-  if (diff.exitCode === 0) return diff.stdout;
-  // A degraded repo may not resolve the ref — report the worktree as-is.
-  const fallback = await sandbox.exec(
-    `git add -A && git diff --cached --binary`,
-    { timeoutSecs: 120 },
-  );
-  return fallback.stdout;
+  if (diff.exitCode !== 0) {
+    // A degraded repo may not resolve the ref — report the worktree as-is.
+    const fallback = await sandbox.exec(
+      `git add -A && git diff --cached --binary`,
+      { timeoutSecs: 120 },
+    );
+    // BOTH failing means the sandbox is broken (paused? gone?) — a TOOLING
+    // failure, and it must be loud: silently returning "" turns a lost patch
+    // into an innocent-looking empty one (2026-10-18: an xarray attempt's
+    // real 1k-char fix died this way and read as "agent did nothing").
+    if (fallback.exitCode !== 0) {
+      throw new Error(
+        `patch extraction failed (git diff exited ${diff.exitCode}, ${fallback.exitCode}): ${fallback.output.trim().slice(0, 300)}`,
+      );
+    }
+    return fallback.stdout;
+  }
+  return diff.stdout;
 }
 
 export async function runEvalSuite(
