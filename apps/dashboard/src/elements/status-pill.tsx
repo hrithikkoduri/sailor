@@ -3,7 +3,7 @@
  * Only `running` gets a tint (it's the one live state worth attention);
  * everything else stays quiet so the page has ONE accent, not five.
  */
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 const DOT: Record<string, string> = {
   queued: "bg-slate-500",

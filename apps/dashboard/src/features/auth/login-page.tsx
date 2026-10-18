@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, ApiError } from "../api";
-import { GithubMark, Wordmark } from "../components/brand";
+import { login, signup } from "@/features/auth/api";
+import { ApiError } from "@/utils/api-client";
+import { GithubMark, Wordmark } from "@/elements/brand";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-2 focus:ring-primary/20";
@@ -19,10 +20,7 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await api(mode === "signin" ? "/auth/login" : "/auth/signup", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
+      await (mode === "signin" ? login : signup)(email, password);
       navigate("/onboarding");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong — try again.");

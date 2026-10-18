@@ -1,9 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { LoginPage } from "./pages/LoginPage";
-import { OnboardingPage } from "./pages/OnboardingPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { ThreadsPage } from "./pages/ThreadsPage";
-import { ThreadDetailPage } from "./pages/ThreadDetailPage";
+import { LoginPage } from "@/features/auth/login-page";
+import { OnboardingPage } from "@/features/onboarding/onboarding-page";
+import { SettingsPage } from "@/features/settings/settings-page";
+import { ThreadsPage } from "@/features/threads/threads-page";
+import { ThreadDetailPage } from "@/features/threads/thread-detail-page";
 
 export default function App() {
   return (

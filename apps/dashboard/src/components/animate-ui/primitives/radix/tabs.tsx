@@ -15,7 +15,7 @@ import {
   type HighlightProps,
   type HighlightItemProps,
 } from '@/components/animate-ui/primitives/effects/highlight';
-import { getStrictContext } from '@/lib/get-strict-context';
+import { getStrictContext } from '@/utils/get-strict-context';
 import { useControlledState } from '@/hooks/use-controlled-state';
 import {
   AutoHeight,

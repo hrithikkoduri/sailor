@@ -8,8 +8,8 @@
  */
 import { useRef, useState } from "react";
 import { ArrowUp, CornerDownLeft, Zap } from "lucide-react";
-import { interjectEvent } from "@/api";
-import { cn } from "@/lib/utils";
+import { interjectEvent } from "@/features/chat/api";
+import { cn } from "@/utils/cn";
 
 export function ChatComposer({
   busy,

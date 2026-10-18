@@ -349,6 +349,20 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - **Done when:** ✅ integration tests pin the routing (chat-only → `agent: chat`, GitHub event
   → `agent: coding`) and the full suites stay green (95 + 40 + 65).
 
+### Step 18d — dashboard architecture: features, elements, hooks, utils ✅ (same-day, from review)
+- **What:** the dashboard reorganized from "pages + components" into a **feature-based
+  architecture**: `features/{shell,auth,onboarding,repos,threads,chat,trace,settings}` each
+  owning its page(s) + `api.ts` + components + feature hooks; shared layers above: `elements/`
+  (our visual atoms), `components/` (registry-generated only: `ui/` + `animate-ui/`), `hooks/`
+  (shared stateful), `utils/` (pure: `cn`, `format`, `api-client`, `events`). Rules are written
+  down in `apps/dashboard/README.md` (where a new thing goes; deep cross-feature imports are a
+  smell; registry folders stay untouched). DRY extractions shipped with the move: **RepoPicker**
+  (one gate UI for onboarding + settings — previously duplicated), **useThreadStream** (the
+  only SSE wiring), **useUser / usePoll / useAction**, **AgentMessage / SystemNote** primitives
+  (one component renders finished AND streaming turns), **eventPreview/eventAuthor** shared by
+  feed and rail. No behavior change; typecheck + build green; `run.agent` now also shown in the
+  rail (chat vs coding turns).
+
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.
   (Turn compaction shipped early in the engine — decision #18.)

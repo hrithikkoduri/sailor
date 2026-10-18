@@ -5,8 +5,8 @@
  * calls and their outputs, guardrails, checkpoints, and the finish.
  */
 import { useState, type ReactNode } from "react";
-import type { TraceRow } from "../api";
-import { fmtTokens } from "@/lib/format";
+import type { TraceRow } from "@/features/trace/api";
+import { fmtTokens } from "@/utils/format";
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);

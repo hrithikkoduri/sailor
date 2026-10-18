@@ -6,7 +6,7 @@ import {
   SwitchIcon as SwitchIconPrimitive,
   type SwitchProps as SwitchPrimitiveProps,
 } from '@/components/animate-ui/primitives/radix/switch';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 
 type SwitchProps = SwitchPrimitiveProps & {
   pressedWidth?: number;

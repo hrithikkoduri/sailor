@@ -3,11 +3,12 @@
  * (workspace nav + account) around the active view. Pages own their headers;
  * `topbar` slots breadcrumbs/actions next to the sidebar trigger.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { LogOut, MessageSquareText, Settings2, TerminalSquare } from "lucide-react";
-import { api, ApiError, type SessionUser } from "@/api";
-import { cn } from "@/lib/utils";
+import { logout } from "@/features/auth/api";
+import { useUser } from "@/hooks/use-user";
+import { cn } from "@/utils/cn";
 import {
   Sidebar,
   SidebarContent,
@@ -32,18 +33,10 @@ const NAV = [
 
 export function AppShell({ children, topbar }: { children: ReactNode; topbar?: ReactNode }) {
   const navigate = useNavigate();
-  const [user, setUser] = useState<SessionUser | null>(null);
+  const { user } = useUser();
 
-  useEffect(() => {
-    api<{ user: SessionUser }>("/auth/me")
-      .then((r) => setUser(r.user))
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 401) navigate("/login");
-      });
-  }, [navigate]);
-
-  const logout = async () => {
-    await api("/auth/logout", { method: "POST" }).catch(() => undefined);
+  const signOut = async () => {
+    await logout().catch(() => undefined);
     navigate("/login");
   };
 
@@ -119,7 +112,7 @@ export function AppShell({ children, topbar }: { children: ReactNode; topbar?: R
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={logout} tooltip="Sign out" className="gap-2.5 text-muted-foreground">
+              <SidebarMenuButton onClick={signOut} tooltip="Sign out" className="gap-2.5 text-muted-foreground">
                 <LogOut className="size-4" />
                 <span>Sign out</span>
               </SidebarMenuButton>

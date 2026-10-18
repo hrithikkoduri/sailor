@@ -41,6 +41,7 @@ const runSummary = (r: RunRow) => ({
   id: r.id,
   status: r.status,
   trigger: r.trigger,
+  agent: r.agent,
   phase: r.phase,
   disposition: r.disposition,
   error: r.error,

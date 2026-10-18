@@ -21,7 +21,7 @@ import {
   type SheetTitleProps as SheetTitlePrimitiveProps,
   type SheetDescriptionProps as SheetDescriptionPrimitiveProps,
 } from '@/components/animate-ui/primitives/radix/sheet';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { XIcon } from 'lucide-react';
 
 type SheetProps = SheetPrimitiveProps;

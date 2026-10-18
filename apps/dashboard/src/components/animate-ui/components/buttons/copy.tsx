@@ -9,7 +9,7 @@ import {
   Button as ButtonPrimitive,
   type ButtonProps as ButtonPrimitiveProps,
 } from '@/components/animate-ui/primitives/buttons/button';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { useControlledState } from '@/hooks/use-controlled-state';
 
 const buttonVariants = cva(
