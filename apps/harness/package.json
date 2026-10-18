@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "harness": "tsx src/cli.ts",
+    "serve": "tsx src/cli.ts serve",
+    "serve:watch": "tsx watch --clear-screen=false src/cli.ts serve",
+    "worker:watch": "tsx watch --clear-screen=false src/cli.ts worker",
     "doctor": "tsx src/cli.ts doctor",
     "migrate": "tsx src/cli.ts migrate",
     "db:generate": "drizzle-kit generate",

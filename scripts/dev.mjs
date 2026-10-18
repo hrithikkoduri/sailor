@@ -115,11 +115,12 @@ function start(name, args) {
   return child;
 }
 
-start("serve", ["run", "harness", "--", "serve"]);
-start("worker", ["run", "harness", "--", "worker"]);
+start("serve", ["run", "serve:watch", "-w", "apps/harness"]);
+start("worker", ["run", "worker:watch", "-w", "apps/harness"]);
 start("web", ["run", "dev", "-w", "apps/dashboard"]);
 
 log("stack", "dashboard → http://localhost:5173  ·  webhooks → :8787 (tunnel: ngrok)");
+log("stack", "watch mode: edits restart serve + worker (a worker restart mid-run = the sweep resumes it)");
 
 let shuttingDown = false;
 const shutdown = (signal) => {
