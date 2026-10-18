@@ -1,8 +1,13 @@
 /** The app chrome: brand, signed-in user chip, sign out. */
 import { useEffect, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { api, ApiError, type SessionUser } from "../api";
 import { Wordmark } from "./brand";
+
+const navClass = ({ isActive }: { isActive: boolean }) =>
+  `rounded-lg px-3 py-1.5 transition ${
+    isActive ? "bg-white/10 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+  }`;
 
 export function Shell({ children, max = "max-w-5xl" }: { children: ReactNode; max?: string }) {
   const navigate = useNavigate();
@@ -24,7 +29,17 @@ export function Shell({ children, max = "max-w-5xl" }: { children: ReactNode; ma
   return (
     <div className="bg-aura min-h-dvh">
       <header className={`mx-auto flex ${max} items-center justify-between px-6 py-5`}>
-        <Wordmark />
+        <div className="flex items-center gap-6">
+          <Wordmark />
+          <nav className="flex items-center gap-1 text-sm">
+            <NavLink to="/" end className={navClass}>
+              Threads
+            </NavLink>
+            <NavLink to="/settings" className={navClass}>
+              Settings
+            </NavLink>
+          </nav>
+        </div>
         <div className="flex items-center gap-3">
           {user && (
             <span className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] py-1 pl-1 pr-3 text-sm text-zinc-300">
