@@ -154,9 +154,10 @@ export const threads = pgTable(
     /** The phase the thread is currently in — resume starts here. */
     phase: text("phase"),
     budgetMaxTurns: integer("budget_max_turns").notNull().default(20),
+    /** Total the thread may spend across runs — the revival chain's stop. */
     budgetMaxUsd: numeric("budget_max_usd", { precision: 10, scale: 4 })
       .notNull()
-      .default("10.0"),
+      .default("25.0"),
     turnsUsed: integer("turns_used").notNull().default(0),
     usdSpent: numeric("usd_spent", { precision: 10, scale: 4 })
       .notNull()
@@ -202,6 +203,14 @@ export const runs = pgTable(
     cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
     /** Dashboard "keep sandbox" switch (17b): skip destruction at run end (debugging). */
     keepSandbox: boolean("keep_sandbox").notNull().default(false),
+    /**
+     * What a budget-exhausted run left for revival: `{ request?: …,
+     * checkpointRef?: … }` — null when the run did not end out of budget with
+     * evidence of in-flight work. The sweep reads it as the fallback cue.
+     */
+    revival: jsonb("revival"),
+    /** The aftermath of this run was handled (revived, or a needs-human note). */
+    revived: boolean("revived").notNull().default(false),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

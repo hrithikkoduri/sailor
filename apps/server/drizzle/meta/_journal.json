@@ -85,6 +85,13 @@
       "when": 1792332432696,
       "tag": "0011_opposite_trish_tilby",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792334842834,
+      "tag": "0012_yielding_hercules",
+      "breakpoints": true
     }
   ]
 }

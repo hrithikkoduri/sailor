@@ -10,16 +10,20 @@
  * This is the app half of durable turns; the package half is
  * `pauseAfterPhase` + per-turn thread persistence + checkpoints.
  */
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, isNotNull, lt } from "drizzle-orm";
 import { isUniqueViolation } from "../db/errors.js";
 import { schema, type Db } from "../db/index.js";
+import { handleBudgetAftermath } from "./revival.js";
 
 /** A heartbeat older than this means the worker is presumed dead. */
 export const STALE_AFTER_MS = 120_000;
 
 /** Stamp "still alive" on a running run. */
 export async function heartbeatRun(db: Db, runId: string): Promise<void> {
-  await db.update(schema.runs).set({ heartbeatAt: new Date() }).where(eq(schema.runs.id, runId));
+  await db
+    .update(schema.runs)
+    .set({ heartbeatAt: new Date() })
+    .where(eq(schema.runs.id, runId));
 }
 
 /**
@@ -29,7 +33,10 @@ export async function heartbeatRun(db: Db, runId: string): Promise<void> {
  * cross-process one.
  */
 export async function requestCancel(db: Db, runId: string): Promise<void> {
-  await db.update(schema.runs).set({ cancelRequestedAt: new Date() }).where(eq(schema.runs.id, runId));
+  await db
+    .update(schema.runs)
+    .set({ cancelRequestedAt: new Date() })
+    .where(eq(schema.runs.id, runId));
 }
 
 /** Beat for as long as `fn` runs; stop afterwards (success or failure). */
@@ -62,12 +69,20 @@ export interface SweepResult {
  * The status flip is conditional on the run still being `running`, so two
  * concurrent sweeps can't double-recover the same run.
  */
-export async function sweepStaleRuns(db: Db, opts: { staleAfterMs?: number } = {}): Promise<SweepResult[]> {
+export async function sweepStaleRuns(
+  db: Db,
+  opts: { staleAfterMs?: number; revivalGraceMs?: number } = {},
+): Promise<SweepResult[]> {
   const cutoff = new Date(Date.now() - (opts.staleAfterMs ?? STALE_AFTER_MS));
   const stale = await db
     .select()
     .from(schema.runs)
-    .where(and(eq(schema.runs.status, "running"), lt(schema.runs.heartbeatAt, cutoff)));
+    .where(
+      and(
+        eq(schema.runs.status, "running"),
+        lt(schema.runs.heartbeatAt, cutoff),
+      ),
+    );
 
   const results: SweepResult[] = [];
   for (const run of stale) {
@@ -89,14 +104,49 @@ export async function sweepStaleRuns(db: Db, opts: { staleAfterMs?: number } = {
     try {
       [resume] = await db
         .insert(schema.runs)
-        .values({ threadId: run.threadId, trigger: "resume", agent: run.agent, status: "queued" })
+        .values({
+          threadId: run.threadId,
+          trigger: "resume",
+          agent: run.agent,
+          status: "queued",
+        })
         .returning({ id: schema.runs.id });
     } catch (err) {
       if (isUniqueViolation(err)) continue;
       throw err;
     }
 
-    results.push({ staleRunId: run.id, threadId: run.threadId, resumeRunId: resume!.id });
+    results.push({
+      staleRunId: run.id,
+      threadId: run.threadId,
+      resumeRunId: resume!.id,
+    });
+  }
+
+  // Budget-dead runs whose aftermath never happened (the worker died between
+  // the run ending and the revival being queued): the fallback cue. Same
+  // recovery as the stale case — same task, same budget — via the shared
+  // helper. The grace period lets the fast path settle first.
+  const budgetCutoff = new Date(Date.now() - (opts.revivalGraceMs ?? 15_000));
+  const budgetDead = await db
+    .select({ id: schema.runs.id, threadId: schema.runs.threadId })
+    .from(schema.runs)
+    .where(
+      and(
+        eq(schema.runs.status, "budget_exhausted"),
+        eq(schema.runs.revived, false),
+        isNotNull(schema.runs.revival),
+        lt(schema.runs.finishedAt, budgetCutoff),
+      ),
+    );
+  for (const run of budgetDead) {
+    const aftermath = await handleBudgetAftermath(db, run.id);
+    if (aftermath.revivedRunId)
+      results.push({
+        staleRunId: run.id,
+        threadId: run.threadId,
+        resumeRunId: aftermath.revivedRunId,
+      });
   }
   return results;
 }

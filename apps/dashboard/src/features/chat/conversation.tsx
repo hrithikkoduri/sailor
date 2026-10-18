@@ -98,6 +98,13 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
         at,
         text: `PR branch conflicts with ${str(p, "base") ?? "base"}`,
       };
+    case "budget_exhausted":
+      return {
+        kind: "note",
+        id: `e${e.id}`,
+        at,
+        text: str(p, "note") ?? "run ended out of budget",
+      };
     default:
       return {
         kind: "note",

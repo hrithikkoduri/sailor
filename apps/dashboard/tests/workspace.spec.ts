@@ -248,6 +248,7 @@ test("settings: repo switches, disable-all save, discard, appearance", async ({
   ).toEqual([]);
   await page.getByRole("tab", { name: "Dark", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await settleTheme(page);
   await page.screenshot({
     path: info.outputPath("settings-dark.png"),
     fullPage: true,

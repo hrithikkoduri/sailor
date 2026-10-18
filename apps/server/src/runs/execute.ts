@@ -21,9 +21,11 @@ import {
   releaseSandbox,
   runAgent,
   type AgentEvent,
+  type BudgetLimits,
   type CreateSandboxOptions,
   type HeyoSandboxConfig,
   type LLMClient,
+  type RevivalRequest,
   type Sandbox,
   type SandboxHandle,
   type SandboxSpec,
@@ -89,12 +91,16 @@ export interface ExecuteRunDeps {
    */
   live?: (threadId: string, payload: Record<string, unknown>) => void;
   publicationPolicy?: PublicationPolicy;
+  /** Test seam: override the engine budget for this run. */
+  budgets?: Partial<BudgetLimits>;
+  /** Test seam: budget revival on/off (default: config, SAILOR_BUDGET_REVIVAL). */
+  revival?: boolean;
 }
 
 export interface ExecuteRunOutcome {
   runId: string;
   threadId: string;
-  status: "succeeded" | "failed" | "cancelled" | "paused";
+  status: "succeeded" | "failed" | "cancelled" | "paused" | "budget_exhausted";
   reason: string;
   summary?: string;
   /** Set when the agent declared one via finish(): done | watch | blocked. */
@@ -104,6 +110,10 @@ export interface ExecuteRunOutcome {
   resumeAt?: string;
   /** The phase the run ended in — the drain uses it to resume cancelled work. */
   phase?: string;
+  /** The agent's handoff when the budget won — evidence for revival. */
+  revival?: RevivalRequest;
+  /** The run's checkpoint commit, when changed work was snapshotted. */
+  checkpointRef?: string;
 }
 
 const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
@@ -400,6 +410,14 @@ export async function executeRun(
       ? (requestedPhase ?? undefined)
       : undefined;
 
+    const engineBudgets: Partial<BudgetLimits> = {
+      maxSteps: cfg.budget.maxSteps,
+      maxTokens: cfg.budget.maxTokens,
+      maxUsd: cfg.budget.maxUsd,
+      ...deps.budgets,
+    };
+    const revivalOn = deps.revival ?? cfg.budget.revival;
+
     const outcome = await withHeartbeat(
       db,
       run.id,
@@ -424,7 +442,10 @@ export async function executeRun(
             // around the 20th call — cumulative tokens grow with every call,
             // and compaction only bounds the per-call context. Steps and
             // dollars are the real runaway backstops.
-            budgets: cfg.budget,
+            budgets: engineBudgets,
+            // Revival (SAILOR_BUDGET_REVIVAL): warn at 85%, offer the
+            // request_revival handoff; the aftermath is this product's call.
+            ...(revivalOn ? { revival: {} } : {}),
             checkpointPushRef,
             signal: controller.signal,
             onEvent: sink,
@@ -441,7 +462,24 @@ export async function executeRun(
           ? "cancelled"
           : outcome.reason === "paused"
             ? "paused"
-            : "failed";
+            : outcome.reason === "budget_exceeded" ||
+                outcome.reason === "max_steps"
+              ? "budget_exhausted"
+              : "failed";
+
+    // The evidence a revival would run on: the agent's handoff and/or a
+    // checkpoint of in-flight work. No evidence → no revival.
+    const revivalEvidence =
+      status === "budget_exhausted"
+        ? outcome.revival || outcome.checkpointRef
+          ? {
+              ...(outcome.revival ? { request: outcome.revival } : {}),
+              ...(outcome.checkpointRef
+                ? { checkpointRef: outcome.checkpointRef }
+                : {}),
+            }
+          : null
+        : null;
 
     await db
       .update(schema.runs)
@@ -458,6 +496,7 @@ export async function executeRun(
             ? String(outcome.usage.costUsd)
             : "0",
         error: outcome.error ?? null,
+        revival: revivalEvidence,
       })
       .where(eq(schema.runs.id, run.id));
 
@@ -549,6 +588,10 @@ export async function executeRun(
       watch: outcome.watch,
       resumeAt: outcome.resumeAt,
       phase: outcome.phase,
+      ...(outcome.revival ? { revival: outcome.revival } : {}),
+      ...(outcome.checkpointRef
+        ? { checkpointRef: outcome.checkpointRef }
+        : {}),
     };
   } catch (err) {
     await sinkTail.catch(() => undefined);

@@ -16,6 +16,7 @@ import { loadConfig } from "../config.js";
 import { createDb, createPool } from "../db/index.js";
 import {
   BABYSIT_REPEAT_MS,
+  RUN_JOB_OPTIONS,
   createQueueConnection,
   createQueues,
   type BabysitJobData,
@@ -23,6 +24,7 @@ import {
 } from "../queue/index.js";
 import { createGitHubApp } from "../github/app.js";
 import { executeRun } from "../runs/execute.js";
+import { handleBudgetAftermath } from "../runs/revival.js";
 import { drainInbox } from "../threads/inbox.js";
 import { createLivePublisher, createThreadNotifier } from "../server/stream.js";
 import { handleSweep } from "./sweep.js";
@@ -42,7 +44,8 @@ export async function workerCommand(argv: string[]): Promise<number> {
   const sweepIdx = argv.indexOf("--sweep-every-ms");
   const sweepEveryMs = sweepIdx !== -1 ? Number(argv[sweepIdx + 1]) : 60_000;
   const heartbeatIdx = argv.indexOf("--heartbeat-every-ms");
-  const heartbeatEveryMs = heartbeatIdx !== -1 ? Number(argv[heartbeatIdx + 1]) : 30_000;
+  const heartbeatEveryMs =
+    heartbeatIdx !== -1 ? Number(argv[heartbeatIdx + 1]) : 30_000;
   const staleIdx = argv.indexOf("--stale-after-ms");
   const staleAfterMs = staleIdx !== -1 ? Number(argv[staleIdx + 1]) : 120_000;
   if (
@@ -66,7 +69,10 @@ export async function workerCommand(argv: string[]): Promise<number> {
   // The GitHub App (decision #42): tokens are minted per installation.
   const githubApp =
     cfg.github.appId && cfg.github.privateKey
-      ? createGitHubApp({ appId: cfg.github.appId, privateKey: cfg.github.privateKey })
+      ? createGitHubApp({
+          appId: cfg.github.appId,
+          privateKey: cfg.github.privateKey,
+        })
       : undefined;
 
   const queueConnection = createQueueConnection(cfg.redis.url);
@@ -98,16 +104,35 @@ export async function workerCommand(argv: string[]): Promise<number> {
       process.stdout.write(
         `[worker] run ${job.data.runId} → ${outcome.status}${outcome.summary ? ` — ${outcome.summary.replace(/\s+/g, " ").slice(0, 90)}` : ""}${watching}\n`,
       );
+      // Budget revival (the fast path): the death itself is the cue — the run
+      // ended out of budget with a handoff, so the next run starts now: same
+      // task, same phase, same budget. The sweep is the fallback.
+      const aftermath = await handleBudgetAftermath(db, job.data.runId);
+      if (aftermath.revivedRunId) {
+        await queues.runs.add(
+          "run",
+          { runId: aftermath.revivedRunId },
+          RUN_JOB_OPTIONS,
+        );
+        notify(outcome.threadId);
+        process.stdout.write(
+          `[worker] budget revival → run ${aftermath.revivedRunId} queued\n`,
+        );
+      }
       // Post-turn consumer: events that queued up while this run was busy
       // become the NEXT run (coalesced into one task). A cancelled run
       // (interjected — decision #28) resumes the batch at the phase it stopped.
       const drained = await drainInbox(
         { db, queues },
         outcome.threadId,
-        outcome.status === "cancelled" && outcome.phase ? { startPhase: outcome.phase } : {},
+        outcome.status === "cancelled" && outcome.phase
+          ? { startPhase: outcome.phase }
+          : {},
       );
       if (drained) {
-        process.stdout.write(`[worker] inbox drain → run ${drained.id} queued\n`);
+        process.stdout.write(
+          `[worker] inbox drain → run ${drained.id} queued\n`,
+        );
         notify(outcome.threadId);
       }
     },
@@ -125,7 +150,9 @@ export async function workerCommand(argv: string[]): Promise<number> {
           { db, queues, githubApp, botLogin: cfg.github.botLogin },
           { threadId: job.data.threadId },
         );
-        const notable = results.filter((r) => r.action !== "quiet" && r.action !== "busy");
+        const notable = results.filter(
+          (r) => r.action !== "quiet" && r.action !== "busy",
+        );
         if (notable.length > 0) {
           process.stdout.write(
             `[worker] babysit: ${notable.map((r) => `${r.threadId.slice(0, 8)} → ${r.action}`).join("; ")}\n`,
@@ -135,7 +162,9 @@ export async function workerCommand(argv: string[]): Promise<number> {
       }
       const results = await handleSweep({ db, queues }, { staleAfterMs });
       if (results.length > 0) {
-        process.stdout.write(`[worker] sweep: ${results.length} stale run(s) recovered → resume queued\n`);
+        process.stdout.write(
+          `[worker] sweep: ${results.length} stale run(s) recovered → resume queued\n`,
+        );
       }
     },
     { connection: babysitWorkerConnection, concurrency: 1 },
@@ -143,10 +172,18 @@ export async function workerCommand(argv: string[]): Promise<number> {
 
   // The recurring sweep (BullMQ 6 Job Scheduler — the modern replacement for
   // repeatable jobs; the scheduler id keeps it singular).
-  await queues.babysit.upsertJobScheduler("sweep-stale-runs", { every: sweepEveryMs }, { name: "sweep", data: {} });
+  await queues.babysit.upsertJobScheduler(
+    "sweep-stale-runs",
+    { every: sweepEveryMs },
+    { name: "sweep", data: {} },
+  );
   // The PR babysitter: every 10 minutes, check open agent PRs for silent
   // problems (merge conflicts, failed checks, missed comments) — step 13.
-  await queues.babysit.upsertJobScheduler("babysit-prs", { every: BABYSIT_REPEAT_MS }, { name: "babysit", data: {} });
+  await queues.babysit.upsertJobScheduler(
+    "babysit-prs",
+    { every: BABYSIT_REPEAT_MS },
+    { name: "babysit", data: {} },
+  );
 
   process.stdout.write(
     `[worker] up — backend: ${local ? "local (dev, no isolation)" : "heyo"}, sweep every ${sweepEveryMs}ms, queue: runs (concurrency 1)` +
@@ -157,7 +194,9 @@ export async function workerCommand(argv: string[]): Promise<number> {
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    process.stdout.write(`[worker] ${signal} — draining (finishing the active run)…\n`);
+    process.stdout.write(
+      `[worker] ${signal} — draining (finishing the active run)…\n`,
+    );
     await runs.close().catch(() => undefined); // waits for the active job
     await babysit.close().catch(() => undefined);
     await queues.close().catch(() => undefined);

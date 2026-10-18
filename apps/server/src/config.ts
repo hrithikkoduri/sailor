@@ -70,6 +70,8 @@ export interface SailorConfig {
     maxSteps: number;
     maxTokens: number;
     maxUsd: number;
+    /** Budget revival (A): continue out-of-budget runs while the thread has budget. */
+    revival: boolean;
   };
   /** Postgres — threads, runs, events, traces (full stack from step 2). */
   postgres: { url: string };
@@ -227,6 +229,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       maxSteps: optionalNumber(env.SAILOR_MAX_STEPS) ?? 300,
       maxTokens: optionalNumber(env.SAILOR_MAX_TOKENS) ?? 150_000_000,
       maxUsd: optionalNumber(env.SAILOR_MAX_USD) ?? 25,
+      /**
+       * Budget revival: a run that ends out of budget with a handoff
+       * (revival request and/or a checkpoint) continues on its own — same
+       * task, same budget — until the THREAD's budget is spent.
+       * SAILOR_BUDGET_REVIVAL=0 turns it off.
+       */
+      revival: env.SAILOR_BUDGET_REVIVAL !== "0",
     },
     postgres: {
       url: env.DATABASE_URL ?? "postgres://sailor:sailor@localhost:5432/sailor",
