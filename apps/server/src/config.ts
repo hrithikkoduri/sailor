@@ -28,6 +28,8 @@ export interface SailorConfig {
     imageRef: string | undefined;
     imageDockerfile: string | undefined;
     imageAuth: { secret: string; key?: string } | undefined;
+    /** Refresh the stored git-build secret at run start (HEYO_BUILD_SECRET_REFRESH=0 disables). */
+    buildSecretRefresh: boolean;
     sizeClass: HeyoSizeClass;
     diskSizeGb: number;
   };
@@ -223,6 +225,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
               : {}),
           }
         : undefined,
+      buildSecretRefresh: env.HEYO_BUILD_SECRET_REFRESH !== "0",
       sizeClass: sizeClass(env.HEYO_SIZE_CLASS),
       diskSizeGb: Number(env.HEYO_DISK_GB ?? "4") || 4,
     },

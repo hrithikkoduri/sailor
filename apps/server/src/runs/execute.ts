@@ -45,6 +45,7 @@ import {
 import { TraceRecorder } from "../trace/store.js";
 import type { GitHubAppService } from "../github/app.js";
 import type { DeliveredPullRequest } from "../github/pr.js";
+import { refreshBuildSecret } from "../heyo/build-secret.js";
 import {
   assertSafeCheckpointRef,
   checkpointRefFor,
@@ -321,6 +322,34 @@ export async function executeRun(
     } catch (err) {
       process.stdout.write(
         `[run ${run.id}] installation token mint failed: ${err instanceof Error ? err.message : String(err)} — continuing without credentials\n`,
+      );
+    }
+  }
+  // Git-kind image builds run on Heyo's host and read their credential from
+  // the namespace secret store; installation tokens live an hour, so refresh
+  // the stored value on the way in (the same fresh token also clones the
+  // workspace). Best-effort — an older secret beats a failed run.
+  if (
+    !deps.local &&
+    cfg.heyo.imageKind === "git" &&
+    cfg.heyo.buildSecretRefresh &&
+    cfg.heyo.imageAuth?.secret &&
+    cfg.heyo.imageAuth.key &&
+    gitToken &&
+    cfg.heyo.token
+  ) {
+    try {
+      await refreshBuildSecret({
+        server: cfg.heyo.server,
+        token: cfg.heyo.token,
+        namespace: cfg.heyo.namespace,
+        secret: cfg.heyo.imageAuth.secret,
+        key: cfg.heyo.imageAuth.key,
+        value: gitToken,
+      });
+    } catch (err) {
+      process.stdout.write(
+        `[run ${run.id}] build-secret refresh failed: ${err instanceof Error ? err.message : String(err)} — continuing with the stored value\n`,
       );
     }
   }

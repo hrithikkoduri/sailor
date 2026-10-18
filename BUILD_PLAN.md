@@ -256,10 +256,12 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   `HTTP 502 — app-lb could not reach its artifact store` (same family as `setRepo` public
   answering 502 "the artifact store refused this app-lb's credential"). Until Heyo fixes the
   store, the git kind is the production path; the ext4 push retry is a one-command follow-up.
-- **Secret durability:** `heyo-build-git` currently holds an App installation token (~1h).
-  Before real testing, replace it with a durable fine-grained PAT (repo read) via
-  `heyctl create secret heyo-build-git -n harness --from-stdin git-token`, or make the repo
-  public; the artifact path (once the store heals) removes the secret entirely.
+- **Secret durability (now automatic):** the worker mints a fresh installation token at the
+  start of every run and upserts it into `heyo-build-git` (`refreshBuildSecret`, hooked in
+  `executeRun`; `HEYO_BUILD_SECRET_REFRESH=0` disables). Host-side builds therefore always see
+  a valid credential — no manual refresh; the same token also clones the workspace. A PAT in
+  the secret is unnecessary while the App is configured; the artifact path (once the store
+  heals) removes the secret entirely.
 
 ### Step 17 — Dashboard: API + threads/runs view + trace viewer
 **17a — Accounts + GitHub App + onboarding ✅**
