@@ -51,9 +51,9 @@ describe("executeRun", () => {
 
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     expect(run!.status).toBe("succeeded");
-    expect(run!.steps).toBe(4);
-    expect(run!.tokensIn).toBe(400);
-    expect(run!.tokensOut).toBe(40);
+    expect(run!.steps).toBe(5);
+    expect(run!.tokensIn).toBe(500);
+    expect(run!.tokensOut).toBe(50);
     expect(run!.phase).toBe("verify");
     expect(run!.startedAt).not.toBeNull();
     expect(run!.finishedAt).not.toBeNull();

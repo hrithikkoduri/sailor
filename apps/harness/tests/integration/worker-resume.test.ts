@@ -113,7 +113,12 @@ describe("worker recovery pipeline", () => {
           },
         ],
       },
-      { tools: [{ name: "run_tests", arguments: "{}" }] }, // passes → verify
+      { tools: [{ name: "run_tests", arguments: "{}" }] }, // full suite passes (fix stays put)
+      {
+        tools: [
+          { name: "request_transition", arguments: JSON.stringify({ to: "verify", reason: "full suite is green" }) },
+        ],
+      }, // agent-requested → verify
       { tools: [{ name: "finish", arguments: JSON.stringify({ summary: "fixed after resume", success: true }) }] },
     ];
     workerConnection = createQueueConnection(redisUrl);
@@ -133,7 +138,7 @@ describe("worker recovery pipeline", () => {
 
     expect(resumeRun!.trigger).toBe("resume");
     expect(resumeRun!.phase).toBe("verify");
-    expect(resumeRun!.steps).toBe(3);
+    expect(resumeRun!.steps).toBe(4);
 
     // The thread kept its memory through the whole crash → resume arc.
     const resumed = await store.load(threadId);

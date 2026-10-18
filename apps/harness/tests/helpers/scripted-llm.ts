@@ -55,6 +55,11 @@ export const FIX_FIXTURE_SCRIPT: Scripted[] = [
       },
     ],
   },
-  { tools: [{ name: "run_tests", arguments: "{}" }] }, // passes → phase: verify
+  { tools: [{ name: "run_tests", arguments: "{}" }] }, // full suite passes (fix stays put)
+  {
+    tools: [
+      { name: "request_transition", arguments: JSON.stringify({ to: "verify", reason: "full suite is green" }) },
+    ],
+  }, // agent-requested → phase: verify
   { tools: [{ name: "finish", arguments: JSON.stringify({ summary: "fixed negatives", success: true }) }] },
 ];
