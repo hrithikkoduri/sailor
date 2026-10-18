@@ -12,16 +12,36 @@ makes it the framework's second consumer. Its only product coupling is the
 src/runner.ts       the generic runner: tasks → fresh sandbox → arm → git diff
                     (the future Anchor lift; one isolated module, by design)
 src/arms/sailor.ts  system under test #1: createSailorAgent minus GitHub tools
-src/arms/*          #2 (planned): mini-swe-agent — a foreign-harness baseline
 src/tasks.ts        SWE-bench row → EvalTask (arms never see gold patches)
 src/main.ts         CLI: predictions.jsonl + results.jsonl + run.json + traces/
-scripts/fetch-tasks.mjs   the task subset fetcher (HF datasets-server)
+scripts/            fetch-tasks · grade · run-mini-baseline (the baseline arm
+                    is mini-swe-agent's own harness, same instances/model)
+data/               the committed task subset (deterministic, one per repo)
 ```
+
+## Setup (once)
+
+```bash
+# grader venv
+/opt/homebrew/bin/python3.12 -m venv apps/evals/.venv
+apps/evals/.venv/bin/pip install swebench
+
+# baseline-arm venv (isolated: mini pulls its own litellm stack)
+/opt/homebrew/bin/python3.12 -m venv apps/evals/.venv-mini
+apps/evals/.venv-mini/bin/pip install mini-swe-agent
+```
+
+Docker Desktop must be installed and running. **The eval images are
+amd64-only** — the scripts force `DOCKER_DEFAULT_PLATFORM=linux/amd64`, and
+the platform runs them under emulation on Apple Silicon (slower, but exactly
+the images the SWE-bench numbers come from). The scripts also point
+`DOCKER_CONFIG` at an empty config so public pulls never ask for the macOS
+keychain helper.
 
 ## Run it
 
 ```bash
-# 1. fetch a subset (committed subsets are reproducible; keep them small)
+# 1. fetch a subset (or use the committed data/swebench-lite-10.jsonl)
 node apps/evals/scripts/fetch-tasks.mjs --limit 10 --out apps/evals/data/swebench-lite-10.jsonl
 
 # 2. dev smoke: one task on this machine
@@ -35,9 +55,34 @@ Outputs land in `.eval-runs/<timestamp>/`: `predictions.jsonl` is the official
 grader's input, `results.jsonl` keeps status/steps/usage/cost, `traces/` holds
 every engine event per task.
 
-## Grading (next)
+## Grade
 
-The patch producer and the grader are deliberately decoupled (and Heyo's
-artifact store being flaky can't affect scoring): grading uses the **official
-`swebench` harness locally in Docker**, which pulls its own per-instance
-images and matches `instance_id`. Producing predictions needs no Docker.
+```bash
+apps/evals/scripts/grade.sh <predictions.jsonl> <run_id> [instance_ids...]
+# e.g. apps/evals/scripts/grade.sh .eval-runs/smoke/predictions.jsonl smoke1 psf__requests-1963
+```
+
+Runs the **official `swebench` harness** locally in Docker (it pulls its own
+per-instance images and matches `instance_id`s) and writes
+`<model>.<run_id>.json` under `.eval-runs/grading/<run_id>/`. Patch production
+is fully decoupled from grading — Docker quirks can never corrupt a run.
+
+## Baseline arm
+
+```bash
+apps/evals/scripts/run-mini-baseline.sh [filter-regex]
+```
+
+Runs **mini-swe-agent's own harness** (`mini-extra swebench`) in its own Docker
+environments, on the same instances and the same model — the "minimal harness
+A%" number. Predictions land in `.eval-runs/mini/`.
+
+## Read the numbers with this caveat
+
+DeepSeek V4.1 Flash has SWE-bench Lite memorized for popular instances: the
+first smoke task (`psf__requests-1963`) returned the verbatim gold patch and
+the hidden gold test, from the problem statement alone. The A/B still measures
+the harnesses head-to-head (same instances, same model), but absolute Lite
+scores overstate real capability — the report flags gold-patch matches, and
+the seeded-bug track (repos we control, post-cutoff commits) is the
+contamination-free complement.

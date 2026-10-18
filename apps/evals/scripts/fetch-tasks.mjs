@@ -28,7 +28,7 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-const dataset = args.get("dataset") ?? "princeton-nlp/SWE-bench_Lite";
+const dataset = args.get("dataset") ?? "SWE-bench/SWE-bench_Lite";
 const split = args.get("split") ?? "test";
 const offset = Number(args.get("offset") ?? 0);
 const limit = Number(args.get("limit") ?? 10);

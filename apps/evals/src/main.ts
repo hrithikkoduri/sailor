@@ -125,7 +125,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = String(args.get("out") ?? path.join(".eval-runs", stamp));
 const tracesDir = path.join(outDir, "traces");
 await mkdir(tracesDir, { recursive: true });
-const modelLabel = `${armName}@${model}`;
+// Slash-free: the official grader uses this as a filename component.
+const modelLabel = `${armName}@${model.replaceAll("/", "-")}`;
 const startedAt = Date.now();
 
 say(
