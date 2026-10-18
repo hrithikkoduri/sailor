@@ -8,6 +8,14 @@
 Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`heyo` backend)
 + local `process` backend for dev · OpenRouter-compatible LLM client · fine-grained PAT for GitHub.
 
+**Execution order (updated per review):** `13 → 17 (dashboard) → 18 (chat) → 14 (best-of-N)
+→ 16 (toolchain image) → 15 (eval) → 19 → 20/21 (stretch)`. Step IDs stay stable (design
+references use them); this line is the canonical sequence. Reasons: babysitting completes the
+issue→PR lifecycle; the dashboard + chat come next so the whole loop can be **watched live**
+end-to-end (and PR trace links from step 12 resolve to real pages); the toolchain image
+precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps its recorded
+**pre-eval checklist** (baseline capture / FAIL_TO_PASS / PASS_TO_PASS / JUnit per-test).
+
 ---
 
 ## Phase 0 — Foundations
