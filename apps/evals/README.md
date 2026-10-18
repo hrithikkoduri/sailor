@@ -105,13 +105,15 @@ node apps/evals/scripts/show-trace.mjs .eval-runs/<run>/artifacts/mini-<task>.js
 
 ## Protocol
 
-- **One attempt per task per arm**; a task that produces **no patch** may be
-  retried once — if the retry yields a real patch, that patch is graded, and
-  the report discloses the attempt count per task. Applied symmetrically to
-  both arms (any empty mini task gets the same treatment).
+- **One attempt per task per arm** is the primary protocol; its result is
+  always visible.
+- **Retry pass (disclosed):** one second attempt is allowed — for both arms
+  equally — when an attempt produced **no patch**, and when a produced patch
+  was **unresolved**. A real retry patch is graded; the report discloses
+  attempt counts per task, so "fixed on attempt 2" never masquerades as
+  one-shot.
 - Retries are *not* best-of-N: no parallel racing, just a single follow-up
-  attempt after an empty result. (Best-of-N is a deferred package feature —
-  `fork()`).
+  attempt. (Best-of-N is a deferred package feature — `fork()`.)
 - **Timing caveat:** this batch ran both arms (plus setup jobs) on one
   machine under emulation. Resolve rate is the primary metric; wall-times are
   indicative, not clean-room (a strictly serial, quiet-machine run is the
