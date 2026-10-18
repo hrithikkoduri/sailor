@@ -145,6 +145,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = String(args.get("out") ?? path.join(".eval-runs", stamp));
 const tracesDir = path.join(outDir, "traces");
 await mkdir(tracesDir, { recursive: true });
+const artifactsDir = path.join(outDir, "artifacts");
+await mkdir(artifactsDir, { recursive: true });
 // Slash-free: the official grader uses this as a filename component.
 const modelLabel = `${armName}@${model.replaceAll("/", "-")}`;
 const startedAt = Date.now();
@@ -196,6 +198,7 @@ const arm =
   armName === "mini"
     ? miniSweArm({
         model: modelRef,
+        dockerBin: process.env.DOCKER_BIN ?? "docker",
         ...(cfg.llm.apiKey ? { apiKey: cfg.llm.apiKey } : {}),
         ...(args.has("max-usd")
           ? { costLimitUsd: Number(args.get("max-usd")) }
@@ -212,6 +215,7 @@ const results = await runEvalSuite({
   llm,
   ...(Object.keys(budgets).length > 0 ? { budgets } : {}),
   ...(compaction ? { compaction } : {}),
+  artifactsDir,
   onEvent: (task, event) => {
     const chunks = traces.get(task.id) ?? [];
     chunks.push(`${JSON.stringify({ at: Date.now(), ...event })}\n`);

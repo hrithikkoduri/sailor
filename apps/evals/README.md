@@ -90,6 +90,19 @@ Runs **mini-swe-agent's own harness** (`mini-extra swebench`) in its own Docker
 environments, on the same instances and the same model — the "minimal harness
 A%" number. Predictions land in `.eval-runs/mini/`.
 
+## Watch the agents
+
+Every anchor task writes a **full event trace** (thoughts, tool calls, results,
+checkpoints) — `traces/<task>.jsonl` in the run directory. Every mini task
+copies **its own trajectory** out of the container — `artifacts/mini-<task>.json`.
+Both render with one viewer:
+
+```bash
+node apps/evals/scripts/show-trace.mjs .eval-runs/<run>/traces/<task>.jsonl
+node apps/evals/scripts/show-trace.mjs .eval-runs/<run>/artifacts/mini-<task>.json
+# add --full for untruncated text
+```
+
 ## Read the numbers with this caveat
 
 DeepSeek V4.1 Flash has SWE-bench Lite memorized for popular instances: the

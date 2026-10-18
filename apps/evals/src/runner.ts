@@ -36,6 +36,8 @@ export interface EvalArmContext {
   compaction?: CompactionConfig;
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
+  /** Directory for side artifacts (trajectories etc.), when the caller has one. */
+  artifactsDir?: string;
 }
 
 /** A system under test. It works inside the sandbox; the runner extracts the diff. */
@@ -69,6 +71,8 @@ export interface EvalRunOptions {
   onResult?: (result: EvalTaskResult) => Promise<void> | void;
   /** Every engine event of every task, tagged with its task. */
   onEvent?: (task: EvalTask, event: AgentEvent) => void;
+  /** Directory for side artifacts (mini's trajectories etc.). */
+  artifactsDir?: string;
   log?: (line: string) => void;
 }
 
@@ -139,6 +143,9 @@ export async function runEvalSuite(
         (await options.arm.run(task, {
           sandbox,
           llm: options.llm,
+          ...(options.artifactsDir
+            ? { artifactsDir: options.artifactsDir }
+            : {}),
           ...(options.budgets ? { budgets: options.budgets } : {}),
           ...(options.compaction ? { compaction: options.compaction } : {}),
           ...(options.onEvent

@@ -9,6 +9,8 @@
  * management is in play. It is installed into a private venv inside the
  * container so its dependencies cannot disturb the task's environment.
  */
+import { spawn } from "node:child_process";
+import { mkdir } from "node:fs/promises";
 import { shq } from "@anchor/core";
 import type { EvalArm, EvalArmContext } from "../runner.js";
 import type { EvalTask } from "../tasks.js";
@@ -20,6 +22,8 @@ export interface MiniSweArmOptions {
   model: string;
   /** mini's own spend cap (USD). Default 2. */
   costLimitUsd?: number;
+  /** Docker CLI for carrying the trajectory out (docker backend only). */
+  dockerBin?: string;
 }
 
 /** The python driver: run one task in the current directory, print the result.
@@ -36,7 +40,11 @@ task = open(sys.argv[1], encoding="utf-8").read()
 config = recursive_merge(
     get_config_from_spec(str(builtin_config_dir / "benchmarks" / "swebench.yaml")),
     {
-        "agent": {"mode": "yolo", "confirm_exit": False},
+        "agent": {
+            "mode": "yolo",
+            "confirm_exit": False,
+            "output_path": "/tmp/mini-traj.json",
+        },
         "model": {"model_name": sys.argv[2]},
     },
 )
@@ -63,6 +71,28 @@ print("MINI_DONE")
 export const MINI_INSTALL_COMMAND =
   "/opt/mini-venv/bin/python -c 'import minisweagent' 2>/dev/null || " +
   "{ python -m venv /opt/mini-venv && /opt/mini-venv/bin/pip install --quiet mini-swe-agent 'litellm==1.106.0' mcp; }";
+
+/** Carry mini's trajectory out of the container before it is destroyed. */
+async function captureTrajectory(
+  ctx: EvalArmContext,
+  task: EvalTask,
+  opts: MiniSweArmOptions,
+): Promise<void> {
+  if (!ctx.artifactsDir || ctx.sandbox.backend !== "docker") return;
+  await mkdir(ctx.artifactsDir, { recursive: true });
+  const dest = `${ctx.artifactsDir}/mini-${task.id}.json`;
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      opts.dockerBin ?? "docker",
+      ["cp", `${ctx.sandbox.id}:/tmp/mini-traj.json`, dest],
+      { stdio: "ignore" },
+    );
+    child.on("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`docker cp exited ${code}`)),
+    );
+    child.on("error", reject);
+  });
+}
 
 export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
   return {
@@ -91,26 +121,32 @@ export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
         );
       }
 
-      const run = await ctx.sandbox.exec(
-        `/opt/mini-venv/bin/python /tmp/mini-driver.py /tmp/mini-task.md ${shq(opts.model)}`,
-        {
-          cwd: ctx.sandbox.workspace,
-          timeoutSecs: 3600,
-          env: {
-            MSWEA_GLOBAL_COST_LIMIT: String(opts.costLimitUsd ?? 2),
-            ...(opts.apiKey ? { OPENROUTER_API_KEY: opts.apiKey } : {}),
+      try {
+        const run = await ctx.sandbox.exec(
+          `/opt/mini-venv/bin/python /tmp/mini-driver.py /tmp/mini-task.md ${shq(opts.model)}`,
+          {
+            cwd: ctx.sandbox.workspace,
+            timeoutSecs: 3600,
+            env: {
+              MSWEA_GLOBAL_COST_LIMIT: String(opts.costLimitUsd ?? 2),
+              ...(opts.apiKey ? { OPENROUTER_API_KEY: opts.apiKey } : {}),
+            },
           },
-        },
-      );
-      // A non-zero exit means the harness itself failed to run — the system
-      // under test failing to launch is a failure, not an empty patch — so
-      // surface its output tail instead of swallowing it.
-      if (run.exitCode !== 0) {
-        throw new Error(
-          `mini run exited ${run.exitCode}: ${run.output.trim().slice(-500)}`,
         );
+        // A non-zero exit means the harness itself failed to run — the system
+        // under test failing to launch is a failure, not an empty patch — so
+        // surface its output tail instead of swallowing it.
+        if (run.exitCode !== 0) {
+          throw new Error(
+            `mini run exited ${run.exitCode}: ${run.output.trim().slice(-500)}`,
+          );
+        }
+        return {};
+      } finally {
+        // mini writes its trajectory INSIDE the container — carry it out
+        // before the runner destroys the sandbox (best-effort).
+        await captureTrajectory(ctx, task, opts).catch(() => {});
       }
-      return {};
     },
   };
 }
