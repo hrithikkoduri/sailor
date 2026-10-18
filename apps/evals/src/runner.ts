@@ -129,11 +129,13 @@ export async function runEvalSuite(
             ...(task.workspacePath
               ? { workspacePath: task.workspacePath }
               : {}),
+            ...(task.env ? { env: task.env } : {}),
             gitIdentity: { name: "anchor-eval", email: "eval@anchor.local" },
           }
         : {
             repoUrl: task.repoUrl,
             ref: task.baseRef,
+            ...(task.env ? { env: task.env } : {}),
             gitIdentity: { name: "anchor-eval", email: "eval@anchor.local" },
           },
     );

@@ -28,6 +28,12 @@ export interface EvalTask {
   image?: string;
   /** Where the pre-existing workspace lives inside the image. */
   workspacePath?: string;
+  /**
+   * Extra sandbox env for this task. Swebench images ship BASH_ENV to activate
+   * the testbed conda env (their own runner config does this) — without it,
+   * every command runs in the base env and the agent re-installs dependencies.
+   */
+  env?: Record<string, string>;
 }
 
 function listFrom(value: unknown): string[] | undefined {
@@ -64,7 +70,13 @@ export function taskFromRow(row: Record<string, unknown>): EvalTask {
     ...(failToPass ? { failToPass } : {}),
     ...(passToPass ? { passToPass } : {}),
     // SWE-bench task images carry the repo at /testbed, fully provisioned.
-    ...(image ? { image, workspacePath: "/testbed" } : {}),
+    ...(image
+      ? {
+          image,
+          workspacePath: "/testbed",
+          env: { BASH_ENV: "/root/.bashrc" },
+        }
+      : {}),
   };
 }
 
