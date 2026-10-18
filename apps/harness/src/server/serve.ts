@@ -10,6 +10,7 @@ import { createDb, createPool } from "../db/index.js";
 import { createQueueConnection, createQueues } from "../queue/index.js";
 import { createGitHubApp } from "../github/app.js";
 import { createServerApp } from "./app.js";
+import { createStreamHub, UPDATES_CHANNEL } from "./stream.js";
 
 export async function serveCommand(args: string[]): Promise<number> {
   const cfg = loadConfig();
@@ -31,6 +32,20 @@ export async function serveCommand(args: string[]): Promise<number> {
       ? createGitHubApp({ appId: cfg.github.appId, privateKey: cfg.github.privateKey })
       : undefined;
 
+  // Live updates (step 17b): the worker publishes "thread changed" nudges on
+  // Redis; this subscriber relays them to the SSE clients in this process.
+  const hub = createStreamHub();
+  const updates = createQueueConnection(cfg.redis.url);
+  await updates.subscribe(UPDATES_CHANNEL);
+  updates.on("message", (_channel: string, message: string) => {
+    try {
+      const parsed = JSON.parse(message) as { threadId?: unknown };
+      if (typeof parsed.threadId === "string") hub.notify(parsed.threadId);
+    } catch {
+      /* malformed nudge — ignore */
+    }
+  });
+
   const app = createServerApp({
     db,
     queues,
@@ -40,6 +55,7 @@ export async function serveCommand(args: string[]): Promise<number> {
     ...(githubApp ? { githubApp } : {}),
     authConfig: cfg.auth,
     publicUrl: cfg.server.publicUrl,
+    hub,
     oauth: {
       ...(cfg.github.appSlug ? { slug: cfg.github.appSlug } : {}),
       ...(cfg.github.clientId ? { clientId: cfg.github.clientId } : {}),
@@ -51,6 +67,7 @@ export async function serveCommand(args: string[]): Promise<number> {
   process.stdout.write(`harness serve — listening on :${cfg.server.port}\n`);
   process.stdout.write(`  webhook  POST http://localhost:${cfg.server.port}/webhooks/github\n`);
   process.stdout.write(`  health   GET  http://localhost:${cfg.server.port}/healthz\n`);
+  process.stdout.write(`  api      GET  http://localhost:${cfg.server.port}/api/threads (SSE: /api/threads/:id/stream)\n`);
   if (skipVerify) process.stdout.write("  ⚠ signature verification DISABLED (--no-verify)\n");
   if (githubApp) {
     process.stdout.write(
@@ -64,6 +81,7 @@ export async function serveCommand(args: string[]): Promise<number> {
   const shutdown = async () => {
     process.stdout.write("\nharness serve — shutting down\n");
     server.close();
+    updates.disconnect();
     await queues.close().catch(() => undefined);
     await pool.end().catch(() => undefined);
     process.exit(0);

@@ -127,15 +127,14 @@ function sizeClass(value: string | undefined): HeyoSizeClass {
   return v;
 }
 
-/** PEM from env: raw, \n-escaped, or base64 of the PEM. */
+/** PEM from env: raw, \n-escaped, or base64 of the PEM (tolerates stray
+ *  paste artifacts like terminal markers, quotes, or whitespace). */
 function normalizePem(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
-  if (raw.includes("BEGIN")) return raw.replace(/\\n/g, "\n");
-  if (/^[A-Za-z0-9+/=\s]+$/.test(raw)) {
-    const decoded = Buffer.from(raw, "base64").toString("utf8");
-    if (decoded.includes("BEGIN")) return decoded;
-  }
-  return raw; // let the crypto layer complain loudly
+  const value = raw.trim();
+  if (value.includes("BEGIN")) return value.replace(/\\n/g, "\n");
+  const decoded = Buffer.from(value.replace(/[^A-Za-z0-9+/=]/g, ""), "base64").toString("utf8");
+  return decoded.includes("BEGIN") ? decoded : raw; // let the crypto layer complain loudly
 }
 
 function optionalNumber(value: string | undefined): number | undefined {

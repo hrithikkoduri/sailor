@@ -3,6 +3,9 @@
  * sweep interrupts the run and enqueues a resume → a worker instance picks it
  * up → executeRun continues from the saved phase (fix) and finishes the job.
  * This is the kill-the-worker demo, minus the actual kill.
+ *
+ * NOTE: this test consumes the real `runs` queue — it must not run while a
+ * dev worker (`npm run dev`) is up, or the job can land in the wrong process.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Worker } from "bullmq";

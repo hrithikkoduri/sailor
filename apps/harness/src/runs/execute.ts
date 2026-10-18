@@ -67,6 +67,8 @@ export interface ExecuteRunDeps {
   sandboxFactory?: (spec: SandboxSpec) => Sandbox;
   /** The GitHub App service (decisions #42/#43) — minting tokens for this run. */
   githubApp?: GitHubAppService;
+  /** Live-update nudge (step 17b): "thread changed — refetch" (server/stream.ts). */
+  notify?: (threadId: string) => void;
 }
 
 export interface ExecuteRunOutcome {
@@ -114,6 +116,13 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
   const [thread] = await db.select().from(schema.threads).where(eq(schema.threads.id, run.threadId));
   if (!thread) throw new Error(`run ${run.id}: thread ${run.threadId} not found`);
 
+  // A dashboard cancel of a QUEUED run flips it before any worker touches it
+  // (there is no watcher to notice a flag on a run that never started) — such
+  // a run never executes.
+  if (run.status === "cancelled") {
+    return { runId: run.id, threadId: run.threadId, status: "cancelled", reason: "cancelled" };
+  }
+
   const controller = new AbortController();
   activeControllers.set(run.id, controller);
 
@@ -121,6 +130,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     .update(schema.runs)
     .set({ status: "running", startedAt: new Date(), error: null })
     .where(eq(schema.runs.id, run.id));
+  deps.notify?.(thread.id);
 
   // Cross-process cancel: poll the durable flag; any process can set it.
   const cancelWatch = setInterval(() => {
@@ -141,7 +151,13 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
   const recorder = new TraceRecorder({ jsonl, db, runId: run.id });
   let sinkTail: Promise<void> = Promise.resolve();
   const sink = (e: AgentEvent) => {
-    sinkTail = sinkTail.then(() => recorder.record(e)).catch(() => undefined);
+    sinkTail = sinkTail
+      .then(() => recorder.record(e))
+      .then(() => {
+        // Every recorded step nudges the dashboard watching this thread.
+        deps.notify?.(thread.id);
+      })
+      .catch(() => undefined);
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
@@ -313,7 +329,20 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       status === "succeeded" ? (delivered || thread.prNumber ? "pr_open" : "queued") : "queued";
     await ensureThreadState(db, thread.id, finalState);
 
-    await sandbox.destroy();
+    // Dashboard debugging switch (17b): re-read right before destruction — a
+    // flip made while the run was live still wins.
+    const [fresh] = await db
+      .select({ keep: schema.runs.keepSandbox })
+      .from(schema.runs)
+      .where(eq(schema.runs.id, run.id));
+    if (fresh?.keep) {
+      process.stdout.write(
+        `[run ${run.id}] sandbox kept for debugging: ${sandbox.backend}/${sandbox.id}\n`,
+      );
+    } else {
+      await sandbox.destroy();
+    }
+    deps.notify?.(thread.id);
     return {
       runId: run.id,
       threadId: thread.id,

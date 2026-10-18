@@ -272,17 +272,26 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   rows). **190 tests green** (94 package + 40 app unit + 56 integration); dashboard typechecks
   + builds; the live GitHub walkthrough waits on the dev App (DESIGN #43).
 
-**17b — the dashboard proper:**
-- **What:** `server/api.ts` (REST over threads, runs, trace_events); static dashboard page:
-  threads list (state, budget, PR link) → runs per thread → full trace view (prompts, tool
-  calls, outputs, tokens, cost). The PR trace link (step 12) points here.
-  **Live SSE:** `GET /api/threads/:id/stream` + Redis pub/sub bridge (worker publishes
-  nudges; server fans out) — state changes update single nodes, per decision #14.
-  Small actions: cancel run, keep sandbox for debugging, **Interject** on any pending event
-  (explicit override — decision #28).
-- **Files:** `src/server/api.ts`, `src/server/stream.ts`, `src/server/dashboard/*`
-- **Done when:** after a run, the dashboard shows the thread → run → trace live; the trace
-  URL from a PR opens the right run.
+**17b — the dashboard proper ✅**
+- **What:** `server/api.ts` (REST over threads, runs, trace_events) + `server/stream.ts`
+  (Redis pub/sub bridge → SSE). The SPA gets three views: **threads list** (state, latest run,
+  pending count, PR link) → **thread detail** (runs, pending events, actions) → **run + trace**
+  (every AgentEvent rendered: phases, LLM turns, tool calls/results, guardrails, checkpoints,
+  finish). Live: SSE nudges (`{threadId}` on every trace write, status change, webhook) trigger
+  debounced refetches — the DB stays the truth, the stream only says "changed" (#14). Actions:
+  **cancel** (durable flag for running; direct flip for queued + an executor guard so a
+  cancelled-before-start run never executes), **keep sandbox** (new `runs.keep_sandbox` column,
+  re-read right before destroy), **Interject** on any pending event (#28's explicit override:
+  busy → cancel active; idle → drain now). The PR trace link (`/threads/:id?run=:runId`) opens
+  the right run. `npm run dev` = the complete stack in one command (compose + migrate + serve +
+  worker + dashboard).
+- **Files:** `src/server/{api,stream}.ts`, migration `0009` (`runs.keep_sandbox`),
+  `src/runs/execute.ts` (notify + keep + cancelled guard), `src/worker/*` (publisher),
+  `apps/dashboard/src/{pages,components}/*`, `scripts/dev.mjs`
+- **Done when:** ✅ after a run, the dashboard shows thread → runs → trace; the trace URL from a
+  PR opens the right run; cancel/keep/interject proven against real Postgres+Redis (8 API
+  integration tests incl. a real SSE connection through a live HTTP server); all suites green
+  (**94 package + 40 app unit + 64 integration**).
 
 ### Step 18 — Chat interface (SSE streaming)
 - **What:** chat with the agent thread from the dashboard. A chat message is just another

@@ -24,6 +24,7 @@ import {
 import { createGitHubApp } from "../github/app.js";
 import { executeRun } from "../runs/execute.js";
 import { drainInbox } from "../threads/inbox.js";
+import { createThreadNotifier } from "../server/stream.js";
 import { handleSweep } from "./sweep.js";
 import { runBabysitSweep } from "./babysit.js";
 
@@ -72,6 +73,10 @@ export async function workerCommand(argv: string[]): Promise<number> {
   const queues = createQueues(queueConnection);
   const runsWorkerConnection = createQueueConnection(cfg.redis.url);
   const babysitWorkerConnection = createQueueConnection(cfg.redis.url);
+  // Live updates (step 17b): every trace write + status change nudges the
+  // dashboard through Redis pub/sub (serve holds the subscriber side).
+  const updatesConnection = createQueueConnection(cfg.redis.url);
+  const notify = createThreadNotifier(updatesConnection);
 
   const runs = new Worker<RunJobData>(
     "runs",
@@ -81,6 +86,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
         runId: job.data.runId,
         local,
         heartbeatEveryMs,
+        notify,
         ...(githubApp ? { githubApp } : {}),
       });
       const watching =
@@ -98,7 +104,10 @@ export async function workerCommand(argv: string[]): Promise<number> {
         outcome.threadId,
         outcome.status === "cancelled" && outcome.phase ? { startPhase: outcome.phase } : {},
       );
-      if (drained) process.stdout.write(`[worker] inbox drain → run ${drained.id} queued\n`);
+      if (drained) {
+        process.stdout.write(`[worker] inbox drain → run ${drained.id} queued\n`);
+        notify(outcome.threadId);
+      }
     },
     { connection: runsWorkerConnection, concurrency: 1 },
   );
@@ -150,6 +159,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
     await runs.close().catch(() => undefined); // waits for the active job
     await babysit.close().catch(() => undefined);
     await queues.close().catch(() => undefined);
+    updatesConnection.disconnect();
     await pool.end().catch(() => undefined);
     process.exit(0);
   };

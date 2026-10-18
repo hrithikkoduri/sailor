@@ -30,6 +30,8 @@ import { wakeThread } from "../threads/wake.js";
 import { requestCancel } from "../runs/lease.js";
 import { createAuthRoutes, type AuthConfig, type UserFromRequest } from "../auth/routes.js";
 import { createOnboardingRoutes } from "../auth/onboarding.js";
+import { createApiRoutes } from "./api.js";
+import { createStreamHub, type StreamHub } from "./stream.js";
 import { sessionUser, SESSION_COOKIE } from "../auth/session.js";
 import { ensureDevUser } from "../auth/users.js";
 
@@ -51,6 +53,8 @@ export interface ServerDeps {
   publicUrl?: string;
   /** The App's user-OAuth credentials (Sign in with GitHub). */
   oauth?: { slug?: string; clientId?: string; clientSecret?: string; fetchFn?: typeof fetch };
+  /** Live-update fanout (step 17b): SSE clients get "thread changed" nudges. */
+  hub?: StreamHub;
 }
 
 type ThreadRow = typeof schema.threads.$inferSelect;
@@ -156,6 +160,11 @@ export function createServerApp(deps: ServerDeps): Hono {
 
   app.route("/", createAuthRoutes({ db: deps.db, config: authConfig, publicUrl, getUser, oauth: deps.oauth, log }));
   app.route("/", createOnboardingRoutes({ db: deps.db, githubApp: deps.githubApp, publicUrl, getUser, log }));
+
+  // The dashboard surface (step 17b): REST + SSE behind the same session auth.
+  const hub = deps.hub ?? createStreamHub();
+  deps.hub = hub;
+  app.route("/", createApiRoutes({ db: deps.db, queues: deps.queues, getUser, hub, log }));
 
   app.get("/healthz", (c) => c.json({ ok: true, service: "harness" }));
 
@@ -313,6 +322,7 @@ async function deliverTurn(
     task: renderGithubTask(spec.kind, spec.payload),
   });
   if (run) await consumeEvents(deps.db, [evt.id]); // this wake IS the turn
+  deps.hub?.notify(thread.id);
   return { runId: run?.id ?? null };
 }
 
@@ -511,6 +521,7 @@ async function handlePullRequest(
     .update(schema.threads)
     .set({ state: target, updatedAt: new Date() })
     .where(eq(schema.threads.id, thread.id));
+  deps.hub?.notify(thread.id);
   log(`webhook: PR #${pr.number} ${target} → thread ${thread.id}`);
   return Response.json({ threadId: thread.id, state: target }, { status: 200 });
 }
@@ -589,6 +600,7 @@ async function handleIssueLabeled(
 
   const run = await wakeThread(deps, thread.id, { trigger: "label", task: renderIssueTask(issue) });
   if (run) await consumeEvents(deps.db, [evt.id]); // this wake IS the turn that handles the event
+  deps.hub?.notify(thread.id);
 
   log(
     `webhook: ${repo}#${issue.number} labeled ${AGENT_FIX_LABEL} → thread ${thread.id} ${

@@ -147,6 +147,8 @@ export const runs = pgTable(
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
     /** Durable cancel request — settable from ANY process; the worker's watcher aborts. */
     cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    /** Dashboard "keep sandbox" switch (17b): skip destruction at run end (debugging). */
+    keepSandbox: boolean("keep_sandbox").notNull().default(false),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

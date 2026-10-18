@@ -1,0 +1,1 @@
+ALTER TABLE "runs" ADD COLUMN "keep_sandbox" boolean DEFAULT false NOT NULL;
