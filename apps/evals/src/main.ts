@@ -27,13 +27,14 @@ import { loadConfig, loadDotEnv } from "../../server/src/config.js";
 import { heyoProvider } from "../../server/src/heyo-provider.js";
 import { docker } from "@anchor/core/sandbox/docker";
 import { anchorArm } from "./arms/anchor.js";
+import { miniSweArm } from "./arms/mini-swe.js";
 import { loadTasks, type EvalTask } from "./tasks.js";
 import { runEvalSuite, type EvalTaskResult } from "./runner.js";
 
 const USAGE = `usage: eval --tasks <file.jsonl> [options]
   --provider local|heyo|docker  sandbox backend (default local; docker = the
                           benchmark environment from task images; heyo = VMs)
-  --arm <name>            system under test (default anchor)
+  --arm anchor|mini       system under test (default anchor)
   --limit <n>             run only the first n tasks
   --task <instance_id>    run a single task
   --model <id>            model override (default: configured LLM)
@@ -72,10 +73,8 @@ if (args.has("help") || !args.has("tasks")) {
 
 const tasksFile = String(args.get("tasks"));
 const armName = String(args.get("arm") ?? "anchor");
-if (armName !== "anchor") {
-  say(
-    `unknown arm "${armName}" — only "anchor" ships so far (mini-swe-agent is next)`,
-  );
+if (armName !== "anchor" && armName !== "mini") {
+  say(`unknown arm "${armName}" — anchor or mini`);
   process.exit(1);
 }
 const providerName = String(args.get("provider") ?? "local");
@@ -181,11 +180,25 @@ const report = (result: EvalTaskResult, index: number): void => {
   );
 };
 
+const modelRef = model.startsWith("openrouter/")
+  ? model
+  : `openrouter/${model}`;
+const arm =
+  armName === "mini"
+    ? miniSweArm({
+        model: modelRef,
+        ...(cfg.llm.apiKey ? { apiKey: cfg.llm.apiKey } : {}),
+        ...(args.has("max-usd")
+          ? { costLimitUsd: Number(args.get("max-usd")) }
+          : {}),
+      })
+    : anchorArm();
+
 let finished = 0;
 
 const results = await runEvalSuite({
   tasks,
-  arm: anchorArm(),
+  arm,
   provider,
   llm,
   ...(Object.keys(budgets).length > 0 ? { budgets } : {}),
