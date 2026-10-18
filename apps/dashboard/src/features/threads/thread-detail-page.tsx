@@ -26,7 +26,7 @@ import { AppShell } from "@/features/shell/app-shell";
 import { Conversation } from "@/features/chat/conversation";
 import { ChatComposer } from "@/features/chat/components/composer";
 import { PhaseTrail } from "@/features/chat/components/phase-trail";
-import { QueuedChip } from "@/features/chat/components/queued-chip";
+import { QueuedBubbles } from "@/features/chat/components/queued-bubbles";
 import { useThreadStream } from "@/features/chat/use-thread-stream";
 import { emptyLive, mergeConversation } from "@/features/chat/live";
 import { cancelEvent, interjectEvent, postMessage } from "@/features/chat/api";
@@ -369,17 +369,19 @@ export function ThreadDetailPage() {
             onOpenRun={(runId) => setParams({ run: runId })}
           />
           {(showPhaseTrail || queuedChat.length > 0) && (
-            <div className="mx-auto flex w-full max-w-[800px] items-center justify-between gap-3 px-5 pt-3 sm:px-8">
+            <div className="mx-auto flex w-full max-w-[800px] items-end justify-between gap-3 px-5 pt-3 sm:px-8">
               {showPhaseTrail ? (
-                <PhaseTrail
-                  phases={phaseTrail!.phases!}
-                  visited={phaseTrail!.visited ?? []}
-                  current={phaseLive?.phase ?? phaseTrail!.phase ?? null}
-                />
+                <div className="min-w-0 shrink-0">
+                  <PhaseTrail
+                    phases={phaseTrail!.phases!}
+                    visited={phaseTrail!.visited ?? []}
+                    current={phaseLive?.phase ?? phaseTrail!.phase ?? null}
+                  />
+                </div>
               ) : (
                 <span aria-hidden />
               )}
-              <QueuedChip
+              <QueuedBubbles
                 messages={queuedChat.map((event) => ({
                   id: event.id,
                   body: payloadStr(event.payload, "body") ?? "(message)",

@@ -260,7 +260,7 @@ test("settings: repo switches, disable-all save, discard, appearance", async ({
   expect(errors).toEqual([]);
 });
 
-test("busy chat: the queued message interjects from the phase row and lands", async ({
+test("busy chat: queued messages stack as bubbles, interject, and land animated", async ({
   page,
 }) => {
   await mockWorkspace(page, { active: true });
@@ -269,21 +269,20 @@ test("busy chat: the queued message interjects from the phase row and lands", as
     .getByRole("textbox", { name: "Message the agent" })
     .fill("Please pause and explain the plan.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  // The queued message sits on the phase row — not in the composer — with a
-  // small explicit Interject action next to it.
-  const chip = page.getByTestId("queued-chip");
-  await expect(chip).toBeVisible();
-  await expect(chip).toContainText("Message queued");
-  // The message lives in the thread; the chip must not echo it.
-  await expect(chip).not.toContainText("Please pause");
-  // A second queued message: the chip shows the combined batch, and hovering
-  // reveals every message with its own withdraw.
+  // Queued messages show as themselves — user bubbles in a stack on the phase
+  // row — and are NOT feed messages yet.
+  const stack = page.getByTestId("queued-bubbles");
+  await expect(stack).toBeVisible();
+  await expect(stack).toContainText("Please pause and explain the plan.");
+  await expect(page.locator('[data-message-id="e3"]')).toHaveCount(0);
+  // A second message peeks behind the first; hovering fans the stack out with
+  // a per-message withdraw.
   await page
     .getByRole("textbox", { name: "Message the agent" })
     .fill("Also check the Watch runs.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect(chip).toContainText("2 messages queued");
-  await chip.hover();
+  await expect(stack).toContainText("Also check the Watch runs.");
+  await stack.hover();
   const queuedList = page.getByTestId("queued-list");
   await expect(queuedList).toBeVisible();
   await expect(queuedList).toContainText("Please pause and explain the plan.");
@@ -292,14 +291,27 @@ test("busy chat: the queued message interjects from the phase row and lands", as
     .getByRole("button", { name: "Cancel queued message" })
     .first()
     .click();
-  await expect(chip).toContainText("Message queued");
+  // Withdrawn means gone: not in the stack, never in the feed.
+  await expect(queuedList).not.toContainText(
+    "Please pause and explain the plan.",
+  );
   await expect(page.locator('[data-message-id="e3"]')).toHaveCount(0);
-  // Interjecting the remaining message stops the run; it lands animated.
-  await chip.getByRole("button", { name: "Interject", exact: true }).click();
-  await expect(chip).toContainText("Interjected · stopping the run…");
+  // Interjecting the remaining message stops the run — the bubble stays in the
+  // stack with the stopping note until the drain consumes it.
+  await stack.getByRole("button", { name: "Interject", exact: true }).click();
+  await expect(stack).toContainText("Interjected · stopping the run…");
+  await expect(page.locator('[data-message-id="e4"]')).toHaveCount(0);
+  // The run ends and the drain consumes the event (the next send stands in for
+  // that boundary): the message lands in the chat animated, and the newest
+  // message takes its place in the stack.
+  await page
+    .getByRole("textbox", { name: "Message the agent" })
+    .fill("One more note.");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.locator('[data-message-id="e4"]')).toHaveClass(
     /message-land/,
   );
+  await expect(stack).toContainText("One more note.");
 });
 
 test("mobile and reduced motion: no horizontal overflow, navigation works", async ({

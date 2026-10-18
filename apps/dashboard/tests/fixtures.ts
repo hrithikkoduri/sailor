@@ -189,6 +189,8 @@ export async function mockWorkspace(
   // (appears pending), and interjecting stops the run at its next boundary.
   const dynamic = structuredClone(detail);
   let nextEventId = 3;
+  /** A pending chat event the next send's "drain" should consume. */
+  let drainQueuedId: string | null = null;
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/auth/me", (route) => route.fulfill({ json: { user } }));
   await page.route("**/api/**", async (route) => {
@@ -204,6 +206,23 @@ export async function mockWorkspace(
           status: 503,
           json: { error: "Could not send. Please retry." },
         });
+      // The run ended (interject) and the drain consumed its queued event.
+      if (drainQueuedId) {
+        for (const event of dynamic.events as Array<{
+          id?: string;
+          status?: string;
+          consumedAt?: string | null;
+        }>) {
+          if (event.id === drainQueuedId) {
+            event.status = "consumed";
+            event.consumedAt = new Date().toISOString();
+          }
+        }
+        const pending = dynamic.pendingEvents as Array<{ id?: string }>;
+        const index = pending.findIndex((event) => event.id === drainQueuedId);
+        if (index >= 0) pending.splice(index, 1);
+        drainQueuedId = null;
+      }
       const body =
         (route.request().postDataJSON() as { text?: string } | null)?.text ??
         "";
@@ -223,8 +242,14 @@ export async function mockWorkspace(
         json: { ok: true, eventId, interjected: false, runId: "run-1" },
       });
     }
-    if (url.pathname.endsWith("/interject"))
+    if (url.pathname.endsWith("/interject")) {
+      // Like the real endpoint: request a cancel and leave the event pending —
+      // it lands when the run ends and the drain consumes it. The next send
+      // stands in for that drain so tests can observe the landing animation.
+      const parts = url.pathname.split("/");
+      drainQueuedId = parts[parts.length - 2] ?? null;
       return route.fulfill({ json: { ok: true, action: "interjected" } });
+    }
     if (url.pathname.endsWith("/cancel")) {
       const parts = url.pathname.split("/");
       const eventId = parts[parts.length - 2];

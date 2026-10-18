@@ -53,6 +53,9 @@ const str = payloadStr;
 function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
   const p = e.payload;
   const at = e.receivedAt;
+  // A queued chat message is not part of the conversation yet — it shows as
+  // the overlapping bubble stack and lands (animated) once a turn picks it up.
+  if (e.kind === "chat_message" && e.status === "pending") return null;
   const presentation = presentationFor(e.kind);
   const hidden = presentation.hidden === true;
 
@@ -223,6 +226,23 @@ export function Conversation({
 }) {
   const { enabled: debug } = useDebugMode();
   const items = useMemo(() => buildFeed(detail, debug), [detail, debug]);
+  // Messages that just landed (drained from the queue or interjected) rise
+  // into place; the first render never animates a whole history.
+  const seenHuman = useRef<Set<string> | null>(null);
+  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const humanIds = items
+      .filter((item) => item.kind === "human")
+      .map((item) => item.id);
+    if (seenHuman.current === null) {
+      seenHuman.current = new Set(humanIds);
+      return;
+    }
+    const fresh = humanIds.filter((id) => !seenHuman.current!.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) seenHuman.current.add(id);
+    setFreshIds(new Set(fresh));
+  }, [items]);
   const streaming = live && !live.finished;
   const scroller = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -298,7 +318,8 @@ export function Conversation({
             }
             if (item.kind === "human") {
               const landed =
-                landedEventId != null && item.id === `e${landedEventId}`;
+                (landedEventId != null && item.id === `e${landedEventId}`) ||
+                freshIds.has(item.id);
               return (
                 <div
                   key={item.id}
