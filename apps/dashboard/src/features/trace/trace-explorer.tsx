@@ -281,24 +281,12 @@ function SpanRow({
   );
 }
 
-type DetailTab = "input" | "output" | "metadata";
-
 function SpanDetail({ node }: { node: SpanNode }) {
-  const hasInput = node.detail.input !== undefined;
-  const hasOutput = node.detail.output !== undefined;
-  const [tab, setTab] = useState<DetailTab>(hasOutput ? "output" : hasInput ? "input" : "metadata");
-
-  const tabs: Array<[DetailTab, boolean]> = [
-    ["input", hasInput],
-    ["output", hasOutput],
-    ["metadata", true],
-  ];
-
   const outputText =
     node.kind === "llm" ? ((node.detail.output as { text?: string } | undefined)?.text ?? "") : "";
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-5">
       <header className="flex flex-wrap items-center gap-2.5">
         {(() => {
           const Icon = KIND_ICON[node.kind];
@@ -319,34 +307,37 @@ function SpanDetail({ node }: { node: SpanNode }) {
         </span>
       </header>
 
-      <div className="flex gap-1 border-b border-border/60 pb-2">
-        {tabs
-          .filter(([, show]) => show)
-          .map(([id]) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "cursor-pointer rounded-md px-2.5 py-1 text-xs capitalize transition-colors",
-                tab === id ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {id}
-            </button>
-          ))}
-      </div>
+      {node.detail.input !== undefined && (
+        <Section title="Input">
+          <Value value={node.detail.input} />
+        </Section>
+      )}
 
-      {tab === "input" && <Value value={node.detail.input} />}
-      {tab === "output" &&
-        (node.kind === "llm" && outputText ? (
-          <div className="rounded-xl border border-border/70 bg-card/40 p-4">
-            <Markdown text={outputText} className="text-[13.5px]" />
-          </div>
-        ) : (
-          <Value value={node.detail.output} />
-        ))}
-      {tab === "metadata" && <MetadataView metadata={node.detail.metadata} />}
+      {node.detail.output !== undefined && (
+        <Section title="Output">
+          {node.kind === "llm" && outputText ? (
+            <div className="rounded-xl border border-border/70 bg-card/40 p-4">
+              <Markdown text={outputText} className="text-[13.5px]" />
+            </div>
+          ) : (
+            <Value value={node.detail.output} />
+          )}
+        </Section>
+      )}
+
+      <Section title="Metadata">
+        <MetadataView metadata={node.detail.metadata} />
+      </Section>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 font-mono text-[10.5px] tracking-widest text-muted-foreground uppercase">{title}</h3>
+      {children}
+    </section>
   );
 }
 

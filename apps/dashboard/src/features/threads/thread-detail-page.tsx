@@ -8,14 +8,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ExternalLink, GitPullRequest } from "lucide-react";
+import { ChevronLeft, ExternalLink, GitPullRequest, OctagonX, Wrench } from "lucide-react";
 import { AppShell } from "@/features/shell/app-shell";
 import { Conversation } from "@/features/chat/conversation";
 import { ChatComposer } from "@/features/chat/components/composer";
 import { useThreadStream } from "@/features/chat/use-thread-stream";
 import { emptyLive } from "@/features/chat/live";
-import { interjectEvent, postMessage } from "@/features/chat/api";
-import { ContextRail } from "@/features/threads/components/context-rail";
+import { postMessage } from "@/features/chat/api";
 import { TraceExplorer } from "@/features/trace/trace-explorer";
 import { cancelRun, getThread, keepSandbox, type ThreadDetail } from "@/features/threads/api";
 import { StatusPill } from "@/elements/status-pill";
@@ -152,8 +151,16 @@ export function ThreadDetailPage() {
             >
               Trace
             </button>
+            {pendingEvents.length > 0 && (
+              <span
+                title="Waiting to become the next turn"
+                className="ml-auto rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-mono text-[10.5px] text-amber-300"
+              >
+                {pendingEvents.length} pending
+              </span>
+            )}
             {activeRun && (
-              <span className="ml-auto flex items-center gap-1.5 font-mono text-[10.5px] text-primary">
+              <span className={`${pendingEvents.length > 0 ? "" : "ml-auto "}flex items-center gap-2 font-mono text-[10.5px] text-primary`}>
                 <span className="size-1.5 animate-pulse rounded-full bg-primary" />
                 {activeRun.agent === "chat"
                   ? activeRun.status === "running"
@@ -162,6 +169,24 @@ export function ThreadDetailPage() {
                   : activeRun.status === "running"
                     ? `running · ${activeRun.phase ?? "…"}`
                     : "queued"}
+                <button
+                  onClick={() => void act(`cancel-${activeRun.id}`, () => cancelRun(activeRun.id))}
+                  disabled={busy !== null}
+                  title="Cancel run"
+                  aria-label="Cancel run"
+                  className="flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-amber-300 disabled:opacity-50"
+                >
+                  <OctagonX className="size-3" />
+                </button>
+                <button
+                  onClick={() => void act(`keep-${activeRun.id}`, () => keepSandbox(activeRun.id))}
+                  disabled={busy !== null}
+                  title="Keep sandbox for debugging"
+                  aria-label="Keep sandbox"
+                  className="flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+                >
+                  <Wrench className="size-3" />
+                </button>
               </span>
             )}
           </div>
@@ -195,16 +220,6 @@ export function ThreadDetailPage() {
             </>
           )}
         </div>
-
-        <ContextRail
-          detail={detail}
-          selectedRunId={runParam}
-          busy={busy}
-          onSelectRun={(runId) => setParams({ run: runId }, { replace: true })}
-          onCancel={(runId) => void act(`cancel-${runId}`, () => cancelRun(runId))}
-          onKeep={(runId) => void act(`keep-${runId}`, () => keepSandbox(runId))}
-          onInterject={(event) => void act(`event-${event.id}`, () => interjectEvent(event.id))}
-        />
       </div>
     </AppShell>
   );

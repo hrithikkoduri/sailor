@@ -381,6 +381,11 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   (api, build-tree, trace-explorer; old trace-view/run-panel deleted)
 - **Done when:** ✅ endpoint covered by integration tests (totals, delta exclusion, visibility,
   401); typecheck + build green; suites 66 integration / 95 package / 40 app unit.
+- **Review follow-up (same day):** the right context rail is gone (noise next to the explorer —
+  cancel/keep compacted into the tab header as icon buttons, pending count as a chip; the
+  rail's run list was redundant with the tree). The detail pane stacks **Input → Output →
+  Metadata** as sections instead of tabs (the LangSmith reading pattern). Old
+  context-rail/runs-list/pending-events components deleted.
 
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.
