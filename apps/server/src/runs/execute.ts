@@ -185,7 +185,6 @@ export function sandboxSpecForThread(
  * here and only here; the package owns what to do with them. */
 function heyoSandboxConfig(
   cfg: ReturnType<typeof loadConfig>,
-  gitToken?: string,
 ): HeyoSandboxConfig {
   return {
     token: cfg.heyo.token ?? "",
@@ -202,7 +201,6 @@ function heyoSandboxConfig(
     ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
     sizeClass: cfg.heyo.sizeClass,
     diskSizeGb: cfg.heyo.diskSizeGb,
-    githubToken: gitToken,
   };
 }
 
@@ -328,6 +326,13 @@ export async function executeRun(
     ...sandboxSpecForThread(thread, baseDir),
     retain,
     ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
+    ...(deps.githubApp && thread.installationId != null
+      ? {
+          git: {
+            token: () => deps.githubApp!.tokenFor(thread.installationId!),
+          },
+        }
+      : {}),
   };
 
   // Off-machine checkpoints (B): the side branch the push webhook ignores. It
@@ -355,8 +360,8 @@ export async function executeRun(
   }
   // Git-kind image builds run on Heyo's host and read their credential from
   // the namespace secret store; installation tokens live an hour, so refresh
-  // the stored value on the way in (the same fresh token also clones the
-  // workspace). The upsert mechanic lives in @anchor/core; when/whether is
+  // the stored value on the way in (the sandbox re-mints for clone/push via
+  // spec.git). The upsert mechanic lives in @anchor/core; when/whether is
   // Sailor policy. Best-effort — an older secret beats a failed run.
   if (
     !deps.local &&
@@ -384,7 +389,7 @@ export async function executeRun(
   }
   const sandboxOptions: CreateSandboxOptions = deps.local
     ? { local: true }
-    : { heyo: heyoSandboxConfig(cfg, gitToken) };
+    : { heyo: heyoSandboxConfig(cfg) };
   const make = (s: SandboxSpec): Sandbox =>
     deps.sandboxFactory?.(s) ?? createSandbox(s, sandboxOptions);
   // Provider catalog (cached): the real context window and prices. Real runs
@@ -450,6 +455,14 @@ export async function executeRun(
               ),
               retain,
               ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
+              ...(deps.githubApp && thread.installationId != null
+                ? {
+                    git: {
+                      token: () =>
+                        deps.githubApp!.tokenFor(thread.installationId!),
+                    },
+                  }
+                : {}),
             },
           }
         : {}),
