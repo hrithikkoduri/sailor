@@ -42,15 +42,6 @@ history.
 
 ## Sandbox providers
 
-- **`SandboxProvider` interface + registry + subpath exports + conformance
-  suite** — replaces the `"heyo" | "local"` union with `provider.name` and
-  makes `createSandbox`/`releaseSandbox`/`doctor` provider-agnostic; the
-  conformance suite (`@anchor/core/testing`) proves new adapters. _Status:_
-  **complete on `anchor/sandbox-provider`** (PR #1, draft — pending merge).
-  The suite runs the same scenarios on both backends, gating only on declared
-  capability flags (`fork`, `retain`, `localPath`) — a declaration is a
-  promise the suite holds the adapter to. It already caught one lie:
-  `local()` declared `fork: false` while implementing `fork()`.
 - **E2B adapter** — implement `create/adopt/release/probe` for E2B (exec,
   clone, checkpoint, retain) and pass the conformance suite. _Where:_
   `packages/core/src/sandbox/e2b.ts` + `@anchor/core/sandbox/e2b` subpath.
@@ -213,12 +204,6 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Package item the checklist wants: `run_tests` gains `junit_path` →
   `meta.tests` (FAIL_TO_PASS / PASS_TO_PASS baseline — step 15 pre-eval
   checklist).
-
-**Phase 2 — provider interface (the publish-fixing slice)**
-
-- Slice 1: `SandboxProvider` + registry + subpath exports + conformance suite;
-  `@heyocomputer/hws` moves behind `@anchor/core/sandbox/heyo` (optional peer)
-  so the root import stops dragging it in.
 
 **Phase 3 — pull the primitives home (Sailor → Anchor)**
 

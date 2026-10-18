@@ -239,6 +239,37 @@ and the provider refactor must not regress them: the review sketch's
   `SandboxStore` (where a thread's retained handle lives); `teeSinks` and
   `createRunner` are not exported.
 
+## Decision #53 — The provider seam shipped: capabilities are promises, the conformance suite is the acceptance test
+
+Phase 2 landed as PR #1 (merged, `e5413d9`). One contract —
+`SandboxProvider` (`name` as a free-form string, `capabilities`,
+`create`/`adopt`/`release`/`probe`) — and every consumer speaks it: Sailor's
+`execute.ts`, `sailor run`, and `sailor smoke` build providers explicitly
+through one `heyoProvider(cfg)` translation point; handles carry
+`provider.name` verbatim, so no future backend can be misclassified as heyo
+(both `backend === "local" ? … : "heyo"` ternaries are gone).
+`createSandbox` and its options union were removed pre-publish — zero callers
+after the migration; `provider.create(spec)` is the replacement.
+
+- **SDK isolation is proven, not aspirational:** the root entry loads with
+  `@heyocomputer/hws` physically removed from `node_modules`; the `heyo` and
+  `local` factories live behind `@anchor/core/sandbox/<name>` subpaths
+  (with `upsertHeyoSecret` on the heyo subpath), and a genericity guard keeps
+  the SDK and the test framework out of every other entry.
+- **Capabilities are promises the suite holds you to.** `SandboxCapabilities`
+  gains `localPath`; the conformance suite gates scenarios on declaration.
+  First catch: `local()` declared `fork: false` while implementing `fork()`.
+- **`runSandboxConformance(provider)` is the adapter acceptance test**
+  (`@anchor/core/testing`, vitest as optional peer): exec fidelity,
+  self-containment, kill deadlines, env secrets, checkpoints, destroy
+  idempotence, retain/adopt, git identity, push-failure reporting — plus
+  clone, `hasChangesFrom`, `localPath` copies, bare-origin pushes, and fork
+  where declared. Scenario bodies assert through `Sandbox`/`SandboxProvider`
+  only, never through backend internals. E2B/Daytona adapters are "done" when
+  this file passes.
+- **The live arm stays opt-in:** `RUN_LIVE_HEYO_TESTS=1` boots one VM per
+  scenario; `ANCHOR_CONFORMANCE_REPO` enables the clone-shaped scenarios.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
