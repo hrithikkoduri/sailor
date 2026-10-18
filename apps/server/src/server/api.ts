@@ -402,6 +402,59 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     });
   });
 
+  // The whole journal as a downloadable file — NOTHING trimmed: token deltas
+  // included, tool output untrimmed. The explorer's payload drops deltas and
+  // trims large output for transport; a download should be the record exactly
+  // as recorded.
+  app.get("/api/threads/:id/trace/export", async (c) => {
+    const user = await requireUser(c);
+    if (!ok(user)) return user;
+    const thread = await loadThread(c.req.param("id"));
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "thread not found" }, 404);
+
+    const runs = await deps.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.threadId, thread.id))
+      .orderBy(asc(schema.runs.createdAt));
+    const runIds = runs.map((r) => r.id);
+    const rows = runIds.length
+      ? await deps.db
+          .select()
+          .from(schema.traceEvents)
+          .where(inArray(schema.traceEvents.runId, runIds))
+          .orderBy(asc(schema.traceEvents.runId), asc(schema.traceEvents.seq))
+      : [];
+
+    c.header(
+      "content-disposition",
+      `attachment; filename="trace-${thread.id}.json"`,
+    );
+    return c.json({
+      exportedAt: new Date().toISOString(),
+      thread: threadSummary(thread),
+      runs: runs.map((r) => ({
+        ...runSummary(r),
+        steps: r.steps,
+        tokensIn: r.tokensIn,
+        tokensOut: r.tokensOut,
+        usd: r.usd,
+        keepSandbox: r.keepSandbox,
+        startedAt: r.startedAt,
+        finishedAt: r.finishedAt,
+      })),
+      spans: rows.map((e) => ({
+        id: String(e.id),
+        runId: e.runId,
+        seq: e.seq,
+        type: e.type,
+        payload: e.payload,
+        ts: e.ts,
+      })),
+    });
+  });
+
   // --- actions ----------------------------------------------------------------------
 
   const loadRunForAction = async (runId: string, userId: string) => {

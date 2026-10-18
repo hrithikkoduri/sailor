@@ -162,16 +162,28 @@ export const trace = {
       content: "24 tests passed",
       meta: { durationMs: 480 },
     }),
-    event(6, "phase_started", { phase: "verify" }),
-    event(7, "llm_call_started", { phase: "verify", step: 2 }),
-    event(8, "llm_call_finished", {
+    event(6, "tool_call", {
+      phase: "reproduce",
+      step: 1,
+      name: "set_phase",
+      verb: "Moving into the verify phase",
+      input: { phase: "verify" },
+    }),
+    event(7, "tool_result", {
+      name: "set_phase",
+      ok: true,
+      content: "Phase recorded.",
+    }),
+    event(8, "phase_started", { phase: "verify" }),
+    event(9, "llm_call_started", { phase: "verify", step: 2 }),
+    event(10, "llm_call_finished", {
       phase: "verify",
       step: 2,
       text: "The fix is verified. All 24 tests pass.",
       latencyMs: 820,
       usage: { promptTokens: 1120, completionTokens: 96 },
     }),
-    event(9, "run_finished", {
+    event(11, "run_finished", {
       ok: true,
       reason: "finished",
       summary: "Added an empty-batch guard and regression tests.",
@@ -271,6 +283,8 @@ export async function mockWorkspace(
       return route.fulfill({
         json: { threads: [{ ...thread, pendingEvents: 0, latestRun: run }] },
       });
+    if (url.pathname.endsWith("/trace/export"))
+      return route.fulfill({ json: trace });
     if (url.pathname.endsWith("/trace")) return route.fulfill({ json: trace });
     return route.fulfill({
       json: options.active

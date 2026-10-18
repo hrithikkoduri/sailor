@@ -168,22 +168,35 @@ export function buildThreadTree(
           break;
         }
         case "tool_call": {
+          const rawName = str(p, "name") ?? "tool";
+          const verb = str(p, "verb");
+          // Intrinsics (set_phase / finish / request_revival) are control
+          // calls, not repository work — label them by what they DID so they
+          // are findable; the raw tool name stays in the metadata.
+          const intrinsic =
+            rawName === "set_phase" ||
+            rawName === "finish" ||
+            rawName === "request_revival";
           const node: SpanNode = {
             id: `s${e.id}`,
             kind: "tool",
-            name: str(p, "name") ?? "tool",
+            name: intrinsic && verb ? verb : rawName,
             status: "running",
             startMs: start,
             detail: {
               input: p.input,
-              metadata: { phase: p.phase, step: p.step },
+              metadata: {
+                phase: p.phase,
+                step: p.step,
+                ...(intrinsic ? { tool: rawName } : {}),
+              },
             },
             children: [],
           };
           container().children.push(node);
-          const queue = pendingTools.get(node.name) ?? [];
+          const queue = pendingTools.get(rawName) ?? [];
           queue.push(node);
-          pendingTools.set(node.name, queue);
+          pendingTools.set(rawName, queue);
           break;
         }
         case "tool_result": {

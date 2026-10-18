@@ -700,6 +700,38 @@ describe("dashboard api", () => {
     );
   });
 
+  it("trace export: the whole journal as a downloadable file, deltas included", async () => {
+    await db.insert(schema.traceEvents).values({
+      runId: runOkId,
+      seq: 6,
+      type: "llm_text_delta",
+      payload: { type: "llm_text_delta", text: "tok" },
+    });
+
+    const res = await app.request(`/api/threads/${threadId}/trace/export`, {
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toContain("attachment");
+    expect(res.headers.get("content-disposition")).toContain(
+      `trace-${threadId}.json`,
+    );
+    const body = (await res.json()) as { spans: Array<{ type: string }> };
+    // Unlike the explorer payload, the export keeps deltas — it IS the record.
+    expect(body.spans.some((s) => s.type === "llm_text_delta")).toBe(true);
+
+    expect(
+      (
+        await app.request(`/api/threads/${hiddenThreadId}/trace/export`, {
+          headers: { cookie },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/threads/${threadId}/trace/export`)).status,
+    ).toBe(401);
+  });
+
   it("SSE: the stream greets, then relays hub nudges for this thread", async () => {
     const server = serve({ fetch: app.fetch, port: 0 });
     await new Promise<void>((resolve) =>

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Layers2, RefreshCw, Search } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  Layers2,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { getThreadTrace, type ThreadTrace } from "./api";
+import { api } from "@/utils/api-client";
 import { buildThreadTree, type SpanNode } from "./build-tree";
 import { SpanRow } from "./components/span-row";
 import { SpanDetail } from "./components/span-detail";
@@ -100,6 +107,7 @@ export function TraceExplorer({
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [mobileDetail, setMobileDetail] = useState(false);
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -110,6 +118,29 @@ export function TraceExplorer({
       setError("The trace could not be loaded. Please try again.");
     } finally {
       setRefreshing(false);
+    }
+  }, [threadId]);
+  // The full journal as a file: fetch (auth rides the api client), serialize,
+  // and hand the browser a download — the record exactly as recorded.
+  const download = useCallback(async () => {
+    setDownloading(true);
+    try {
+      const payload = await api<unknown>(
+        `/api/threads/${threadId}/trace/export`,
+      );
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `trace-${threadId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("The trace could not be downloaded. Please try again.");
+    } finally {
+      setDownloading(false);
     }
   }, [threadId]);
   useEffect(() => {
@@ -306,6 +337,12 @@ export function TraceExplorer({
             </DropdownMenu>
             <IconButton label="Refresh trace" onClick={() => void load()}>
               <RefreshCw className={cn(refreshing && "animate-spin")} />
+            </IconButton>
+            <IconButton
+              label="Download trace as JSON"
+              onClick={() => void download()}
+            >
+              <Download className={cn(downloading && "animate-pulse")} />
             </IconButton>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto pb-4">

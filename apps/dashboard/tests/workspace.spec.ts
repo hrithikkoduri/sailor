@@ -116,6 +116,15 @@ test("conversation: draft survives failure, retry sends, trace is the entire thr
   await expect(
     page.getByRole("heading", { name: "run · label" }),
   ).toBeVisible();
+  // Intrinsics read as their action (set_phase → "Moving into the verify
+  // phase"), and the whole journal downloads as one JSON file.
+  await expect(
+    page.getByRole("button", { name: /Moving into the verify phase/ }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download trace as JSON" }).click();
+  const file = await downloadPromise;
+  expect(file.suggestedFilename()).toBe("trace-thread-1.json");
   await page.getByRole("button", { name: "Metadata", exact: true }).click();
   await page.getByRole("button", { name: "Metadata", exact: true }).click();
   await page.screenshot({ path: info.outputPath("trace-light.png") });
@@ -170,9 +179,9 @@ test("trace: failed tool calls are visibly red with execution error details", as
     }),
   );
   await page.goto("/threads/thread-1?view=trace");
-  const tool = page.getByRole("button", { name: /^bash Failed/ });
+  const tool = page.getByRole("button", { name: /^bash Failed/ }).first();
   await expect(tool).toBeVisible();
-  const row = page.locator('[data-span-status="fail"]').filter({ has: tool });
+  const row = page.locator('[data-span-status="fail"]').first();
   await expect(row.getByText("Failed", { exact: true })).toHaveCSS(
     "color",
     "rgb(191, 70, 70)",
