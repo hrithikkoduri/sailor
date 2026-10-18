@@ -20,6 +20,7 @@ import {
 } from "@/features/chat/components/message";
 import { mergeConversation, type LiveState } from "@/features/chat/live";
 import { payloadNum, payloadStr } from "@/utils/events";
+import { cn } from "@/utils/cn";
 
 type FeedItem =
   | {
@@ -157,10 +158,13 @@ function buildFeed(detail: ThreadDetail): FeedItem[] {
 export function Conversation({
   detail,
   live,
+  landedEventId,
   onOpenRun,
 }: {
   detail: ThreadDetail;
   live: LiveState | null;
+  /** A message just interjected — animate it as it lands in the thread. */
+  landedEventId?: string | null;
   onOpenRun: (runId: string) => void;
 }) {
   const items = useMemo(() => buildFeed(detail), [detail]);
@@ -174,6 +178,20 @@ export function Conversation({
     if (!el) return;
     if (following.current) el.scrollTop = el.scrollHeight;
   }, [items.length, live?.sequence, streaming]);
+
+  useEffect(() => {
+    if (!landedEventId) return;
+    const node = scroller.current?.querySelector(
+      `[data-message-id="e${landedEventId}"]`,
+    );
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    node?.scrollIntoView({
+      behavior: reduce ? "auto" : "smooth",
+      block: "center",
+    });
+  }, [landedEventId]);
 
   if (items.length === 0 && !streaming) {
     return (
@@ -221,14 +239,24 @@ export function Conversation({
               );
             }
             if (item.kind === "human") {
+              const landed =
+                landedEventId != null && item.id === `e${landedEventId}`;
               return (
-                <HumanMessage
+                <div
                   key={item.id}
-                  author={item.author}
-                  label={item.label}
-                  body={item.body}
-                  at={item.at}
-                />
+                  data-message-id={item.id}
+                  className={cn(
+                    "ml-auto max-w-[90%] min-w-0 sm:max-w-[80%]",
+                    landed && "message-land motion-reduce:animate-none",
+                  )}
+                >
+                  <HumanMessage
+                    author={item.author}
+                    label={item.label}
+                    body={item.body}
+                    at={item.at}
+                  />
+                </div>
               );
             }
             const conversation = mergeConversation(

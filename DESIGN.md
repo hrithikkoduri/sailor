@@ -177,14 +177,19 @@ earlier decisions; no legacy workflow runner is retained.
 - **Debug display:** ⌘⇧D / Ctrl+Shift+D reveals expandable tool input/output
   and red failure details, without changing agent permissions or behavior.
 - **Conversation-loop corrections (same review):** dashboard sends queue and
-  never cancel — interjection is the explicit `/interject` action, matching the
-  composer policy (#47); chat turns carry reply framing so a dashboard message
-  is answered rather than adopted as ongoing work; and after consecutive
+  never cancel — the queued chip (phase row) carries Interject and, on hover,
+  per-message withdraws; interjected messages land in the thread animated.
+  Interruption is the explicit `/interject` action, matching the composer
+  policy (#47); chat turns carry reply framing — answer first, then
+  unfinished work continues after the reply unless the message redirects it;
+  and after consecutive
   silent tool turns the engine may inject a runtime-only **materialization
   advisory** (`guardrails.toolOnlyNudgeLimit`, default 8, `false` disables) —
   advisory, dialable, never a gate. Reasoning is journaled, shown in chat and
   trace, never resent to the model; compaction (256k/64k for Sailor) keeps
-  findings instead of folding them into a re-read loop.
+  findings instead of folding them into a re-read loop, and renders in the
+  thread as an expandable handoff — fold counts, the summary carried forward,
+  and (debug mode) the folded transcript.
 
 ## Streaming and activity follow-up (2026-10-18)
 

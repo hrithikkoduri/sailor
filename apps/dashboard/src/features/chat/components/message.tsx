@@ -19,10 +19,7 @@ export function HumanMessage({
   at: string;
 }) {
   return (
-    <article
-      className="ml-auto max-w-[90%] sm:max-w-[80%]"
-      aria-label={`Message from ${author}`}
-    >
+    <article aria-label={`Message from ${author}`}>
       <div className="mb-2 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
         <span>{label === "dashboard" ? "You" : author}</span>
         <span>·</span>

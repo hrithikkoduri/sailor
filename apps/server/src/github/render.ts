@@ -53,8 +53,8 @@ export function renderGithubTask(
       const body = s("body")?.trim() ?? "";
       return (
         `Message from ${author} (dashboard chat):\n\n${body.slice(0, 4000)}` +
-        `\n\nThis is a direct message in the conversation — it expects a reply in text.` +
-        `\nRepository work continues only if this message asks for it.`
+        `\n\nThis is a direct message in the conversation — reply to it in text.` +
+        `\nIf the repository work on this thread is unfinished and this message does not redirect or stop you, continue that work after your reply.`
       );
     }
     case "push": {

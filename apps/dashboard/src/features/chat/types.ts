@@ -1,7 +1,7 @@
 /** Persisted and live views use the same call IDs and step-scoped part IDs. */
 export interface ConversationPart {
   id: string;
-  kind: "text" | "reasoning" | "tool";
+  kind: "text" | "reasoning" | "tool" | "compaction";
   step: number;
   sequence: number;
   text?: string;
@@ -12,6 +12,12 @@ export interface ConversationPart {
   input?: Record<string, unknown>;
   content?: string;
   ok?: boolean;
+  /** Compaction parts: what was folded and the summary that replaced it. */
+  removedMessages?: number;
+  keptMessages?: number;
+  summaryChars?: number;
+  summary?: string;
+  folding?: string;
   complete: boolean;
 }
 export interface RunConversation {

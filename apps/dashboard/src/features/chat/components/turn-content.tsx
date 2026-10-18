@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Brain, Check, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Archive, Brain, Check, X } from "lucide-react";
 import {
   Accordion,
   AccordionItem,
@@ -51,6 +51,7 @@ export function TurnContent({
         });
     } else if (
       part.kind === "reasoning" ||
+      part.kind === "compaction" ||
       part.text ||
       (!part.complete && running)
     )
@@ -65,6 +66,8 @@ export function TurnContent({
           <Activity key={block.id} calls={block.calls} active={block.active} />
         ) : block.part.kind === "reasoning" ? (
           <Reasoning key={block.part.id} part={block.part} />
+        ) : block.part.kind === "compaction" ? (
+          <Compaction key={block.part.id} part={block.part} />
         ) : (
           <div key={block.part.id}>
             {block.part.text ? (
@@ -266,9 +269,18 @@ function DebugAction({
 
 function Reasoning({ part }: { part: ConversationPart }) {
   const [open, setOpen] = useState(!part.complete);
+  const body = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
   useEffect(() => {
     if (part.complete) setOpen(false);
   }, [part.complete]);
+  // While the provider is still thinking, the open block tails its text —
+  // unless the reader scrolled up to study an earlier passage.
+  useEffect(() => {
+    const el = body.current;
+    if (!el || !open || part.complete) return;
+    if (following.current) el.scrollTop = el.scrollHeight;
+  }, [part.text, open, part.complete]);
   return (
     <Accordion
       type="single"
@@ -293,7 +305,16 @@ function Reasoning({ part }: { part: ConversationPart }) {
           </span>
         </AccordionTrigger>
         <AccordionContent className="pt-2 text-xs text-muted-foreground">
-          <div className="max-h-64 overflow-y-auto border-l border-border pl-3">
+          <div
+            ref={body}
+            onScroll={() => {
+              const el = body.current;
+              if (!el) return;
+              following.current =
+                el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+            className="max-h-64 overflow-y-auto border-l border-border pl-3"
+          >
             {part.text ? (
               <Markdown
                 text={part.text}
@@ -303,6 +324,63 @@ function Reasoning({ part }: { part: ConversationPart }) {
               "The provider reported reasoning-token usage, but did not return reasoning text."
             )}
           </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
+}
+
+/** A visible handoff, not a hidden rewrite: one quiet line; expand for the
+ * summary the agent now carries. Debug mode reveals the folded transcript. */
+function Compaction({ part }: { part: ConversationPart }) {
+  const { enabled: debug } = useDebugMode();
+  const [open, setOpen] = useState(false);
+  return (
+    <Accordion
+      type="single"
+      collapsible
+      value={open ? "compaction" : ""}
+      onValueChange={(value) => setOpen(!!value)}
+    >
+      <AccordionItem value="compaction" className="border-0">
+        <AccordionTrigger className="items-center py-1.5 text-xs font-normal text-muted-foreground hover:no-underline">
+          <span className="flex items-center gap-2">
+            <Archive className="size-3.5" />
+            Context compacted
+            {part.removedMessages !== undefined && (
+              <span>
+                · {part.removedMessages} message
+                {part.removedMessages === 1 ? "" : "s"} folded
+                {part.keptMessages !== undefined &&
+                  `, ${part.keptMessages} kept`}
+              </span>
+            )}
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="pt-2 text-xs text-muted-foreground">
+          <div className="max-h-64 overflow-y-auto border-l border-border pl-3">
+            <p className="mb-1.5 text-[11px] font-medium">
+              Summary carried forward
+            </p>
+            {part.summary ? (
+              <Markdown
+                text={part.summary}
+                className="text-xs text-muted-foreground"
+              />
+            ) : (
+              "The conversation was folded, but no summary text was recorded."
+            )}
+          </div>
+          {debug && part.folding && (
+            <section aria-label="Folded transcript" className="mt-3">
+              <p className="mb-1.5 text-[11px] font-medium">
+                Folded transcript · debug
+              </p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 font-mono text-[11px] leading-relaxed">
+                {part.folding}
+              </pre>
+            </section>
+          )}
         </AccordionContent>
       </AccordionItem>
     </Accordion>

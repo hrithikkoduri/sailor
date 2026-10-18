@@ -6,6 +6,7 @@ import {
   emitLive,
   detail,
   trace,
+  settleTheme,
 } from "./fixtures";
 
 test("thread list: search, filter, accessible navigation and theme persistence", async ({
@@ -64,6 +65,7 @@ test("thread list: search, filter, accessible navigation and theme persistence",
       .violations,
   ).toEqual([]);
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await settleTheme(page);
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
@@ -122,6 +124,7 @@ test("conversation: draft survives failure, retry sends, trace is the entire thr
       .violations,
   ).toEqual([]);
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await settleTheme(page);
   await page.screenshot({ path: info.outputPath("trace-dark.png") });
   const audit = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
@@ -195,6 +198,7 @@ test("trace: failed tool calls are visibly red with execution error details", as
       .violations,
   ).toEqual([]);
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await settleTheme(page);
   await expect(row.getByText("Failed", { exact: true })).toHaveCSS(
     "color",
     "rgb(225, 149, 149)",
@@ -255,17 +259,46 @@ test("settings: repo switches, disable-all save, discard, appearance", async ({
   expect(errors).toEqual([]);
 });
 
-test("busy chat: explicit interjection remains available", async ({ page }) => {
+test("busy chat: the queued message interjects from the phase row and lands", async ({
+  page,
+}) => {
   await mockWorkspace(page, { active: true });
   await page.goto("/threads/thread-1");
   await page
     .getByRole("textbox", { name: "Message the agent" })
     .fill("Please pause and explain the plan.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await page.getByRole("button", { name: "Interject", exact: true }).click();
-  await expect(
-    page.getByText("Interjected. The agent will pick this up next."),
-  ).toBeVisible();
+  // The queued message sits on the phase row — not in the composer — with a
+  // small explicit Interject action next to it.
+  const chip = page.getByTestId("queued-chip");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("Message queued");
+  // The message lives in the thread; the chip must not echo it.
+  await expect(chip).not.toContainText("Please pause");
+  // A second queued message: the chip shows the combined batch, and hovering
+  // reveals every message with its own withdraw.
+  await page
+    .getByRole("textbox", { name: "Message the agent" })
+    .fill("Also check the Watch runs.");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(chip).toContainText("2 messages queued");
+  await chip.hover();
+  const queuedList = page.getByTestId("queued-list");
+  await expect(queuedList).toBeVisible();
+  await expect(queuedList).toContainText("Please pause and explain the plan.");
+  await expect(queuedList).toContainText("Also check the Watch runs.");
+  await queuedList
+    .getByRole("button", { name: "Cancel queued message" })
+    .first()
+    .click();
+  await expect(chip).toContainText("Message queued");
+  await expect(page.locator('[data-message-id="e3"]')).toHaveCount(0);
+  // Interjecting the remaining message stops the run; it lands animated.
+  await chip.getByRole("button", { name: "Interject", exact: true }).click();
+  await expect(chip).toContainText("Interjected · stopping the run…");
+  await expect(page.locator('[data-message-id="e4"]')).toHaveClass(
+    /message-land/,
+  );
 });
 
 test("mobile and reduced motion: no horizontal overflow, navigation works", async ({
@@ -401,16 +434,26 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
     ok: true,
   });
   await expect(actions.locator(".helm-spin")).toHaveCount(0);
+  // A compaction marker lands between steps: visible counts + expandable summary.
+  await emitLive(page, {
+    kind: "compacted",
+    step: 1,
+    sequence: 6,
+    removedMessages: 21,
+    keptMessages: 16,
+    summary: "Folded earlier exploration into this summary.",
+    folding: "assistant → bash(ls)\ntool result: ok",
+  });
   await emitLive(page, {
     kind: "llm_started",
     step: 2,
-    sequence: 6,
+    sequence: 7,
     phase: "respond",
   });
   await emitLive(page, {
     kind: "delta",
     step: 2,
-    sequence: 7,
+    sequence: 8,
     text: "The README is complete.",
   });
   // The next assistant step collapses activity to one quiet disclosure line.
@@ -425,16 +468,27 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
   await expect(
     page.getByText("The README is complete.", { exact: true }),
   ).toBeVisible();
+  const compaction = page.getByRole("button", { name: /Context compacted/ });
+  await expect(compaction).toHaveAttribute("aria-expanded", "false");
+  await compaction.click();
+  await expect(
+    page.getByText("Summary carried forward", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Folded earlier exploration into this summary.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await emitLive(page, {
     kind: "assistant_done",
     step: 2,
-    sequence: 8,
+    sequence: 9,
     text: "The README is complete.",
   });
   await emitLive(page, {
     kind: "run_finished",
     step: 2,
-    sequence: 9,
+    sequence: 10,
     summary: "The README is complete.",
     ok: true,
   });
@@ -458,6 +512,7 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath("chat-activity.png") });
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await settleTheme(page);
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.screenshot({ path: info.outputPath("chat-activity-dark.png") });
   expect(
@@ -509,6 +564,17 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
       complete: true,
     },
     {
+      id: "compaction-6",
+      kind: "compaction",
+      step: 1,
+      sequence: 6,
+      removedMessages: 21,
+      keptMessages: 16,
+      summary: "Folded earlier exploration into this summary.",
+      folding: "assistant → bash(ls)\ntool result: ok",
+      complete: true,
+    },
+    {
       id: "text-2",
       kind: "text",
       step: 2,
@@ -525,7 +591,7 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
           {
             ...detail.runs[0],
             agentText: "The README is complete.",
-            conversation: { parts, sequence: 9, finished: true },
+            conversation: { parts, sequence: 10, finished: true },
           },
         ],
       },
@@ -543,6 +609,17 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
   await expect(page.getByText("# Worker service", { exact: true })).toHaveCount(
     0,
   );
+  // The compaction handoff survives the refresh with its summary intact.
+  const persistedCompaction = page.getByRole("button", {
+    name: /Context compacted/,
+  });
+  await expect(persistedCompaction).toBeVisible();
+  await persistedCompaction.click();
+  await expect(
+    page.getByText("Folded earlier exploration into this summary.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 });
 

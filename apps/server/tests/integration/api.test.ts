@@ -608,6 +608,61 @@ describe("dashboard api", () => {
     expect(event!.status).toBe("consumed");
   });
 
+  it("cancel: withdraws only a pending dashboard message", async () => {
+    const [queued] = await db
+      .insert(schema.events)
+      .values({
+        threadId,
+        kind: "chat_message",
+        payload: { author: "hrithik", body: "hold on — withdraw this" },
+        status: "pending",
+      })
+      .returning();
+
+    const res = await app.request(`/api/events/${String(queued!.id)}/cancel`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { action: string }).action).toBe("cancelled");
+    const rows = await db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.id, queued!.id));
+    expect(rows).toHaveLength(0);
+
+    // Consumed messages are history; GitHub events are not ours to delete.
+    const [consumed] = await db
+      .insert(schema.events)
+      .values({
+        threadId,
+        kind: "chat_message",
+        payload: { author: "hrithik", body: "already picked up" },
+        status: "consumed",
+        consumedAt: new Date(),
+      })
+      .returning();
+    const consumedRes = await app.request(
+      `/api/events/${String(consumed!.id)}/cancel`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(consumedRes.status).toBe(409);
+
+    const [review] = await db
+      .insert(schema.events)
+      .values({
+        threadId,
+        kind: "pull_request_review",
+        payload: { author: "octocat", body: "nit: rename this" },
+      })
+      .returning();
+    const reviewRes = await app.request(
+      `/api/events/${String(review!.id)}/cancel`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(reviewRes.status).toBe(409);
+  });
+
   it("whole-thread trace: totals + spans across runs, deltas excluded, hidden threads 404", async () => {
     // Seed a delta row that must NOT appear (reconstructable from the finish).
     await db.insert(schema.traceEvents).values({

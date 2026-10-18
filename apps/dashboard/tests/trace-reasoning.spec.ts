@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockWorkspace, trace } from "./fixtures";
+import { mockWorkspace, settleTheme, trace } from "./fixtures";
 
 test("trace: compaction spans show the folded transcript and the summary", async ({
   page,
@@ -107,6 +107,7 @@ test("trace: model spans expose provider reasoning text and token count", async 
       .violations,
   ).toEqual([]);
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await settleTheme(page);
   for (const panel of await page
     .locator('[data-slot="accordion-content"]')
     .all())

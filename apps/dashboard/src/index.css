@@ -134,6 +134,28 @@
   }
 }
 
+/* The interjected message lands in the thread — a short rise into place. */
+@keyframes message-land {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+}
+.message-land {
+  animation: message-land 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The queued-message hover card eases in above the chip. */
+.hover-card-in {
+  animation: hover-card-in 0.16s ease-out;
+}
+@keyframes hover-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 /* The helm turns only while work is happening. */
 .helm-spin {
   animation: helm-spin 3s linear infinite;

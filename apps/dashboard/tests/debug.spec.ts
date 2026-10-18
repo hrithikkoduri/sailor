@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { detail, mockWorkspace, manualStream, emitLive } from "./fixtures";
+import {
+  detail,
+  mockWorkspace,
+  manualStream,
+  emitLive,
+  settleTheme,
+} from "./fixtures";
 
 test("debug shortcut reveals expandable input/output, red failures, and persists until disabled", async ({
   page,
@@ -110,6 +116,7 @@ test("debug shortcut reveals expandable input/output, red failures, and persists
       .violations,
   ).toEqual([]);
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await settleTheme(page);
   await expect(failedOutput).toHaveCSS("color", "rgb(225, 149, 149)");
   await page.screenshot({ path: info.outputPath("debug-dark.png") });
   expect(

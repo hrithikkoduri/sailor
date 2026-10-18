@@ -54,6 +54,16 @@ export function createLiveProjector(
           reasoningTokens: event.usage.reasoningTokens,
         });
         break;
+      case "compacted":
+        publish({
+          kind: "compacted",
+          removedMessages: event.removedMessages,
+          keptMessages: event.keptMessages,
+          summaryChars: event.summaryChars,
+          summary: event.summary,
+          folding: event.folding,
+        });
+        break;
       case "tool_call":
         publish({
           kind: "tool_call",

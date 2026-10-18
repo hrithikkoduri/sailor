@@ -13,6 +13,7 @@ export interface LiveEvent {
     | "assistant_done"
     | "tool_call"
     | "tool_result"
+    | "compacted"
     | "phase"
     | "guardrail"
     | "run_finished"
@@ -27,6 +28,11 @@ export interface LiveEvent {
   input?: Record<string, unknown>;
   content?: string;
   ok?: boolean;
+  /** compacted frames: what was folded and the summary the agent now carries. */
+  removedMessages?: number;
+  keptMessages?: number;
+  summaryChars?: number;
+  folding?: string;
   summary?: string | null;
   message?: string;
   /** run_started carries the strategy's full phase list, in order. */
@@ -162,6 +168,21 @@ export function applyLiveEvent(
           ok: event.ok,
           complete: true,
         });
+      break;
+    }
+    case "compacted": {
+      next.parts.push({
+        id: `compaction-${sequence}`,
+        kind: "compaction",
+        step,
+        sequence,
+        removedMessages: event.removedMessages,
+        keptMessages: event.keptMessages,
+        summaryChars: event.summaryChars,
+        summary: event.summary ?? undefined,
+        folding: event.folding,
+        complete: true,
+      });
       break;
     }
     case "started":

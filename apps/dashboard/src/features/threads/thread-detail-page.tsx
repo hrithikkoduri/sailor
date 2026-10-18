@@ -26,16 +26,17 @@ import { AppShell } from "@/features/shell/app-shell";
 import { Conversation } from "@/features/chat/conversation";
 import { ChatComposer } from "@/features/chat/components/composer";
 import { PhaseTrail } from "@/features/chat/components/phase-trail";
+import { QueuedChip } from "@/features/chat/components/queued-chip";
 import { useThreadStream } from "@/features/chat/use-thread-stream";
 import { emptyLive, mergeConversation } from "@/features/chat/live";
-import { interjectEvent, postMessage } from "@/features/chat/api";
+import { cancelEvent, interjectEvent, postMessage } from "@/features/chat/api";
 import { cancelRun, getThread, keepSandbox, type ThreadDetail } from "./api";
 import { StatusPill } from "@/elements/status-pill";
 import { Button } from "@/elements/button";
 import { IconButton } from "@/elements/icon-button";
 import { useAction } from "@/hooks/use-action";
 import { ApiError } from "@/utils/api-client";
-import { eventPreview } from "@/utils/events";
+import { eventPreview, payloadStr } from "@/utils/events";
 import {
   Tabs,
   TabsList,
@@ -74,6 +75,9 @@ export function ThreadDetailPage() {
   const [traceVersion, setTraceVersion] = useState(0);
   const [loadError, setLoadError] = useState("");
   const { busy, error, run } = useAction();
+  const [interjecting, setInterjecting] = useState(false);
+  const [interjectedId, setInterjectedId] = useState<string | null>(null);
+  const [landedEventId, setLandedEventId] = useState<string | null>(null);
   const traceOpenRef = useRef(traceOpen);
   const fetching = useRef(false);
   const currentId = useRef(id);
@@ -124,6 +128,29 @@ export function ThreadDetailPage() {
     if (await run(key, fn)) await refetch();
   };
 
+  /** Interject the queued dashboard message: stop the run and let the message
+   * land in the thread as the next turn. */
+  const interjectQueued = async (eventId: string) => {
+    setInterjecting(true);
+    try {
+      if (await run(eventId, () => interjectEvent(eventId))) {
+        setInterjectedId(eventId);
+        setLandedEventId(eventId);
+        await refetch();
+      }
+    } finally {
+      setInterjecting(false);
+    }
+  };
+
+  /** Withdraw a queued message before any turn picks it up. */
+  const cancelQueued = async (eventId: string) => {
+    if (await run(eventId, () => cancelEvent(eventId))) {
+      if (interjectedId === eventId) setInterjectedId(null);
+      await refetch();
+    }
+  };
+
   if (!detail)
     return (
       <AppShell>
@@ -133,6 +160,8 @@ export function ThreadDetailPage() {
       </AppShell>
     );
   const { thread, runs, pendingEvents } = detail;
+  const queuedChat = pendingEvents.filter((e) => e.kind === "chat_message");
+  const queued = queuedChat.at(-1);
   const active = runs.find((r) => ["running", "queued"].includes(r.status));
   const phaseLive = active && live?.runId === active.id ? live : null;
   const phaseTrail = active
@@ -336,24 +365,43 @@ export function ThreadDetailPage() {
           <Conversation
             detail={detail}
             live={live}
+            landedEventId={landedEventId}
             onOpenRun={(runId) => setParams({ run: runId })}
           />
-          {showPhaseTrail && (
-            <div className="mx-auto w-full max-w-[800px] px-5 pt-3 sm:px-8">
-              <PhaseTrail
-                phases={phaseTrail!.phases!}
-                visited={phaseTrail!.visited ?? []}
-                current={phaseLive?.phase ?? phaseTrail!.phase ?? null}
+          {(showPhaseTrail || queuedChat.length > 0) && (
+            <div className="mx-auto flex w-full max-w-[800px] items-center justify-between gap-3 px-5 pt-3 sm:px-8">
+              {showPhaseTrail ? (
+                <PhaseTrail
+                  phases={phaseTrail!.phases!}
+                  visited={phaseTrail!.visited ?? []}
+                  current={phaseLive?.phase ?? phaseTrail!.phase ?? null}
+                />
+              ) : (
+                <span aria-hidden />
+              )}
+              <QueuedChip
+                messages={queuedChat.map((event) => ({
+                  id: event.id,
+                  body: payloadStr(event.payload, "body") ?? "(message)",
+                  at: event.receivedAt,
+                }))}
+                interjectedId={interjectedId}
+                interjecting={interjecting}
+                onInterject={(eventId) => void interjectQueued(eventId)}
+                onCancel={(eventId) => void cancelQueued(eventId)}
               />
             </div>
           )}
           <ChatComposer
             busy={!!active}
             disabled={TERMINAL.has(thread.state)}
+            queuedEventId={queued?.id ?? null}
+            onInterject={() => {
+              if (queued) void interjectQueued(queued.id);
+            }}
             onSend={async (text) => {
-              const response = await postMessage(id, text);
+              await postMessage(id, text);
               await refetch();
-              return { eventId: response.eventId };
             }}
           />
         </TabsContent>

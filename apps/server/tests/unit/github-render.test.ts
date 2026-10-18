@@ -28,15 +28,15 @@ describe("renderGithubTask", () => {
     expect(t).not.toContain("usual phases");
   });
 
-  it("dashboard chat messages expect a reply and do not restart old work", () => {
+  it("dashboard chat messages expect a reply, then continuation of unfinished work", () => {
     const t = renderGithubTask("chat_message", {
       author: "hrithik",
       body: "What up?",
     });
     expect(t).toContain("Message from hrithik (dashboard chat):");
     expect(t).toContain("What up?");
-    expect(t).toContain("expects a reply in text");
-    expect(t).toContain("only if this message asks for it");
+    expect(t).toContain("reply to it in text");
+    expect(t).toContain("continue that work after your reply");
     expect(t).not.toContain("continue toward");
   });
 

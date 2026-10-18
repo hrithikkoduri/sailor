@@ -110,14 +110,82 @@ describe("conversation projection", () => {
   });
   it("enriches old generic activity labels on replay without replacing custom labels", () => {
     const events = [
-      event(0, "tool_call", { step: 1, callId: "a", name: "bash", verb: "Running a command", input: { command: "git diff --stat" } }),
-      event(1, "tool_result", { step: 1, callId: "a", name: "bash", verb: "Running a command", ok: true }),
-      event(2, "tool_call", { step: 1, callId: "b", name: "bash", verb: "Inspecting the dataset boundary conditions", input: { command: "python check.py" } }),
+      event(0, "tool_call", {
+        step: 1,
+        callId: "a",
+        name: "bash",
+        verb: "Running a command",
+        input: { command: "git diff --stat" },
+      }),
+      event(1, "tool_result", {
+        step: 1,
+        callId: "a",
+        name: "bash",
+        verb: "Running a command",
+        ok: true,
+      }),
+      event(2, "tool_call", {
+        step: 1,
+        callId: "b",
+        name: "bash",
+        verb: "Inspecting the dataset boundary conditions",
+        input: { command: "python check.py" },
+      }),
     ];
     const result = projectConversation(events, "succeeded");
     expect(result.parts[0]?.verb).toBe("Reviewing the repository code diff");
-    expect(result.parts[1]?.verb).toBe("Inspecting the dataset boundary conditions");
+    expect(result.parts[1]?.verb).toBe(
+      "Inspecting the dataset boundary conditions",
+    );
     expect(events[0]?.payload).toMatchObject({ verb: "Running a command" });
+  });
+  it("renders compaction as its own part: fold counts, summary, folded transcript", () => {
+    const result = projectConversation(
+      [
+        event(0, "tool_call", {
+          step: 1,
+          callId: "a",
+          name: "bash",
+          verb: "Running a command",
+          input: { command: "ls" },
+        }),
+        event(1, "tool_result", {
+          step: 1,
+          callId: "a",
+          name: "bash",
+          ok: true,
+          content: "ok",
+        }),
+        event(2, "compacted", {
+          removedMessages: 21,
+          keptMessages: 16,
+          summaryChars: 46,
+          summary: "Folded earlier exploration into this summary.",
+          folding: "assistant → bash(ls)\ntool result: ok",
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        }),
+        event(3, "llm_call_finished", {
+          step: 2,
+          text: "Continuing from the summary.",
+        }),
+      ],
+      "succeeded",
+    );
+    // Order: step-1 activity, the compaction marker, then step-2 text.
+    expect(result.parts.map((p) => p.kind)).toEqual([
+      "tool",
+      "compaction",
+      "text",
+    ]);
+    expect(result.parts.find((p) => p.kind === "compaction")).toMatchObject({
+      id: "compaction-2",
+      step: 1,
+      removedMessages: 21,
+      keptMessages: 16,
+      summary: "Folded earlier exploration into this summary.",
+      folding: "assistant → bash(ls)\ntool result: ok",
+      complete: true,
+    });
   });
 });
 
@@ -139,10 +207,24 @@ describe("live projection", () => {
   });
   it("redacts token-shaped values before live debug input/output reaches the browser", () => {
     const frames: Record<string, unknown>[] = [];
-    const emit = createLiveProjector(frame => frames.push(frame));
+    const emit = createLiveProjector((frame) => frames.push(frame));
     const token = `ghs_${"a".repeat(30)}`;
-    emit({ type: "tool_call", phase: "act", step: 1, name: "bash", input: { command: `echo ${token}` } });
-    emit({ type: "tool_result", phase: "act", step: 1, name: "bash", ok: false, content: token, contentChars: token.length });
+    emit({
+      type: "tool_call",
+      phase: "act",
+      step: 1,
+      name: "bash",
+      input: { command: `echo ${token}` },
+    });
+    emit({
+      type: "tool_result",
+      phase: "act",
+      step: 1,
+      name: "bash",
+      ok: false,
+      content: token,
+      contentChars: token.length,
+    });
     expect(JSON.stringify(frames)).not.toContain(token);
     expect(JSON.stringify(frames)).toContain("REDACTED");
   });
@@ -178,6 +260,28 @@ describe("live projection", () => {
       text: "Hello world",
       step: 1,
       sequence: 3,
+    });
+  });
+  it("publishes compaction as a live frame carrying the summary", () => {
+    const frames: Record<string, unknown>[] = [];
+    const emit = createLiveProjector((frame) => frames.push(frame));
+    emit({ type: "llm_call_started", step: 4, phase: "act" });
+    emit({
+      type: "compacted",
+      removedMessages: 21,
+      keptMessages: 16,
+      summaryChars: 46,
+      summary: "Folded earlier exploration into this summary.",
+      folding: "assistant → bash(ls)",
+      usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
+    });
+    expect(frames.at(-1)).toMatchObject({
+      kind: "compacted",
+      step: 4,
+      removedMessages: 21,
+      keptMessages: 16,
+      summary: "Folded earlier exploration into this summary.",
+      folding: "assistant → bash(ls)",
     });
   });
 });

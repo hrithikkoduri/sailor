@@ -2,7 +2,11 @@ import { toolVerb } from "@anchor/core";
 
 /** Upgrade the old stock labels on replay without rewriting journal rows.
  * Preserve explicit/custom verbs and retain the call's inputs for results. */
-function activityVerb(name: string, input: Record<string, unknown>, recorded: unknown): string {
+function activityVerb(
+  name: string,
+  input: Record<string, unknown>,
+  recorded: unknown,
+): string {
   const legacy: Record<string, string> = {
     bash: "Running a command",
     search: "Searching the repository",
@@ -10,12 +14,14 @@ function activityVerb(name: string, input: Record<string, unknown>, recorded: un
     advance: "Moving to the next phase",
     finish: "Wrapping up",
   };
-  return typeof recorded === "string" && recorded !== legacy[name] ? recorded : toolVerb(name, input);
+  return typeof recorded === "string" && recorded !== legacy[name]
+    ? recorded
+    : toolVerb(name, input);
 }
 
 export interface ConversationPart {
   id: string;
-  kind: "text" | "reasoning" | "tool";
+  kind: "text" | "reasoning" | "tool" | "compaction";
   step: number;
   sequence: number;
   text?: string;
@@ -27,6 +33,12 @@ export interface ConversationPart {
   content?: string;
   ok?: boolean;
   complete: boolean;
+  /** Compaction parts: what was folded and the summary that replaced it. */
+  removedMessages?: number;
+  keptMessages?: number;
+  summaryChars?: number;
+  summary?: string;
+  folding?: string;
 }
 
 /** Reconstruct exactly the same ordered transcript on refresh and reconnect. */
@@ -136,13 +148,33 @@ export function projectConversation(
         parts.push(part);
       }
       part.sequence = event.seq;
-      if (typeof p.verb === "string") part.verb = activityVerb(name, part.input ?? {}, p.verb);
+      if (typeof p.verb === "string")
+        part.verb = activityVerb(name, part.input ?? {}, p.verb);
       if (event.type === "tool_result") {
         part.complete = true;
         part.ok = p.ok === true;
         part.content =
           typeof p.content === "string" ? p.content.slice(0, 4000) : "";
       }
+    }
+    if (event.type === "compacted") {
+      // A visible handoff: the marker carries its fold counts and the summary
+      // the agent now operates on. Same part on the live and the replay path.
+      parts.push({
+        id: `compaction-${event.seq}`,
+        kind: "compaction",
+        step,
+        sequence: event.seq,
+        removedMessages:
+          typeof p.removedMessages === "number" ? p.removedMessages : undefined,
+        keptMessages:
+          typeof p.keptMessages === "number" ? p.keptMessages : undefined,
+        summaryChars:
+          typeof p.summaryChars === "number" ? p.summaryChars : undefined,
+        summary: typeof p.summary === "string" ? p.summary : undefined,
+        folding: typeof p.folding === "string" ? p.folding : undefined,
+        complete: true,
+      });
     }
     if (event.type === "run_finished") {
       finished = true;

@@ -18,3 +18,9 @@ export const interjectEvent = (eventId: string) =>
   api<{ ok: boolean; action: string }>(`/api/events/${eventId}/interject`, {
     method: "POST",
   });
+
+/** Withdraw a still-pending dashboard message before any turn picks it up. */
+export const cancelEvent = (eventId: string) =>
+  api<{ ok: boolean; action: string }>(`/api/events/${eventId}/cancel`, {
+    method: "POST",
+  });

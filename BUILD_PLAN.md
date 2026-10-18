@@ -494,9 +494,10 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   composer. Tests: busy send leaves `cancel_requested_at` null and both messages
   pending.
 - **Chat turns carry reply framing.** `renderGithubTask` for `chat_message`
-  now states the message expects a reply in text and that repository work
-  continues only if the message asks for it — the missing signal that let
-  "What up?" be adopted as "continue the interrupted fix".
+  states the message expects a reply in text first; unfinished repository work
+  then continues after the reply unless the message redirects or stops it. The
+  reply is the signal "What up?" never produced; the resumed phase is what the
+  continuation runs on.
 - **Materialization advisory.** After N consecutive tool-only turns with no
   visible text (default 8; `guardrails.toolOnlyNudgeLimit`, `false` disables),
   the engine injects one runtime-only advisory (`origin: "engine"` — never
@@ -507,6 +508,11 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   calls, so nothing visible means nothing materialized. The 40-step spiral had
   no framing, no forcing function, and folded its own findings away (compaction,
   since raised to 256k/64k).
+- **Compaction is a visible handoff.** When context folds, the thread shows a
+  quiet "Context compacted · N folded, M kept" line that expands to the summary
+  the agent now carries (plus the folded transcript in debug mode) — identical
+  on the live stream and after a refresh, since both paths project the same
+  `compacted` event that the trace span uses.
 
 ### Live phase trail above the composer
 
@@ -519,6 +525,15 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   and SSE forwards a `started` frame. Refresh mid-run reconstructs the trail
   from the journal; completion hides it immediately; reduced motion renders the
   current phase as plain ink.
+- The queued dashboard message sits on the same row as the phase trail — a
+  small chip with an explicit **Interject** action, so the composer stays one
+  clean box. Hover (or keyboard focus) reveals the whole queued batch — multiple
+  messages are combined into one next turn — with a per-message **withdraw**
+  (`POST /api/events/:id/cancel`; only still-pending dashboard messages, never
+  consumed history or GitHub events). Interjected messages land in the thread
+  with a short rise-in animation (skipped under reduced motion).
+- The open **reasoning** block tails its own text while the model thinks — the
+  same follow-unless-scrolled-up rule as the thread.
 
 ### Local debug display + trace failure visibility
 

@@ -185,6 +185,10 @@ export async function mockWorkspace(
 ) {
   let requests = 0;
   const errors: string[] = [];
+  // The busy-thread flow mutates: a dashboard message queues on the server
+  // (appears pending), and interjecting stops the run at its next boundary.
+  const dynamic = structuredClone(detail);
+  let nextEventId = 3;
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/auth/me", (route) => route.fulfill({ json: { user } }));
   await page.route("**/api/**", async (route) => {
@@ -200,12 +204,40 @@ export async function mockWorkspace(
           status: 503,
           json: { error: "Could not send. Please retry." },
         });
+      const body =
+        (route.request().postDataJSON() as { text?: string } | null)?.text ??
+        "";
+      const eventId = String(nextEventId++);
+      const queued = {
+        id: eventId,
+        kind: "chat_message",
+        payload: { author: "Alex", body },
+        status: "pending",
+        receivedAt: new Date().toISOString(),
+        consumedAt: null,
+      };
+      (dynamic.events as Array<unknown>).push(queued);
+      if (options.active)
+        (dynamic.pendingEvents as Array<unknown>).push(queued);
       return route.fulfill({
-        json: { ok: true, eventId: "3", interjected: false, runId: "run-1" },
+        json: { ok: true, eventId, interjected: false, runId: "run-1" },
       });
     }
     if (url.pathname.endsWith("/interject"))
       return route.fulfill({ json: { ok: true, action: "interjected" } });
+    if (url.pathname.endsWith("/cancel")) {
+      const parts = url.pathname.split("/");
+      const eventId = parts[parts.length - 2];
+      // Withdraw removes the event from both the feed and the queued batch.
+      for (const list of [
+        dynamic.events as Array<{ id?: string }>,
+        dynamic.pendingEvents as Array<{ id?: string }>,
+      ]) {
+        const index = list.findIndex((e) => e.id === eventId);
+        if (index >= 0) list.splice(index, 1);
+      }
+      return route.fulfill({ json: { ok: true, action: "cancelled" } });
+    }
     if (url.pathname === "/api/onboarding/repos")
       return route.fulfill({ json: { ok: true, enabled: 0 } });
     if (url.pathname === "/api/onboarding")
@@ -218,10 +250,10 @@ export async function mockWorkspace(
     return route.fulfill({
       json: options.active
         ? {
-            ...detail,
-            runs: [{ ...detail.runs[0], status: "running", agentText: null }],
+            ...dynamic,
+            runs: [{ ...dynamic.runs[0], status: "running", agentText: null }],
           }
-        : detail,
+        : dynamic,
     });
   });
   return errors;
@@ -254,4 +286,21 @@ export async function emitLive(page: Page, frame: Record<string, unknown>) {
       }),
     );
   }, frame);
+}
+
+/** Theme switches animate colors; accessibility audits must read settled
+ * values, not transition frames (a mid-transition read reports false contrast
+ * failures). Waits two frames so transitions start, then waits them out. */
+export async function settleTheme(page: Page) {
+  await page.locator("html").evaluate(async () => {
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation instanceof CSSTransition)
+        .map((animation) => animation.finished),
+    );
+  });
 }

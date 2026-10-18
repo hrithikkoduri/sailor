@@ -530,6 +530,43 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     });
   });
 
+  app.post("/api/events/:id/cancel", async (c) => {
+    const user = await requireUser(c);
+    if (!ok(user)) return user;
+
+    let eventId: bigint;
+    try {
+      eventId = BigInt(c.req.param("id"));
+    } catch {
+      return c.json({ error: "bad event id" }, 400);
+    }
+    const [event] = await deps.db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.id, eventId));
+    if (!event?.threadId) return c.json({ error: "event not found" }, 404);
+    const thread = await loadThread(event.threadId);
+    if (!thread || !threadVisibleTo(thread, user.id))
+      return c.json({ error: "event not found" }, 404);
+    // Withdrawal is only for dashboard messages nothing has picked up yet —
+    // consumed events are history, GitHub events are not ours to delete.
+    if (event.kind !== "chat_message" || event.status !== "pending")
+      return c.json(
+        {
+          ok: false,
+          reason: "only queued dashboard messages can be withdrawn",
+        },
+        409,
+      );
+
+    await deps.db.delete(schema.events).where(eq(schema.events.id, event.id));
+    hub.notify(thread.id);
+    log(
+      `api: withdrew queued message event ${event.id} on thread ${thread.id}`,
+    );
+    return c.json({ ok: true, action: "cancelled" });
+  });
+
   // --- chat (step 18): a dashboard message is an inbox event like any other ---
 
   app.post("/api/threads/:id/messages", async (c) => {
