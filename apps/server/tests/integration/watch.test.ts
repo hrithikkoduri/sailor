@@ -70,7 +70,7 @@ describe("watch disposition wiring", () => {
               success: true,
               disposition: "watch",
               watch: { checks: true, comments: true },
-              resumeAt: "fix",
+              resumeAt: "act",
             }),
           },
         ],
@@ -80,7 +80,7 @@ describe("watch disposition wiring", () => {
     const outcome = await executeRun({ db, runId: run!.id, local: true, llm });
     expect(outcome.status).toBe("succeeded");
     expect(outcome.disposition).toBe("watch");
-    expect(outcome.resumeAt).toBe("fix");
+    expect(outcome.resumeAt).toBe("act");
 
     const [runRow] = await db.select().from(schema.runs).where(eq(schema.runs.id, run!.id));
     expect(runRow!.disposition).toBe("watch");
@@ -89,7 +89,7 @@ describe("watch disposition wiring", () => {
     expect(threadRow!.watch).toEqual({ checks: true, comments: true });
 
     const store = new PostgresThreadStore(db);
-    expect((await store.load(threadId))?.phase).toBe("fix");
+    expect((await store.load(threadId))?.phase).toBe("act");
   }, 120_000);
 
   it("run 2: a later wake starts in the phase run 1 declared", async () => {
@@ -111,15 +111,14 @@ describe("watch disposition wiring", () => {
     const outcome = await executeRun({ db, runId: run!.id, local: true, llm });
     expect(outcome.status).toBe("failed"); // finish(success=false) → not succeeded
 
-    // Proof of the resume: the run's FIRST prompt opens in the fix phase.
-    // (Checking anywhere in the transcript would false-positive — run 1's own
-    // history contains "PHASE: fix" from its automatic advance.)
+    // Resume metadata survives, but the latest user request is still the
+    // actual final user message — no generated PHASE command replaces it.
     const messages = llm.seen[0]!.messages;
     const opening = messages[messages.length - 1]!.content ?? "";
-    expect(opening).toContain("PHASE: fix");
+    expect(opening).toBe("CI failed: expected add(-1,-2) to be -3");
 
     const [runRow] = await db.select().from(schema.runs).where(eq(schema.runs.id, run!.id));
-    expect(runRow!.phase).toBe("fix");
+    expect(runRow!.phase).toBe("act");
     expect(runRow!.disposition).toBe("blocked"); // finish(success=false) default
 
     // Any other declared conclusion supersedes the standing watch.

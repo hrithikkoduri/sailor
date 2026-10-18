@@ -83,6 +83,32 @@ refresh replay, and completion recovery with no SSE notification. Live updates
 are step/sequence scoped; a two-second active-turn reconciliation prevents the
 UI getting stranded on “Thinking” if a notification is dropped.
 
+Tool activity uses a borderless Animate UI disclosure: expand for verbs and
+outcomes, never raw arguments or output (those stay in Trace). Live actions
+open while working and collapse at the next assistant step. The shared helm
+in `elements/brand.tsx` turns only while busy; `public/favicon.svg` mirrors its
+geometry. Reduced motion disables rotation. Tests cover keyboard reopening,
+refresh, running/finished indicators, and the centered “Latest message” action
+at desktop and mobile widths. Surfaces remain flat porcelain/graphite; the
+cream texture experiment was reverted after review.
+
+Failed trace spans use a red error icon, name, explicit “Failed” label, and
+waterfall segment. The selected span also shows a failure summary above its
+recorded input/output/metadata. Execution-request failures (`exitCode: -1`)
+are identified without claiming that the guest command was killed. Browser
+coverage checks the failure state and contrast in both themes.
+
+## Local debug display
+
+Press **⌘⇧D** (Mac) or **Ctrl+Shift+D** (Windows/Linux) to toggle debug mode.
+The account menu offers the same action; an active Debug button in the header
+can switch it off. The preference persists locally across refresh/navigation.
+In debug mode, action groups stay open across assistant steps and each tool has
+expandable input/output details. Failures use red labels, borders, and output.
+Normal mode keeps the compact action summaries. This changes display only:
+no new agent behavior, API permissions, or hidden data access. Chat output is
+the existing bounded preview, not an unlimited log download.
+
 ## Vendored Animate UI fixes
 
 Copy-first components are source we own, not an unmodifiable dependency. Keep

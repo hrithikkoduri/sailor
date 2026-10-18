@@ -26,7 +26,7 @@ export function headRefFor(issueNumber: number): string {
  * before the rename keep their branch, and babysitting pushes update it.
  */
 export function assertSafeHeadRef(head: string, base: string): void {
-  if (!/^(sailor|harness)\/issue-/.test(head)) {
+  if (!/^(sailor|harness)\/issue-\d+$/.test(head)) {
     throw new Error(`refusing to push: head branch must be "sailor/issue-*" (got "${head}")`);
   }
   if (head === base) {

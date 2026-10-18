@@ -1,5 +1,18 @@
 import { toolVerb } from "@anchor/core";
 
+/** Upgrade the old stock labels on replay without rewriting journal rows.
+ * Preserve explicit/custom verbs and retain the call's inputs for results. */
+function activityVerb(name: string, input: Record<string, unknown>, recorded: unknown): string {
+  const legacy: Record<string, string> = {
+    bash: "Running a command",
+    search: "Searching the repository",
+    run_tests: "Running tests",
+    advance: "Moving to the next phase",
+    finish: "Wrapping up",
+  };
+  return typeof recorded === "string" && recorded !== legacy[name] ? recorded : toolVerb(name, input);
+}
+
 export interface ConversationPart {
   id: string;
   kind: "text" | "reasoning" | "tool";
@@ -94,7 +107,7 @@ export function projectConversation(
           callId,
           kind: "tool",
           name,
-          verb: typeof p.verb === "string" ? p.verb : toolVerb(name, input),
+          verb: activityVerb(name, input, p.verb),
           step,
           sequence: event.seq,
           input,
@@ -103,7 +116,7 @@ export function projectConversation(
         parts.push(part);
       }
       part.sequence = event.seq;
-      if (typeof p.verb === "string") part.verb = p.verb;
+      if (typeof p.verb === "string") part.verb = activityVerb(name, part.input ?? {}, p.verb);
       if (event.type === "tool_result") {
         part.complete = true;
         part.ok = p.ok === true;

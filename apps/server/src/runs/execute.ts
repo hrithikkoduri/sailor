@@ -15,13 +15,9 @@ import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
-  chatStrategy,
-  codingAgent,
-  codingTools,
   createLLMClient,
   createSandbox,
   runAgent,
-  type Agent,
   type AgentEvent,
   type LLMClient,
   type Sandbox,
@@ -33,10 +29,12 @@ import { PostgresThreadStore } from "../threads/thread-store.js";
 import { ensureThreadState, type ThreadState } from "../threads/state.js";
 import { TraceRecorder } from "../trace/store.js";
 import type { GitHubAppService } from "../github/app.js";
-import { deliverPullRequest } from "../github/pr.js";
+import type { DeliveredPullRequest } from "../github/pr.js";
 import { githubRepoUrl } from "../github/repo.js";
 import { withHeartbeat } from "./lease.js";
 import { createLiveProjector } from "./live-projector.js";
+import { createSailorAgent } from "../agents/sailor.js";
+import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
 const activeControllers = new Map<string, AbortController>();
@@ -55,10 +53,7 @@ export interface ExecuteRunDeps {
   local?: boolean;
   /** Lease cadence (default 30s). Must stay well below the sweep's stale threshold. */
   heartbeatEveryMs?: number;
-  /** Force where the run starts (the package's startPhase). The product uses
-   * this to resume interjected work at the phase the interrupted run reports
-   * (read from its `runs.phase` column). Undefined = the thread's resume
-   * position, else the first phase. */
+  /** Optional descriptive starting phase, not a workflow instruction. */
   startPhase?: string;
   /**
    * How often the run watches for a durable cancel request (default 2000ms).
@@ -79,6 +74,7 @@ export interface ExecuteRunDeps {
    * the persisted trace remains the source of truth; this is the live view.
    */
   live?: (threadId: string, payload: Record<string, unknown>) => void;
+  publicationPolicy?: PublicationPolicy;
 }
 
 export interface ExecuteRunOutcome {
@@ -105,32 +101,53 @@ const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
  * push a new one at delivery).
  */
 export function sandboxSpecForThread(
-  thread: Pick<typeof schema.threads.$inferSelect, "source" | "repo" | "headRef" | "prNumber">,
+  thread: Pick<
+    typeof schema.threads.$inferSelect,
+    "source" | "repo" | "headRef" | "prNumber"
+  >,
   baseDir: string,
 ): SandboxSpec {
   if (thread.source === "github") {
     return {
       repoUrl: githubRepoUrl(thread.repo),
-      ...(thread.prNumber != null && thread.headRef ? { ref: thread.headRef } : {}),
+      ...(thread.prNumber != null && thread.headRef
+        ? { ref: thread.headRef }
+        : {}),
     };
   }
-  return isUrl(thread.repo) ? { repoUrl: thread.repo } : { localPath: path.resolve(baseDir, thread.repo) };
+  return isUrl(thread.repo)
+    ? { repoUrl: thread.repo }
+    : { localPath: path.resolve(baseDir, thread.repo) };
 }
 
-export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcome> {
+export async function executeRun(
+  deps: ExecuteRunDeps,
+): Promise<ExecuteRunOutcome> {
   const { db } = deps;
   const cfg = loadConfig();
 
-  const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, deps.runId));
+  const [run] = await db
+    .select()
+    .from(schema.runs)
+    .where(eq(schema.runs.id, deps.runId));
   if (!run) throw new Error(`run ${deps.runId} not found`);
-  const [thread] = await db.select().from(schema.threads).where(eq(schema.threads.id, run.threadId));
-  if (!thread) throw new Error(`run ${run.id}: thread ${run.threadId} not found`);
+  const [thread] = await db
+    .select()
+    .from(schema.threads)
+    .where(eq(schema.threads.id, run.threadId));
+  if (!thread)
+    throw new Error(`run ${run.id}: thread ${run.threadId} not found`);
 
   // A dashboard cancel of a QUEUED run flips it before any worker touches it
   // (there is no watcher to notice a flag on a run that never started) — such
   // a run never executes.
   if (run.status === "cancelled") {
-    return { runId: run.id, threadId: run.threadId, status: "cancelled", reason: "cancelled" };
+    return {
+      runId: run.id,
+      threadId: run.threadId,
+      status: "cancelled",
+      reason: "cancelled",
+    };
   }
 
   const controller = new AbortController();
@@ -142,19 +159,15 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     .where(eq(schema.runs.id, run.id));
   await db
     .update(schema.threads)
-    .set({ turnsUsed: sql`${schema.threads.turnsUsed} + 1`, updatedAt: new Date() })
+    .set({
+      turnsUsed: sql`${schema.threads.turnsUsed} + 1`,
+      updatedAt: new Date(),
+    })
     .where(eq(schema.threads.id, thread.id));
   deps.notify?.(thread.id);
 
-  // Which agent takes this turn (decision #48): a chat-only batch replies
-  // conversationally — one "respond" phase, the text ends the run — so a
-  // question never re-enters the coding phase machine. Everything else runs
-  // the coding agent. Cross-strategy resume is safe: when the thread's saved
-  // phase doesn't exist in the running strategy, the engine starts at the
-  // first phase (loop.ts).
-  const isChat = run.agent === "chat";
-  const agent: Agent = isChat ? { name: "chat", strategy: chatStrategy, tools: codingTools } : codingAgent;
-  const startPhase = isChat ? undefined : (deps.startPhase ?? run.startPhase ?? undefined);
+  // Chat and machine turns now share one identity and completion contract.
+  // Legacy phase positions are not instructions for the new agent runtime.
 
   // Cross-process cancel: poll the durable flag; any process can set it.
   const cancelWatch = setInterval(() => {
@@ -177,16 +190,21 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
 
   // Live projections for the chat stream (step 18): cumulative assistant text
   // at ~10/s + activity markers. Fire-and-forget; the trace is the truth.
-  const live = (payload: Record<string, unknown>) => deps.live?.(thread.id, { runId: run.id, ...payload });
+  const live = (payload: Record<string, unknown>) =>
+    deps.live?.(thread.id, { runId: run.id, ...payload });
   const projectLive = createLiveProjector(live);
+  const events: AgentEvent[] = [];
 
   const sink = (e: AgentEvent) => {
+    if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
+      events.push(e);
     projectLive(e);
     sinkTail = sinkTail
       .then(() => recorder.record(e))
       .then(() => {
         // Every recorded step nudges the dashboard watching this thread.
-        if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta") deps.notify?.(thread.id);
+        if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
+          deps.notify?.(thread.id);
       })
       .catch(() => undefined);
   };
@@ -239,9 +257,56 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     }
   };
 
+  let delivered: DeliveredPullRequest | null = null;
   try {
     await ensureThreadState(db, thread.id, "running");
     await sandbox.start();
+    const initial =
+      thread.source === "github"
+        ? await sandbox.exec("git rev-parse --verify HEAD", { timeoutSecs: 60 })
+        : undefined;
+    const startRef =
+      initial?.exitCode === 0 && /^[a-f0-9]{40}$/.test(initial.stdout.trim())
+        ? initial.stdout.trim()
+        : undefined;
+    const agent = createSailorAgent(
+      JSON.stringify(
+        {
+          repository: thread.repo,
+          source: thread.source,
+          workspace: sandbox.workspace,
+          issue: thread.issueNumber,
+          pullRequest: thread.prNumber,
+          headBranch: thread.headRef,
+          baseBranch: thread.baseRef,
+          availablePublication: thread.source === "github" && !!deps.githubApp,
+        },
+        null,
+        2,
+      ),
+      thread.source === "github" && deps.githubApp
+        ? githubTools({
+            db,
+            thread,
+            runId: run.id,
+            sandbox,
+            publicUrl: cfg.server.publicUrl,
+            github: githubClientForThread,
+            events,
+            startRef,
+            policy: deps.publicationPolicy ?? cfg.publication,
+            onPublished: (result) => {
+              delivered = result;
+            },
+          })
+        : [],
+    );
+    const requestedPhase = deps.startPhase ?? run.startPhase;
+    const startPhase = agent.strategy.phases.some(
+      (item) => item.id === requestedPhase,
+    )
+      ? (requestedPhase ?? undefined)
+      : undefined;
 
     const outcome = await withHeartbeat(
       db,
@@ -253,8 +318,9 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
             llm,
             sandbox,
             agent,
-            thread: { store: new PostgresThreadStore(db), id: thread.id },
             startPhase,
+            thread: { store: new PostgresThreadStore(db), id: thread.id },
+            compaction: { maxEstimatedTokens: 24_000, keepRecentTokens: 8_000 },
             signal: controller.signal,
             onEvent: sink,
           },
@@ -282,7 +348,10 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
         steps: outcome.steps,
         tokensIn: outcome.usage.promptTokens,
         tokensOut: outcome.usage.completionTokens,
-        usd: outcome.usage.costUsd !== undefined ? String(outcome.usage.costUsd) : "0",
+        usd:
+          outcome.usage.costUsd !== undefined
+            ? String(outcome.usage.costUsd)
+            : "0",
         error: outcome.error ?? null,
       })
       .where(eq(schema.runs.id, run.id));
@@ -299,7 +368,10 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     if (outcome.usage.costUsd !== undefined) {
       await db
         .update(schema.threads)
-        .set({ usdSpent: sql`${schema.threads.usdSpent} + ${outcome.usage.costUsd}`, updatedAt: new Date() })
+        .set({
+          usdSpent: sql`${schema.threads.usdSpent} + ${outcome.usage.costUsd}`,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.threads.id, thread.id));
     }
 
@@ -308,7 +380,10 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     if (outcome.disposition === "watch") {
       await db
         .update(schema.threads)
-        .set({ watch: (outcome.watch ?? {}) as Record<string, unknown>, updatedAt: new Date() })
+        .set({
+          watch: (outcome.watch ?? {}) as Record<string, unknown>,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.threads.id, thread.id));
     } else if (outcome.disposition !== undefined) {
       await db
@@ -317,56 +392,17 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
         .where(eq(schema.threads.id, thread.id));
     }
 
-    // The last mile (steps 12–13): a succeeded GitHub run pushes its work.
-    // First delivery opens the PR; follow-ups (PR already open) update the
-    // branch in place. Delivery is best-effort for the run's status, but it
-    // must happen BEFORE the sandbox dies — the work lives there.
-    let delivered: { prNumber: number; prUrl: string } | null = null;
-    if (status === "succeeded" && thread.source === "github") {
-      const github = await githubClientForThread();
-      if (github) {
-        try {
-          delivered = await deliverPullRequest({
-            db,
-            sandbox,
-            github,
-            thread,
-            runId: run.id,
-            publicUrl: cfg.server.publicUrl,
-            summary: outcome.summary,
-          });
-          process.stdout.write(`[run ${run.id}] PR delivered: ${delivered?.prUrl ?? "(none)"}\n`);
-        } catch (err) {
-          const message = `pr delivery failed: ${err instanceof Error ? err.message : String(err)}`;
-          process.stdout.write(`[run ${run.id}] ${message}\n`);
-          await db.update(schema.runs).set({ error: message }).where(eq(schema.runs.id, run.id));
-        }
-      } else {
-        process.stdout.write(`[run ${run.id}] GITHUB_TOKEN not set — PR delivery skipped\n`);
-      }
-    }
+    // Publication is an explicit tool result, never inferred from turn success.
 
-    // A blocked conclusion reaches the humans where the work lives: the
-    // question is posted as a comment + a needs-input label (decision #40).
-    if (outcome.disposition === "blocked" && thread.source === "github") {
-      const github = await githubClientForThread();
-      if (github) {
-        const target = thread.prNumber ?? thread.issueNumber;
-        try {
-          const question = outcome.summary?.trim() || "I need a human decision to continue.";
-          await github.commentOnIssue(thread.repo, target, `🤖 **Blocked — needs input**\n\n${question}`);
-          await github.addLabels(thread.repo, target, ["agent:needs-input"]);
-          process.stdout.write(`[run ${run.id}] blocked → commented on ${thread.repo}#${target}\n`);
-        } catch (err) {
-          process.stdout.write(
-            `[run ${run.id}] blocked comment failed: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-        }
-      }
-    }
+    // GitHub comments likewise require reply_on_github; a blocked response is
+    // not permission to post or label an issue behind the user's back.
 
     const finalState: ThreadState =
-      status === "succeeded" ? (delivered || thread.prNumber ? "pr_open" : "queued") : "queued";
+      status === "succeeded"
+        ? delivered || thread.prNumber
+          ? "pr_open"
+          : "queued"
+        : "queued";
     await ensureThreadState(db, thread.id, finalState);
 
     // Dashboard debugging switch (17b): re-read right before destruction — a
@@ -403,7 +439,12 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       .where(eq(schema.runs.id, run.id));
     await ensureThreadState(db, thread.id, "queued").catch(() => undefined);
     await sandbox.destroy().catch(() => undefined);
-    return { runId: run.id, threadId: thread.id, status: "failed", reason: "error" };
+    return {
+      runId: run.id,
+      threadId: thread.id,
+      status: "failed",
+      reason: "error",
+    };
   } finally {
     clearInterval(cancelWatch);
     activeControllers.delete(run.id);

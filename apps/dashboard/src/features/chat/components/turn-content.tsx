@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { Brain, Check, Loader2, X } from "lucide-react";
+import { Brain, Check, X } from "lucide-react";
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from "@/components/animate-ui/components/radix/accordion";
+import { Helm } from "@/elements/brand";
 import { Markdown } from "@/elements/markdown";
+import { cn } from "@/utils/cn";
 import type { ConversationPart } from "../types";
+import { useDebugMode } from "@/features/debug/debug-provider";
 
 type Block =
   | { kind: "part"; part: ConversationPart }
@@ -59,11 +62,7 @@ export function TurnContent({
     <div className="space-y-4">
       {blocks.map((block) =>
         block.kind === "activity" ? (
-          <ActivityGroup
-            key={block.id}
-            calls={block.calls}
-            active={block.active}
-          />
+          <Activity key={block.id} calls={block.calls} active={block.active} />
         ) : block.part.kind === "reasoning" ? (
           <Reasoning key={block.part.id} part={block.part} />
         ) : (
@@ -71,7 +70,8 @@ export function TurnContent({
             {block.part.text ? (
               <Markdown text={block.part.text} />
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Helm size={16} className="helm-spin" />
                 Thinking
                 <span className="streaming-caret" />
               </p>
@@ -86,83 +86,181 @@ export function TurnContent({
   );
 }
 
-function ActivityGroup({
+/**
+ * One quiet disclosure line; expand for action verbs and outcomes only.
+ * Inputs and outputs stay in Trace. The live list opens while working and
+ * collapses when the next assistant step begins.
+ */
+function Activity({
   calls,
   active,
 }: {
   calls: ConversationPart[];
   active: boolean;
 }) {
-  const [open, setOpen] = useState(active);
+  const { enabled: debug } = useDebugMode();
+  const [open, setOpen] = useState(active || debug);
   useEffect(() => {
-    setOpen(active);
-  }, [active]);
+    setOpen(active || debug);
+  }, [active, debug]);
   const failures = calls.filter((call) => call.ok === false).length;
-  const current = calls.find((call) => !call.complete) ?? calls.at(-1)!;
-  const outcome = failures
-    ? `· ${failures} failed`
-    : calls.every((call) => call.ok !== undefined)
-      ? "completed"
-      : "recorded";
+  const pending = calls.filter((call) => !call.complete).length;
+  const busy = active && pending > 0;
   return (
     <Accordion
       type="single"
       collapsible
       value={open ? "activity" : ""}
       onValueChange={(value) => setOpen(!!value)}
-      className="rounded-lg border border-border bg-card/60 px-3"
     >
       <AccordionItem value="activity" className="border-0">
-        <AccordionTrigger className="items-center gap-2 py-2.5 text-xs font-normal text-muted-foreground hover:no-underline">
+        <AccordionTrigger className="min-h-8 flex-none items-center justify-start gap-2 py-1.5 text-xs font-normal text-muted-foreground hover:text-foreground hover:no-underline [&>svg:last-child]:size-3 [&>svg:last-child]:translate-y-0">
           <span className="flex min-w-0 items-center gap-2">
-            {active ? (
-              <Loader2 className="size-3.5 shrink-0 animate-spin" />
-            ) : failures ? (
-              <X className="size-3.5 text-destructive" />
-            ) : (
-              <Check className="size-3.5" />
-            )}
-            <span className="truncate">
-              {active
-                ? (current.verb ?? current.name)
-                : `${calls.length} action${calls.length === 1 ? "" : "s"} ${outcome}`}
+            <Helm size={16} className={cn("shrink-0", busy && "helm-spin")} />
+            <span>
+              {calls.length} action{calls.length === 1 ? "" : "s"}{" "}
+              {busy ? "in progress" : "performed"}
+              {failures > 0 && ` · ${failures} failed`}
             </span>
           </span>
         </AccordionTrigger>
-        <AccordionContent className="space-y-3 pb-3">
-          {calls.map((call) => (
-            <div
-              key={call.id}
-              className="rounded-md border border-border bg-background p-3"
-            >
-              <div className="flex items-center gap-2 text-xs">
-                {!call.complete ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : call.ok === false ? (
-                  <X className="size-3 text-destructive" />
-                ) : (
-                  <Check className="size-3 text-muted-foreground" />
-                )}
-                <span className="font-medium">{call.verb ?? call.name}</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">
-                  {call.name}
-                </span>
-              </div>
-              {call.input && Object.keys(call.input).length > 0 && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
-                  {JSON.stringify(call.input, null, 2)}
-                </pre>
-              )}
-              {call.content && (
-                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-border pt-2 font-mono text-[11px] leading-relaxed">
-                  {call.content}
-                </pre>
-              )}
-            </div>
-          ))}
+        <AccordionContent className="pt-1 pb-1">
+          <ul
+            aria-label="Actions performed"
+            className="ml-2 space-y-3 border-l border-border py-1 pl-5"
+          >
+            {calls.map((call) => {
+              const working = active && !call.complete;
+              if (debug)
+                return (
+                  <DebugAction key={call.id} call={call} working={working} />
+                );
+              return (
+                <li
+                  key={call.id}
+                  className="flex items-start gap-2 text-xs text-muted-foreground"
+                >
+                  <ActionIdentity call={call} working={working} />
+                </li>
+              );
+            })}
+          </ul>
         </AccordionContent>
       </AccordionItem>
     </Accordion>
+  );
+}
+
+function ActionIdentity({
+  call,
+  working,
+}: {
+  call: ConversationPart;
+  working: boolean;
+}) {
+  const failed = call.ok === false;
+  return (
+    <>
+      {working ? (
+        <Helm size={16} className="helm-spin shrink-0" />
+      ) : failed ? (
+        <X aria-hidden className="size-4 shrink-0 text-destructive" />
+      ) : call.ok === true ? (
+        <Check aria-hidden className="size-4 shrink-0" />
+      ) : (
+        <Helm size={16} className="shrink-0" />
+      )}
+      <span className={cn("min-w-0 break-words", failed && "text-destructive")}>
+        {call.verb ?? call.name}
+      </span>
+      <span
+        className={cn(
+          "ml-auto shrink-0 text-[11px]",
+          failed && "text-destructive",
+        )}
+      >
+        {working
+          ? "Running"
+          : failed
+            ? "Failed"
+            : call.ok === true
+              ? "Completed"
+              : "Recorded"}
+      </span>
+    </>
+  );
+}
+
+/** Debug mode reveals only the already-authorized conversation projection;
+ * it neither changes the agent nor requests extra hidden server data. */
+function DebugAction({
+  call,
+  working,
+}: {
+  call: ConversationPart;
+  working: boolean;
+}) {
+  const name = call.name ?? "tool";
+  const failed = call.ok === false;
+  return (
+    <li
+      data-tool-status={failed ? "failed" : working ? "running" : "completed"}
+    >
+      <Accordion
+        type="single"
+        collapsible
+        defaultValue="details"
+        className={cn(
+          "min-w-0 rounded-lg border border-border bg-card px-3",
+          failed && "border-destructive/35",
+        )}
+      >
+        <AccordionItem value="details" className="border-0">
+          <AccordionTrigger
+            aria-label={`${name} details${failed ? " — failed" : ""}`}
+            className="items-center gap-2 py-3 text-xs font-normal text-muted-foreground hover:no-underline"
+          >
+            <span className="flex min-w-0 flex-1 items-start gap-2">
+              <ActionIdentity call={call} working={working} />
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="space-y-3 pb-3">
+            <section aria-label={`Input for ${name}`}>
+              <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                Input · {name}
+              </p>
+              <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 font-mono text-[11px] leading-relaxed">
+                {JSON.stringify(call.input ?? {}, null, 2)}
+              </pre>
+            </section>
+            <section aria-label={`Output for ${name}`}>
+              <p
+                className={cn(
+                  "mb-1.5 text-[11px] font-medium text-muted-foreground",
+                  failed && "text-destructive",
+                )}
+              >
+                {failed ? "Output · Failed" : "Output"}
+              </p>
+              <pre
+                className={cn(
+                  "max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 font-mono text-[11px] leading-relaxed",
+                  failed && "bg-destructive/2 text-destructive",
+                )}
+              >
+                {call.content ||
+                  (working ? "Waiting for output…" : "No output recorded.")}
+              </pre>
+              {(call.content?.length ?? 0) >= 4000 && (
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Output preview may be truncated.
+                </p>
+              )}
+            </section>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    </li>
   );
 }
 
@@ -184,7 +282,7 @@ function Reasoning({ part }: { part: ConversationPart }) {
             {part.complete ? (
               <Brain className="size-3.5" />
             ) : (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Helm size={16} className="helm-spin" />
             )}
             {part.complete ? "Provider reasoning" : "Thinking"}
             {part.reasoningTokens !== undefined && (

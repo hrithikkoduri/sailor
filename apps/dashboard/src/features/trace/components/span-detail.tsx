@@ -8,11 +8,19 @@ import {
 import { Markdown } from "@/elements/markdown";
 import type { SpanNode } from "../build-tree";
 import { fmtTokens } from "@/utils/format";
+import { CircleX } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 export function SpanDetail({ node }: { node: SpanNode }) {
   const output = node.detail.output as
     | { text?: string; toolCalls?: unknown[] }
     | undefined;
+  const failed = node.status === "fail";
+  const meta = (node.detail.metadata.meta ?? {}) as Record<string, unknown>;
+  const error =
+    typeof node.detail.metadata.error === "string"
+      ? node.detail.metadata.error
+      : undefined;
   return (
     <div className="mx-auto max-w-3xl px-5 py-4 md:px-6 md:py-5">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -22,8 +30,17 @@ export function SpanDetail({ node }: { node: SpanNode }) {
           </p>
           <h2 className="text-lg font-medium tracking-tight">{node.name}</h2>
           <p className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-            <span className="capitalize">
-              {node.status === "ok" ? "Completed" : node.status}
+            <span
+              className={cn(
+                "capitalize",
+                failed && "font-medium text-destructive",
+              )}
+            >
+              {node.status === "ok"
+                ? "Completed"
+                : failed
+                  ? "Failed"
+                  : node.status}
             </span>
             {node.durationMs !== undefined && (
               <span>
@@ -46,6 +63,34 @@ export function SpanDetail({ node }: { node: SpanNode }) {
           aria-label="Copy span details"
         />
       </div>
+      {failed && (
+        <section
+          aria-label="Failure details"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs"
+        >
+          <CircleX
+            aria-hidden
+            className="mt-0.5 size-4 shrink-0 text-destructive"
+          />
+          <div className="min-w-0">
+            <p className="font-medium text-destructive">
+              {node.kind === "tool"
+                ? meta.exitCode === -1
+                  ? "Sandbox execution request failed"
+                  : "Tool call failed"
+                : node.kind === "run"
+                  ? "Turn failed"
+                  : "Execution failed"}
+            </p>
+            <p className="mt-1 break-words text-foreground">
+              {error ??
+                (meta.exitCode === -1
+                  ? "Command completion could not be confirmed. The recorded error is in Output below."
+                  : `See Output for the recorded error${typeof meta.exitCode === "number" ? ` (exit code ${meta.exitCode})` : ""}.`)}
+            </p>
+          </div>
+        </section>
+      )}
       <Accordion
         key={node.id}
         type="multiple"

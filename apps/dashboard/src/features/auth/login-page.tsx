@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Layers2, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { GithubMark, Helm } from "@/elements/brand";
 import { login, signup } from "./api";
 import { ApiError } from "@/utils/api-client";
-import { GithubMark } from "@/elements/brand";
 import { Button } from "@/elements/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,7 +27,7 @@ export function LoginPage() {
           href="/"
           className="flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
-          <Layers2 className="size-5" />
+          <Helm className="size-5" />
           sailor.
         </a>
         <div className="max-w-md">
@@ -48,7 +48,7 @@ export function LoginPage() {
       </section>
       <section className="flex items-center justify-center p-6 py-16">
         <div className="w-full max-w-[360px]">
-          <Layers2 className="mb-8 size-7 lg:hidden" />
+          <Helm className="mb-8 size-7 lg:hidden" />
           <h2 className="text-2xl font-medium tracking-[-.04em]">
             {mode === "signin" ? "Welcome back." : "Make room for better work."}
           </h2>

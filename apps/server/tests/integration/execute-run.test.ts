@@ -60,10 +60,10 @@ describe("executeRun", () => {
 
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     expect(run!.status).toBe("succeeded");
-    expect(run!.steps).toBe(6);
-    expect(run!.tokensIn).toBe(600);
-    expect(run!.tokensOut).toBe(60);
-    expect(run!.phase).toBe("verify");
+    expect(run!.steps).toBe(4);
+    expect(run!.tokensIn).toBe(400);
+    expect(run!.tokensOut).toBe(40);
+    expect(run!.phase).toBe("understand"); // descriptive labels are not mandatory transitions
     expect(run!.startedAt).not.toBeNull();
     expect(run!.finishedAt).not.toBeNull();
     expect(run!.finishedAt!.getTime()).toBeGreaterThanOrEqual(run!.startedAt!.getTime());

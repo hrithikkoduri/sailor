@@ -1,6 +1,7 @@
 /**
- * Live tool conformance against the Heyo backend — runs only when HEYO_TOKEN
- * is set (`npm run test:integration` with a .env present).
+ * Live tool conformance — paid infrastructure, explicitly opt-in only:
+ * RUN_LIVE_HEYO_TESTS=1 npm run test:integration -w apps/server -- heyo-tools
+ * Merely having a HEYO_TOKEN in .env must never launch a VM during tests.
  *
  * One VM is booted for the whole file: boot is the expensive part (~5s),
  * individual tool calls are ~100ms. What dev proves on LocalSandbox, this
@@ -11,7 +12,8 @@ import { loadConfig, loadDotEnv } from "../../src/config.js";
 import { HeyoSandbox, toolByName } from "@anchor/core";
 import type { Tool, ToolContext } from "@anchor/core";
 
-loadDotEnv();
+const live = process.env.RUN_LIVE_HEYO_TESTS === "1";
+if (live) loadDotEnv();
 const cfg = loadConfig();
 
 function tool(name: string): Tool {
@@ -22,7 +24,7 @@ function tool(name: string): Tool {
 
 const hasToken = Boolean(cfg.heyo.token);
 
-describe.skipIf(!hasToken)("heyo backend — live tool conformance (one shared VM)", () => {
+describe.skipIf(!live || !hasToken)("heyo backend — live tool conformance (one shared VM)", () => {
   let sandbox: HeyoSandbox;
   let ctx: ToolContext;
 

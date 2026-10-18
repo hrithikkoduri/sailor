@@ -67,6 +67,7 @@ export interface GitHubClient {
     base: string;
     title: string;
     body: string;
+    draft?: boolean;
   }): Promise<GithubPullRequest>;
   /** The PR's live state — used by the babysitter (checks, conflicts, merge). */
   getPullRequest(repo: string, prNumber: number): Promise<GithubPullRequestState>;
@@ -121,6 +122,7 @@ export function createGitHubClient(opts: GitHubClientOptions): GitHubClient {
         head: input.head,
         base: input.base,
         body: input.body,
+        ...(input.draft !== undefined ? { draft: input.draft } : {}),
       }),
     getPullRequest: (repo, prNumber) => request("GET", `/repos/${repo}/pulls/${prNumber}`),
     getCheckRuns: async (repo, ref) => {

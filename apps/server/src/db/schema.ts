@@ -130,13 +130,13 @@ export const runs = pgTable(
     // queued | running | succeeded | failed | cancelled | budget_exhausted | interrupted | paused
     status: text("status").notNull().default("queued"),
     trigger: text("trigger").notNull(), // label | manual | babysit_ci | babysit_comment | review | resume | inbox
-    /** Which agent takes this turn (decision #48): "coding" (phase machine) or "chat" (answering). */
+    /** Turn source classification (coding/chat); both use the configured Sailor agent. */
     agent: text("agent").notNull().default("coding"),
     /** The instruction this run works on (from the issue, or a follow-up comment). */
     task: text("task"),
     /** Where the run starts (e.g. "fix" for a resumed interjection). Null = thread position / first phase. */
     startPhase: text("start_phase"),
-    phase: text("phase"), // reproduce | fix | verify (where it currently is)
+    phase: text("phase"), // descriptive approach: understand | act | validate | respond
     /** How the run concluded when it declared one via finish(): done | watch | blocked. */
     disposition: text("disposition"),
     error: text("error"),

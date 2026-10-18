@@ -22,7 +22,7 @@ export function renderGithubTask(kind: string, payload: Record<string, unknown>)
       return (
         `CI failed on your PR branch: ${names}.` +
         (url ? `\n${url}` : "") +
-        `\nInvestigate the failure, fix it, and push the fix to the same branch (the usual phases apply).`
+        `\nInvestigate the failure and address it within scope. Publish a ready correction to the same PR using publish_changes; report any blockers honestly.`
       );
     }
     case "pull_request_review":
@@ -32,9 +32,9 @@ export function renderGithubTask(kind: string, payload: Record<string, unknown>)
       const body = s("body")?.trim() || "(no text — see the diff comments)";
       const path = s("path");
       return (
-        `Review feedback from ${author}${state ? ` (${state})` : ""}${path ? ` on ${path}` : ""} arrived while you were interrupted.` +
+        `Review feedback from ${author}${state ? ` (${state})` : ""}${path ? ` on ${path}` : ""}:` +
         `\n\n${body.slice(0, 4000)}` +
-        `\n\nAddress it: fix what needs fixing, and reply with a comment if a clarification is the right response.`
+        `\n\nAddress this feedback as requested. It may change the scope of earlier work. Make a focused correction or reply with a clarification as appropriate; do not assume every comment describes an executable bug.`
       );
     }
     case "issue_comment": {
@@ -49,8 +49,7 @@ export function renderGithubTask(kind: string, payload: Record<string, unknown>)
       const author = s("author") ?? "the operator";
       const body = s("body")?.trim() ?? "";
       return (
-        `Message from ${author} (dashboard chat):\n\n${body.slice(0, 4000)}` +
-        `\n\nRespond in the conversation and continue toward the thread's goal.`
+        `Message from ${author} (dashboard chat):\n\n${body.slice(0, 4000)}`
       );
     }
     case "push": {

@@ -13,13 +13,16 @@ describe("renderGithubTask", () => {
     });
     expect(t).toContain("Review feedback from octocat (changes_requested)");
     expect(t).toContain("please use approach B");
-    expect(t).toContain("Address it");
+    expect(t).toContain("Address this feedback as requested");
+    expect(t).not.toContain("usual phases");
+    expect(t).toContain("may change the scope");
   });
 
   it("failed checks name the checks and say to fix + push", () => {
     const t = renderGithubTask("check_run", { checks: ["unit", "lint"], url: "https://example/ci" });
     expect(t).toContain("CI failed on your PR branch: unit, lint");
-    expect(t).toContain("push the fix to the same branch");
+    expect(t).toContain("same PR using publish_changes");
+    expect(t).not.toContain("usual phases");
   });
 
   it("our own push renders as an acknowledgment, not work", () => {

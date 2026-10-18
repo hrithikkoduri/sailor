@@ -117,8 +117,7 @@ describe("worker recovery pipeline", () => {
         ],
       },
       { tools: [{ name: "run_tests", arguments: "{}" }] }, // full suite passes (fix stays put)
-      { tools: [{ name: "advance", arguments: "{}" }] }, // checked → verify
-      { tools: [{ name: "finish", arguments: JSON.stringify({ summary: "fixed after resume", success: true }) }] },
+      { text: "fixed after resume; existing tests pass" },
     ];
     workerConnection = createQueueConnection(redisUrl);
     worker = new Worker<RunJobData>(
@@ -136,8 +135,8 @@ describe("worker recovery pipeline", () => {
     });
 
     expect(resumeRun!.trigger).toBe("resume");
-    expect(resumeRun!.phase).toBe("verify");
-    expect(resumeRun!.steps).toBe(4);
+    expect(resumeRun!.phase).toBe("understand"); // old persisted fix label is not a new instruction
+    expect(resumeRun!.steps).toBe(3);
 
     // The thread kept its memory through the whole crash → resume arc.
     const resumed = await store.load(threadId);

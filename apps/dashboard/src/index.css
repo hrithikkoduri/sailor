@@ -134,6 +134,22 @@
   }
 }
 
+/* The helm turns only while work is happening. */
+.helm-spin {
+  animation: helm-spin 3s linear infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .helm-spin {
+    animation: none !important;
+  }
+}
+@keyframes helm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Shared layout vocabulary, not page-specific color overrides. */
 .page-heading {
   font-size: 26px;

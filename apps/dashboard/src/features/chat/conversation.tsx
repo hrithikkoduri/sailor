@@ -197,6 +197,8 @@ export function Conversation({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scroller}
+        role="region"
+        aria-label="Conversation messages"
         onScroll={() => {
           const el = scroller.current;
           if (!el) return;
@@ -237,8 +239,6 @@ export function Conversation({
               <AgentMessage
                 key={item.id}
                 status={item.run.status}
-                disposition={item.run.disposition}
-                at={item.at}
                 text={item.run.agentText ?? ""}
                 runId={item.run.id}
                 onOpenRun={onOpenRun}
@@ -255,7 +255,6 @@ export function Conversation({
             <AgentMessage
               status="running"
               streaming={!live.finished}
-              phase={live.phase}
               text=""
               parts={mergeConversation(undefined, live).parts}
             />
@@ -266,7 +265,7 @@ export function Conversation({
         <Button
           variant="outline"
           size="sm"
-          className="absolute right-6 bottom-4 rounded-full bg-card shadow-sm"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-card shadow-sm"
           onClick={() => {
             const el = scroller.current;
             if (el) {

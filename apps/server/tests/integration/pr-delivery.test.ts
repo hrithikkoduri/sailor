@@ -9,7 +9,7 @@ import { cp, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import { LocalSandbox } from "@anchor/core";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
@@ -54,6 +54,11 @@ describe("deliverPullRequest", () => {
     git(work, "remote", "add", "origin", bare);
     git(work, "push", "-q", "-u", "origin", "main");
 
+    // Self-healing: a previously interrupted run may have left this fixture
+    // row behind, and the (repo, issue_number) unique key would block insert.
+    await db
+      .delete(schema.threads)
+      .where(and(eq(schema.threads.repo, "acme/demo"), eq(schema.threads.issueNumber, 42)));
     const [thread] = await db
       .insert(schema.threads)
       .values({
@@ -66,7 +71,7 @@ describe("deliverPullRequest", () => {
       })
       .returning();
     threadId = thread!.id;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (threadId) await db.delete(schema.threads).where(eq(schema.threads.id, threadId));

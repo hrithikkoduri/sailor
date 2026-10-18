@@ -76,7 +76,7 @@ describe("conversation projection", () => {
     });
     expect(result.parts.find((p) => p.callId === "b")).toMatchObject({
       content: "tests",
-      verb: "Reading test.ts",
+      verb: "Reading repository file test.ts",
     });
     expect(result.parts.find((p) => p.kind === "reasoning")).toMatchObject({
       reasoningTokens: 24,
@@ -92,9 +92,29 @@ describe("conversation projection", () => {
       { id: "final", text: "Fixed the bug." },
     ]);
   });
+  it("enriches old generic activity labels on replay without replacing custom labels", () => {
+    const events = [
+      event(0, "tool_call", { step: 1, callId: "a", name: "bash", verb: "Running a command", input: { command: "git diff --stat" } }),
+      event(1, "tool_result", { step: 1, callId: "a", name: "bash", verb: "Running a command", ok: true }),
+      event(2, "tool_call", { step: 1, callId: "b", name: "bash", verb: "Inspecting the dataset boundary conditions", input: { command: "python check.py" } }),
+    ];
+    const result = projectConversation(events, "succeeded");
+    expect(result.parts[0]?.verb).toBe("Reviewing the repository code diff");
+    expect(result.parts[1]?.verb).toBe("Inspecting the dataset boundary conditions");
+    expect(events[0]?.payload).toMatchObject({ verb: "Running a command" });
+  });
 });
 
 describe("live projection", () => {
+  it("redacts token-shaped values before live debug input/output reaches the browser", () => {
+    const frames: Record<string, unknown>[] = [];
+    const emit = createLiveProjector(frame => frames.push(frame));
+    const token = `ghs_${"a".repeat(30)}`;
+    emit({ type: "tool_call", phase: "act", step: 1, name: "bash", input: { command: `echo ${token}` } });
+    emit({ type: "tool_result", phase: "act", step: 1, name: "bash", ok: false, content: token, contentChars: token.length });
+    expect(JSON.stringify(frames)).not.toContain(token);
+    expect(JSON.stringify(frames)).toContain("REDACTED");
+  });
   it("publishes step-scoped cumulative text immediately and flushes the final short chunk", () => {
     const frames: Record<string, unknown>[] = [];
     let clock = 1000;

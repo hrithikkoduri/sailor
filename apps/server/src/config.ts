@@ -13,6 +13,8 @@ import path from "node:path";
 import type { HeyoSizeClass } from "@anchor/core";
 
 export interface SailorConfig {
+  /** Optional delivery policy; never a conversational completion gate. */
+  publication: { requirePassingTests: boolean };
   /** Heyo Cloud connection (Firecracker microVMs) — the only production sandbox. */
   heyo: {
     token: string | undefined;
@@ -149,6 +151,7 @@ function optionalNumber(value: string | undefined): number | undefined {
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
   return {
+    publication: { requirePassingTests: env.SAILOR_REQUIRE_PASSING_TESTS === "1" },
     heyo: {
       token: env.HEYO_TOKEN || undefined,
       server: env.HEYO_SERVER ?? "https://admin.us5.heyo.work",

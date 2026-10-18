@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@anchor/core";
+import { redact, type AgentEvent } from "@anchor/core";
 
 /** Keep the live path independent of slow journal writes; snapshots are step-scoped. */
 export function createLiveProjector(
@@ -14,8 +14,13 @@ export function createLiveProjector(
   return (event: AgentEvent) => {
     sequence++;
     if ("step" in event) step = event.step;
+    // Live debug details must have the same token redaction as the journal.
     const publish = (payload: Record<string, unknown>) =>
-      send({ sequence, step, ...payload });
+      send(
+        JSON.parse(
+          redact(JSON.stringify({ sequence, step, ...payload })),
+        ) as Record<string, unknown>,
+      );
     switch (event.type) {
       case "llm_call_started":
         text = "";

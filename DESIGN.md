@@ -1,15 +1,17 @@
-# DESIGN.md — issue-to-PR coding sailor
+# DESIGN.md — Sailor, built on Anchor
 
 > Living decisions log. Every entry: what was decided, why, and by whom. Update as we go.
+> Earlier numbered entries preserve the design history. Decision #51 below
+> supersedes the mandatory phase/test-gate and implicit-publication behavior.
 
 **One-line pitch:** label a GitHub issue `agent:fix`, get a PR with the fix, passing tests, and a link to the full agent trace — all inside an isolated Firecracker microVM.
 
 ## Vocabulary (kept consistent everywhere)
 
 - **Agent** — the LLM-driven worker that decides and acts.
-- **Agent sailor** (a.k.a. agent framework) — everything *around* the agent that makes it work: the loop, tools, sandbox, context management, budgets, traces. **That is `packages/core` (`@anchor/core`).** It ships with a default coding agent (the reproduce→fix→verify strategy + the coding tool set) but knows nothing about GitHub, Postgres, or this product.
-- **The product** — the issue→PR pipeline that *uses* the agent sailor: threads, queues, webhooks, GitHub, dashboard. **That is `apps/server` (`@sailor/server`).**
-- **This repo** — currently both (staging monorepo); at step 20 the package moves to its own repo, is named properly (its own identity — "sailor" nested inside "sailor" is a staging name only), and the product consumes it as consumer #1.
+- **Anchor** — the reusable agent framework: loop, tools, sandbox, context management, budgets, and traces. **`packages/core` (`@anchor/core`)** includes a coding profile with composed guidance and agent-controlled phases, but knows nothing about GitHub, Postgres, or Sailor.
+- **Sailor** — the product built on Anchor: threads, queues, webhooks, GitHub, and dashboard. **`apps/server` (`@sailor/server`)** configures the coding agent with product identity and scoped publication tools; **`apps/dashboard`** is its UI.
+- **This repo** — currently both (staging monorepo); at step 20 Anchor moves to its own repository and Sailor consumes its published package as consumer #1.
 
 ## Architecture (current draft)
 
@@ -23,9 +25,10 @@ Dashboard + chat ──HTTP──▶  │ server (Hono): webhooks · api ·   �
                                                                      ▼
                                     worker process (long-lived)
                                       agent thread state machine
-                                      turn = agent loop (reproduce → fix → verify)
+                                      turn = model → tools → observations → model
                                                         │ tools (bash, read_file, edit_file,
-                                                        │        search, run_tests, finish)
+                                                         │        search, run_tests,
+                                                         │        publish_changes, reply_on_github)
                                                         ▼
                                     Heyo microVM (Firecracker), /workspace/repo
                                     checkpoints = git commits (forkable)
@@ -34,7 +37,7 @@ Dashboard + chat ──HTTP──▶  │ server (Hono): webhooks · api ·   �
 
 ## Repository layout — staging workspaces now, extraction later
 
-npm workspaces with one package + two apps. Split by **runtime first, then domain**; one-way dependencies only: `apps → packages` (a sandbox adapter must never import the agent; the package must never import the app). The package tree follows the framework layers; `engine/` is agent-agnostic, `agents/` holds the built-in agents (coding = reproduce→fix→verify strategy + its toolbox).
+npm workspaces with one package + two apps. Split by **runtime first, then domain**; one-way dependencies only: `apps → packages`. The package tree follows the framework layers: `engine/` is agent-agnostic; `agents/` supplies prompt components, descriptive approach phases, and capability bundles. No separate workflow engine or mandatory phase gates.
 
 ```
 packages/core/   @anchor/core — the framework (publishable-ready from day one)
@@ -140,6 +143,39 @@ Lands in: step 9 (lease/heartbeat/resume + journal), steps 17–18 (SSE).
 | 48 | **A run remembers WHICH agent takes it — chat turns are chat turns (from the same-day UI review).** New `runs.agent` column (default `coding`): `drainInbox` classifies the batch — nothing but `chat_message` events → **chat agent** (`chatStrategy` + the coding tools: one `respond` phase, a text-only reply ends the run; tools stay available so it can read the repo or act when asked); any GitHub/machine event → **coding agent**. Webhook-delivered turns are coding; crash resumes inherit the original run's agent. Cross-strategy resume is safe by construction (unknown saved phase → the strategy's first phase). Closes the review finding *"I asked 'what did you do' and got the whole reproduce→fix→verify loop"*: a question now produces a conversational reply, and its trace is a clean single-turn `respond`. **Restraint pass in the same breath:** status pills = neutral + one semantic dot (only `running` is tinted — color carries meaning, not decoration); consecutive push notes merge (`×N`); system events render as quiet centered hairlines; agent messages are plain text with an avatar (no boxes), user messages are right-aligned bubbles. **Honest accounting:** `threads.turns_used` increments per run; `usd_spent` accrues each run's cost — the rail is no longer cosmetic | The review's core insight — mechanics and conversation were conflated — is fixed at the source: the agent is a property of the work, not a hardcoded pipeline; and the thread finally reads like a conversation with an engineer, not a CI log | ✅ decided |
 | 49 | **The Trace tab is a whole-thread span explorer (from the same-day UI review, LangSmith-inspired).** `GET /api/threads/:id/trace` ships every run + all spans + **thread-level totals** in one payload — token deltas excluded (reconstructable, payload-dominating) and tool output trimmed to 4k for transport. The client builds the tree (run → phase → agent step → tool call; tool results paired by name; guardrails/checkpoints/errors attach to the innermost open container; missing durations estimated from sibling chronology, marked `~`) and renders it LangSmith-style: tree pane with status dot, token chip, duration, and an aligned **mini waterfall bar** per row; detail pane with **Input / Output / Metadata** (agent text as markdown). `?run=` focuses a run (PR links + conversation chips land correctly); the header shows runs (coding/chat), tokens, cost, wall time, turns. Not a general tracing backend — a faithful render of exactly what we record. | Review verdict accepted: per-run trace + scattered thread stats had no novelty in the UI; ONE tree over the thread, aggregates on top, detail on the right is the honest way to show recorded truth | ✅ decided |
 | 50 | **Names: the package is Anchor (`@anchor/core`), the product is Sailor.** From the naming session: the framework gets its own brand — Anchor, scoped `@anchor/core` on npm (the unscoped name is taken; the `@anchor` scope is empty), directory `packages/core`, sandbox scratch dir `.anchor/sandboxes`, sandbox ids `sb-anchor-*` — and the product becomes Sailor: root workspace `sailor`, backend `apps/server` (`@sailor/server`, CLI bin `sailor`), UI `apps/dashboard` (`@sailor/dashboard`). One sweep carried the vocabulary everywhere: env prefixes (`SAILOR_PORT`, `SAILOR_PUBLIC_URL`), Redis channels (`sailor:updates`/`sailor:live`), session/oauth cookies (`sailor_session`, `sailor_oauth_state`, `sailor_install_state`), PR branches (`sailor/issue-<n>` from `headRefFor`), the local Postgres role/database (`sailor`, data preserved by ALTER), the wordmark, UI copy, docs, and the design constitution (`design-system/sailor/MASTER.md`). External names stay until changed at their source — the Heyo namespace (scoped to the existing token) and the GitHub App slug (`repoinbox-dev`); `HEYO_NAMESPACE`/`GITHUB_APP_SLUG` follow afterwards. The push guard accepts both `sailor/issue-*` and pre-rename `harness/issue-*`, so the already-open PR keeps being babysat on its branch | Package and product need distinct, non-overlapping identities before more features pile on: one framework anyone can embed ("Anchor — build agents that can do the work"), one workspace it powers ("Sailor — from issue to reviewable change") | ✅ decided |
+
+## Decision #51 — agent-led execution, phases as approach, composed prompts
+
+The runtime is one model/tools/observations loop. It does not reject completion
+for missing test evidence or force a reproduce/fix/verify itinerary. A final
+response ends an assistant turn, not a verification certificate or publication.
+This supersedes the workflow-gate and implicit side-effect portions of the
+earlier decisions; no legacy workflow runner is retained.
+
+- **Meaningful phases:** understand → act → validate → respond describe a
+  useful approach. `set_phase` records the agent's progress, permits skipping
+  and revisiting, and never imposes evidence gates. Caller-controlled pauses,
+  budgets, cancellation, sandbox isolation, and tool capability bounds remain.
+- **Composed behavior:** the coding profile assembles named character/tone,
+  judgment, operating rules, verification philosophy, phases, and context.
+  Sailor specializes that exact profile with product identity and GitHub tools,
+  rather than duplicating the agent or maintaining a different chat personality.
+- **Honest task grounding:** the current request is the latest real user
+  message. Internal controls are explicitly distinguished from conversation;
+  normal runtime history handling does not guess by text prefix. A separate
+  backed-up repair command cleans known historical orchestration directives
+  from idle threads only, preserving the immutable trace journal.
+- **Explicit side effects:** only `publish_changes` publishes and only
+  `reply_on_github` posts a discussion reply. Repository selection is checked
+  again at that boundary. Current-tree test evidence is reported independently;
+  unverified new PRs are drafts. `SAILOR_REQUIRE_PASSING_TESTS=1` can withhold
+  publication without keeping the conversation trapped in a retry loop.
+- **Timeout truth:** Heyo runs commands as deadline-bound guest jobs observed
+  with short API calls. Launches are not blindly replayed, unknown completion
+  is not called a confirmed kill, and output collectors are supervised too.
+  Live VM tests require an explicit `RUN_LIVE_HEYO_TESTS=1`.
+- **Debug display:** ⌘⇧D / Ctrl+Shift+D reveals expandable tool input/output
+  and red failure details, without changing agent permissions or behavior.
 
 ## Streaming and activity follow-up (2026-10-18)
 

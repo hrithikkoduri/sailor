@@ -1,13 +1,48 @@
-import { Layers2 } from "lucide-react";
+/**
+ * The Sailor identity: the helm mark, the wordmark, the octocat.
+ *
+ * The helm is ONE geometry worn everywhere — product logo, favicon
+ * (public/favicon.svg mirrors it), and busy indicator (`helm-spin` turns it
+ * while work is happening: agent messages, tool activity, thinking).
+ */
+export function Helm({
+  size = 16,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      className={className}
+      fill="none"
+      aria-hidden
+    >
+      {/* A traditional eight-handle helm: a weighty rim, tapered spokes,
+          turned grips, and an open hub, following the reference silhouette. */}
+      {Array.from({ length: 8 }, (_, i) => (
+        <g key={i} transform={`rotate(${i * 45} 16 16)`} fill="currentColor">
+          <path d="M15.45 14.1 15.15 9.1h1.7l-.3 5Z" />
+          <path d="M15.35 7.5 15.5 5.4C15 4.6 14.9 3.4 15.1 2.6c.25-1.25 1.55-1.25 1.8 0 .2.8.1 2-.4 2.8l.15 2.1Z" />
+        </g>
+      ))}
+      <circle cx="16" cy="16" r="7.6" stroke="currentColor" strokeWidth="2.8" />
+      <circle cx="16" cy="16" r="1.9" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
 
-/** A single monochrome mark, shared by onboarding and workspace chrome. */
+/** Bare monochrome mark: no tile, border, or background. */
 export function Logo({ size = 40 }: { size?: number }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+      className="inline-flex shrink-0 items-center justify-center text-foreground"
       style={{ width: size, height: size }}
     >
-      <Layers2 aria-hidden size={size * 0.5} />
+      <Helm size={size * 0.875} />
     </span>
   );
 }

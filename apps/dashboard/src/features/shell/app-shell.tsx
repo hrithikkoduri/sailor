@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
-  Layers2,
+  Bug,
   LogOut,
   MessageSquare,
   Moon,
@@ -13,7 +13,10 @@ import {
 import { logout } from "@/features/auth/api";
 import { useUser } from "@/hooks/use-user";
 import { useTheme } from "@/app/theme-provider";
+import { Logo } from "@/elements/brand";
 import { IconButton } from "@/elements/icon-button";
+import { Button } from "@/elements/button";
+import { useDebugMode } from "@/features/debug/debug-provider";
 import { cn } from "@/utils/cn";
 import {
   Sidebar,
@@ -51,13 +54,18 @@ export function AppShell({
   const { pathname } = useLocation();
   const { user } = useUser();
   const { theme, setTheme } = useTheme();
+  const { enabled: debug, toggle: toggleDebug } = useDebugMode();
   const name = user?.name ?? user?.login ?? user?.email ?? "Your workspace";
   return (
     <SidebarProvider
       className="h-svh min-h-0 overflow-hidden"
       style={{ "--sidebar-width": "232px" } as CSSProperties}
     >
-      <Sidebar collapsible="icon" animateOnHover={false} className="border-r border-border">
+      <Sidebar
+        collapsible="icon"
+        animateOnHover={false}
+        className="border-r border-border"
+      >
         <SidebarHeader className="px-3 pt-4 pb-4 group-data-[collapsible=icon]:px-2">
           <SidebarMenu>
             <SidebarMenuItem>
@@ -67,10 +75,11 @@ export function AppShell({
                 className="h-11 hover:bg-transparent"
               >
                 <NavLink to="/" aria-label="Sailor home">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    <Layers2 className="size-4" />
-                  </span>
-                  <span data-sidebar-label className="text-base font-semibold tracking-[-.04em]">
+                  <Logo size={32} />
+                  <span
+                    data-sidebar-label
+                    className="text-base font-semibold tracking-[-.04em]"
+                  >
                     sailor<span className="text-muted-foreground">.</span>
                   </span>
                 </NavLink>
@@ -122,7 +131,10 @@ export function AppShell({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-          <div data-sidebar-label className="mt-auto px-5 pb-6 group-data-[collapsible=icon]:hidden">
+          <div
+            data-sidebar-label
+            className="mt-auto px-5 pb-6 group-data-[collapsible=icon]:hidden"
+          >
             <p className="text-xs font-medium">A little less busywork.</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               From an issue to a reviewed fix.
@@ -158,7 +170,10 @@ export function AppShell({
                     Personal workspace
                   </span>
                 </span>
-                <ChevronDown data-sidebar-label className="size-3 text-muted-foreground" />
+                <ChevronDown
+                  data-sidebar-label
+                  className="size-3 text-muted-foreground"
+                />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -182,6 +197,13 @@ export function AppShell({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                onSelect={toggleDebug}
+                aria-keyshortcuts="Meta+Shift+D Control+Shift+D"
+              >
+                <Bug aria-hidden />
+                {debug ? "Disable debug mode" : "Enable debug mode"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onSelect={() => {
                   void logout().then(() => navigate("/login"));
                 }}
@@ -199,6 +221,21 @@ export function AppShell({
           <SidebarTrigger className="size-8 text-muted-foreground" />
           <div className="h-4 w-px bg-border" />
           <div className="flex min-w-0 flex-1 items-center gap-2">{topbar}</div>
+          {debug && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 shrink-0 gap-1.5 px-2 text-[11px]"
+              onClick={toggleDebug}
+              aria-label="Disable debug mode"
+              aria-pressed="true"
+              aria-keyshortcuts="Meta+Shift+D Control+Shift+D"
+              title="Debug mode · ⌘⇧D / Ctrl+Shift+D · click to disable"
+            >
+              <Bug aria-hidden className="size-3" />
+              Debug
+            </Button>
+          )}
           <IconButton
             label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
             onClick={() => setTheme(theme === "light" ? "dark" : "light")}

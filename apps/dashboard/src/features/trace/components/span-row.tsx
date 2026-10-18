@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  CircleX,
   GitCommitHorizontal,
   Layers2,
   Wrench,
@@ -40,7 +41,8 @@ export function SpanRow({
   const matches = (n: SpanNode): boolean =>
     n.name.toLowerCase().includes(query) || n.children.some(matches);
   if (query && !matches(node)) return null;
-  const Icon = ICON[node.kind];
+  const failed = node.status === "fail";
+  const Icon = failed ? CircleX : ICON[node.kind];
   const expanded = !!query || !collapsed.has(node.id);
   const tokens = (node.tokensIn ?? 0) + (node.tokensOut ?? 0);
   const total = Math.max(1, window.end - window.start);
@@ -55,11 +57,13 @@ export function SpanRow({
   return (
     <li>
       <div
+        data-span-status={node.status}
         className={cn(
           "group flex min-h-10 items-center gap-1 border-l-2 pr-3 text-xs transition-colors",
           selectedId === node.id
             ? "border-selection-foreground bg-selection text-selection-foreground"
             : "border-transparent hover:bg-muted/60",
+          failed && "bg-destructive/2",
         )}
         style={{ paddingLeft: 8 + depth * 14 }}
       >
@@ -84,17 +88,29 @@ export function SpanRow({
           aria-pressed={selectedId === node.id}
           className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left"
         >
-          <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+          <Icon
+            aria-hidden
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground",
+              failed && "text-destructive",
+            )}
+          />
           <span
             className={cn(
               "min-w-0 flex-1 truncate",
               node.kind === "run" && "font-medium",
+              failed && "font-medium text-destructive",
             )}
           >
             {node.name
               .replace("agent · step", "Model call")
               .replace("phase · ", "")}
           </span>
+          {failed && (
+            <span className="shrink-0 text-[10px] font-medium text-destructive">
+              Failed
+            </span>
+          )}
           <span
             className={cn(
               "size-1 shrink-0 rounded-full bg-input",
@@ -113,7 +129,10 @@ export function SpanRow({
           </span>
           <span className="relative ml-1 hidden h-1 w-14 shrink-0 rounded-full bg-muted lg:block">
             <span
-              className="absolute h-full rounded-full bg-muted-foreground/50"
+              className={cn(
+                "absolute h-full rounded-full bg-muted-foreground/50",
+                failed && "bg-destructive",
+              )}
               style={{ left: `${left}%`, width: `${width}%` }}
             />
           </span>

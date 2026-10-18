@@ -1,12 +1,25 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockWorkspace, manualStream, emitLive, detail } from "./fixtures";
+import {
+  mockWorkspace,
+  manualStream,
+  emitLive,
+  detail,
+  trace,
+} from "./fixtures";
 
 test("thread list: search, filter, accessible navigation and theme persistence", async ({
   page,
 }, info) => {
   const errors = await mockWorkspace(page);
   await page.goto("/");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/favicon.svg",
+  );
+  const favicon = await page.request.get("/favicon.svg");
+  expect(favicon.ok()).toBe(true);
+  expect(favicon.headers()["content-type"]).toContain("image/svg+xml");
   await expect(
     page.getByRole("heading", { name: "Handle empty batches gracefully" }),
   ).toBeVisible();
@@ -41,6 +54,11 @@ test("thread list: search, filter, accessible navigation and theme persistence",
     .getByRole("main")
     .getByRole("button", { name: "Toggle Sidebar" })
     .click();
+  // Audit the settled expanded state, not a label mid-opacity transition.
+  await expect(page.locator('[data-slot="sidebar-group-label"]')).toHaveCSS(
+    "opacity",
+    "1",
+  );
   expect(
     (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
       .violations,
@@ -68,6 +86,16 @@ test("conversation: draft survives failure, retry sends, trace is the entire thr
   await expect(
     page.getByRole("article", { name: "Agent response" }),
   ).toBeVisible();
+  const response = page.getByRole("article", { name: "Agent response" });
+  await expect(response.getByText("Sailor", { exact: true })).toHaveCount(0);
+  await expect(response.locator("time")).toHaveCount(0);
+  const home = page.getByRole("link", { name: "Sailor home" });
+  const homeMark = home.locator("svg");
+  expect(
+    await homeMark.evaluate(
+      (el) => getComputedStyle(el.parentElement!).backgroundColor,
+    ),
+  ).toBe("rgba(0, 0, 0, 0)");
   await page.screenshot({ path: info.outputPath("conversation-light.png") });
   const composer = page.getByRole("textbox", { name: "Message the agent" });
   await composer.fill("What changed?");
@@ -99,6 +127,85 @@ test("conversation: draft survives failure, retry sends, trace is the entire thr
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();
   expect(audit.violations).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("trace: failed tool calls are visibly red with execution error details", async ({
+  page,
+}, info) => {
+  const errors = await mockWorkspace(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const failure = "Sandbox API error (500): Command timed out after 30 seconds";
+  await page.route("**/api/threads/thread-1/trace", (route) =>
+    route.fulfill({
+      json: {
+        ...trace,
+        spans: trace.spans.map((span) =>
+          span.type === "tool_call"
+            ? {
+                ...span,
+                payload: {
+                  ...span.payload,
+                  name: "bash",
+                  input: { command: "echo hi" },
+                },
+              }
+            : span.type === "tool_result"
+              ? {
+                  ...span,
+                  payload: {
+                    ...span.payload,
+                    name: "bash",
+                    ok: false,
+                    content: failure,
+                    meta: { exitCode: -1, timedOut: true, durationMs: 30162 },
+                  },
+                }
+              : span,
+        ),
+      },
+    }),
+  );
+  await page.goto("/threads/thread-1?view=trace");
+  const tool = page.getByRole("button", { name: /^bash Failed/ });
+  await expect(tool).toBeVisible();
+  const row = page.locator('[data-span-status="fail"]').filter({ has: tool });
+  await expect(row.getByText("Failed", { exact: true })).toHaveCSS(
+    "color",
+    "rgb(191, 70, 70)",
+  );
+  await tool.click();
+  await expect(
+    page.getByRole("heading", { name: "bash", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Failure details" }),
+  ).toContainText("Sandbox execution request failed");
+  await expect(page.getByText(failure, { exact: false }).last()).toBeVisible();
+  for (const panel of await page
+    .locator('[data-slot="accordion-content"]')
+    .all()) {
+    await expect(panel).toHaveCSS("opacity", "1");
+  }
+  await page.screenshot({
+    path: info.outputPath("trace-failed-tool-light.png"),
+  });
+  expect(
+    (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
+      .violations,
+  ).toEqual([]);
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await expect(row.getByText("Failed", { exact: true })).toHaveCSS(
+    "color",
+    "rgb(225, 149, 149)",
+  );
+  await page.screenshot({
+    path: info.outputPath("trace-failed-tool-dark.png"),
+  });
+  expect(
+    (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
+      .violations,
+  ).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -224,7 +331,13 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
   const errors = await mockWorkspace(page, { active: true });
   await manualStream(page);
   await page.goto("/threads/thread-1");
-  await expect(page.getByText("Working on it", { exact: true })).toBeVisible();
+  const response = page.getByRole("article", { name: "Agent response" });
+  await expect(response).toHaveAttribute("aria-busy", "true");
+  const busyMark = response.locator(".helm-spin").first();
+  await expect(busyMark).toHaveCSS("animation-name", "helm-spin");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(busyMark).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   // No llm_started frame: connecting mid-call must not discard deltas.
   await emitLive(page, {
     kind: "reasoning",
@@ -261,9 +374,22 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
     verb: "Reading README.md",
     input: { path: "README.md" },
   });
+  // Live activity expands to the action verbs; its helm turns only while busy.
+  const busyActivity = page.getByRole("button", {
+    name: "1 action in progress",
+    exact: true,
+  });
+  await expect(busyActivity).toHaveAttribute("aria-expanded", "true");
+  const actions = page.getByRole("list", { name: "Actions performed" });
+  const actionPanel = page
+    .locator('[data-slot="accordion-content"]')
+    .filter({ has: actions });
   await expect(
-    page.getByRole("button", { name: "Reading README.md", exact: true }),
-  ).toHaveAttribute("aria-expanded", "true");
+    actions.getByText("Reading README.md", { exact: true }),
+  ).toBeVisible();
+  await expect(actions.locator(".helm-spin")).toHaveCount(1);
+  await expect(actionPanel).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: info.outputPath("chat-activity-running.png") });
   await emitLive(page, {
     kind: "tool_result",
     step: 1,
@@ -274,6 +400,7 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
     content: "# Worker service",
     ok: true,
   });
+  await expect(actions.locator(".helm-spin")).toHaveCount(0);
   await emitLive(page, {
     kind: "llm_started",
     step: 2,
@@ -286,8 +413,9 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
     sequence: 7,
     text: "The README is complete.",
   });
+  // The next assistant step collapses activity to one quiet disclosure line.
   const activity = page.getByRole("button", {
-    name: "1 action completed",
+    name: "1 action performed",
     exact: true,
   });
   await expect(activity).toHaveAttribute("aria-expanded", "false");
@@ -310,15 +438,43 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
     summary: "The README is complete.",
     ok: true,
   });
-  await expect(page.getByText("Working on it", { exact: true })).toHaveCount(0);
-  await activity.click();
+  await expect(response).toHaveAttribute("aria-busy", "false");
+  await expect(response.locator(".helm-spin")).toHaveCount(0);
+  await activity.focus();
+  await page.keyboard.press("Enter");
+  await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(
-    page.getByText("# Worker service", { exact: true }),
+    actions.getByText("Reading README.md", { exact: true }),
   ).toBeVisible();
+  await expect(actions.getByText("Completed", { exact: true })).toBeVisible();
+  await expect(actionPanel).toHaveCSS("opacity", "1");
+  // Tool output never renders in the conversation; the trace is the record.
+  await expect(page.getByText("# Worker service", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(actions.locator("pre")).toHaveCount(0);
   await expect(
     page.getByText("5 reasoning tokens", { exact: false }),
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath("chat-activity.png") });
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.screenshot({ path: info.outputPath("chat-activity-dark.png") });
+  expect(
+    (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
+      .violations,
+  ).toEqual([]);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(activity).toBeVisible();
+  await expect(
+    actions.getByText("Reading README.md", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: info.outputPath("chat-activity-mobile.png") });
 
   // Rehydrate from persisted blocks with the same stable IDs after refresh.
   const parts = [
@@ -379,16 +535,66 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
   await expect(
     page.getByText("The README is complete.", { exact: true }),
   ).toHaveCount(1);
+  await expect(activity).toHaveAttribute("aria-expanded", "false");
+  await activity.click();
   await expect(
-    page.getByRole("button", { name: "1 action completed", exact: true }),
-  ).toHaveAttribute("aria-expanded", "false");
-  await page
-    .getByRole("button", { name: "1 action completed", exact: true })
-    .click();
-  await expect(
-    page.getByText("# Worker service", { exact: true }),
+    actions.getByText("Reading README.md", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("# Worker service", { exact: true })).toHaveCount(
+    0,
+  );
   expect(errors).toEqual([]);
+});
+
+test("latest message stays centered above the composer", async ({ page }) => {
+  await mockWorkspace(page);
+  await manualStream(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/api/threads/thread-1", (route) =>
+    route.fulfill({
+      json: {
+        ...detail,
+        runs: [
+          {
+            ...detail.runs[0],
+            agentText: Array.from(
+              { length: 35 },
+              (_, i) =>
+                `Paragraph ${i + 1}: The tests pass and the change is ready for review.`,
+            ).join("\n\n"),
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/threads/thread-1");
+  const messages = page.getByRole("region", { name: "Conversation messages" });
+  await expect(page.getByText("Paragraph 35:", { exact: false })).toBeVisible();
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await messages.evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    const jump = page.getByRole("button", {
+      name: "Latest message",
+      exact: true,
+    });
+    await expect(jump).toBeVisible();
+    const container = (await messages.boundingBox())!;
+    const button = (await jump.boundingBox())!;
+    expect(
+      Math.abs(
+        button.x + button.width / 2 - (container.x + container.width / 2),
+      ),
+    ).toBeLessThan(2);
+    await jump.click();
+    await expect(jump).toHaveCount(0);
+    expect(
+      await messages.evaluate(
+        (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
+      ),
+    ).toBeLessThan(5);
+  }
 });
 
 test("reconciliation: a lost completion nudge never requires a browser refresh", async ({
@@ -428,10 +634,11 @@ test("reconciliation: a lost completion nudge never requires a browser refresh",
     }),
   );
   await page.goto("/threads/thread-1");
-  await expect(page.getByText("Working on it", { exact: true })).toBeVisible();
+  const response = page.getByRole("article", { name: "Agent response" });
+  await expect(response).toHaveAttribute("aria-busy", "true");
   completed = true; // No SSE frame is sent. The bounded reconciliation catches up.
   await expect(
     page.getByText("Recovered the completed reply.", { exact: true }),
   ).toBeVisible({ timeout: 6000 });
-  await expect(page.getByText("Working on it", { exact: true })).toHaveCount(0);
+  await expect(response).toHaveAttribute("aria-busy", "false");
 });

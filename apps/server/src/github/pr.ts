@@ -21,7 +21,7 @@
  * interface now; this file just uses it.)
  */
 import { eq } from "drizzle-orm";
-import type { Sandbox } from "@anchor/core";
+import { shq, type Sandbox } from "@anchor/core";
 import { schema, type Db } from "../db/index.js";
 import type { Thread } from "../db/schema.js";
 import { ensureThreadState } from "../threads/state.js";
@@ -36,6 +36,8 @@ export interface DeliverPullRequestDeps {
   runId: string;
   publicUrl: string;
   summary?: string;
+  verification?: string;
+  draft?: boolean;
 }
 
 export interface DeliveredPullRequest {
@@ -64,7 +66,7 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
     // Push — for a first delivery this creates the branch; for a FOLLOW-UP
     // (babysitting: the PR already exists) it updates it in place.
     // Force-pushing our own sailor/* branch is the idempotent thing to do.
-    const push = await sandbox.exec(`git push --force origin HEAD:refs/heads/${head}`, { timeoutSecs: 300 });
+    const push = await sandbox.exec(`git push --force origin ${shq(`HEAD:refs/heads/${head}`)}`, { timeoutSecs: 300 });
     if (push.exitCode !== 0) {
       throw new Error(`git push failed (${push.exitCode}): ${push.output.trim().slice(0, 500)}`);
     }
@@ -82,6 +84,7 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
     "",
     "## 🤖 sailor fix",
     deps.summary?.trim() ? deps.summary.trim() : "The agent completed the work on this issue.",
+    ...(deps.verification ? ["", `**Verification:** ${deps.verification}`] : []),
     "",
     `**Full trace:** ${traceUrl(deps.publicUrl, thread.id, deps.runId)}`,
   ].join("\n");
@@ -91,6 +94,7 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
     base: thread.baseRef,
     title: `Fix #${thread.issueNumber}: ${issue.title}`,
     body,
+    ...(deps.draft !== undefined ? { draft: deps.draft } : {}),
   });
 
   await db

@@ -28,6 +28,18 @@ Content first, quiet navigation, clear actions, inspectable evidence.
 - Green/red/amber are small semantic indicators, not panel colors.
 - Use semantic tokens from `apps/dashboard/src/index.css` everywhere.
 - Light is the default; theme choice persists locally, including before React loads.
+- Keep the sidebar flat porcelain. The cream/grain experiment was rejected;
+  don't reintroduce textured surfaces.
+
+## Identity
+
+- `elements/brand` owns the Sailor helm: eight shaped handles, a heavier rim,
+  tapered spokes, and an open hub. The SVG favicon mirrors the same geometry.
+- Render the mark without a tile, border, or background.
+- Use the same mark in the shell, authentication screens, and activity rows.
+  Agent replies have no repeated avatar, name, or timestamp header; start with
+  the content. Rotation indicates real work only: thinking and pending actions.
+  Stop for reduced motion.
 
 ## Typography and rhythm
 
@@ -67,10 +79,22 @@ behavior and motion. Vendored fixes must be recorded in the dashboard README.
 - Run and thread aggregates belong in the trace; do not decorate chat messages
   with token costs, internal IDs, or phase badges.
 - Trace selection survives refresh. Input, Output, Metadata stay stacked.
+- Trace failures must be obvious without relying on color alone: red icon and
+  name, a visible “Failed” label, and a failure summary in the detail pane.
+  A failed execution request does not establish that the guest process stopped.
 - Preserve drafts on errors. Enter sends, Shift+Enter inserts a line; queued
   messages can be explicitly interjected. Composition/IME must not submit.
 - Follow live output only while the user is near the bottom. Offer a “latest
-  message” action instead of pulling someone away from what they are reading.
+  message” action centered above the composer instead of pulling someone away
+  from what they are reading.
+- Tool activity is a quiet, borderless disclosure line (“N actions performed”).
+  Expanding reveals action verbs and outcomes, not argument/output JSON; those
+  remain in Trace. Open while working, collapse as the next assistant step starts,
+  and allow manual reopening. Reasoning remains independently expandable.
+- Local debug mode (⌘⇧D / Ctrl+Shift+D) keeps action groups open and reveals
+  per-tool expandable input/output. Failed calls have red labels and output plus
+  explicit failure text. Keep a visible active indicator and a pointer-accessible
+  toggle. It is a display preference, not permission or execution mode.
 - All search, filters, menus, and controls must work. No decorative fake actions.
 
 ## Motion and verification

@@ -15,6 +15,7 @@
     "worker:watch": "tsx watch --clear-screen=false src/cli.ts worker",
     "doctor": "tsx src/cli.ts doctor",
     "migrate": "tsx src/cli.ts migrate",
+    "repair:history": "tsx scripts/repair-thread-history.ts",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",

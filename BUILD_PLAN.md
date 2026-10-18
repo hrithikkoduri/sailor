@@ -437,6 +437,63 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - The push guard accepts pre-rename `harness/issue-*` branches so the existing PR
   keeps being babysat; new PRs open on `sailor/issue-<n>`.
 
+### Sailor identity + conversation polish (review follow-up)
+
+- Added a shared SVG helm for the product mark, activity indicators, and favicon.
+  Redrawn from the supplied traditional-wheel reference: eight shaped handles,
+  tapered spokes, an open hub, and a heavier rim. No background tile. Removed
+  the repeated avatar/name/timestamp header from agent replies after review.
+  Thinking/action marks rotate while busy; reduced motion disables rotation.
+- Activity stays a compact, borderless expandable line. Expanded rows show
+  action verbs and outcomes, not arguments/output JSON; Trace keeps the details.
+  Groups open during work and collapse as the next assistant step starts.
+- Activity labels now summarize the input in roughly 4–5 useful words (file,
+  search target, command family, test suite). No extra model calls. Replay
+  enriches old generic labels without modifying the journal or custom labels.
+- Centered “Latest message” above the composer, including mobile. Removed the
+  rejected cream/texture experiment; restored the original flat sidebar tone.
+- Browser coverage includes keyboard expansion, refresh, busy/finished and
+  reduced-motion states, plus jump-button alignment at desktop/mobile widths.
+
+### Agent-led runtime, composed prompts, explicit publication
+
+- One agent loop: model → authorized tools → observations → model. A final
+  response ends the turn; no forced finish calls, transition checks, or test
+  gates. The separate workflow implementation was removed, not kept as legacy.
+- Meaningful phases describe the approach: understand, act, validate, respond.
+  `set_phase` records an agent-chosen change, with skipping/revisiting allowed.
+  Completion is possible from any phase. Caller-requested pause remains a
+  runtime capability, not a task prerequisite.
+- Named coding-prompt components: character/tone, judgment, operating rules,
+  verification philosophy, phases, and context. Sailor configures the reusable
+  coding agent with product identity and GitHub capabilities instead of
+  duplicating its engineering behavior.
+- Current requests are actual latest user messages. Internal controls do not
+  become durable user instructions. The explicit `repair:history` command
+  backs up and cleans known malformed historical working memory only; it skips
+  active threads and never rewrites trace events.
+- Publication and GitHub replies are explicit, thread-scoped tools. A completed
+  response no longer pushes or comments implicitly. Repository selection is
+  rechecked at publication. Verification comes from current-tree tool evidence;
+  unverified new PRs are drafts. Optional `SAILOR_REQUIRE_PASSING_TESTS=1` gates
+  publication only, never conversational completion.
+- Heyo execution uses guest jobs and short control-plane observations, with
+  real guest deadlines, separate stdout/stderr capture, and atomic receipts.
+  Launches are never blindly replayed; transient observation reads may retry.
+  Unknown completion is not reported as a confirmed kill. Live VM tests now
+  require an explicit `RUN_LIVE_HEYO_TESTS=1`, not just credentials in .env.
+
+### Local debug display + trace failure visibility
+
+- ⌘⇧D / Ctrl+Shift+D toggles debug mode. It persists locally, is also available
+  in the account menu, and shows an active header indicator. No agent/API
+  permission changes. Normal action summaries stay compact; debug mode retains
+  open groups with per-tool expandable input/output and red failure details.
+- Failed trace spans have a red icon/name, an explicit Failed label, a red
+  waterfall segment, and a visible failure summary in the detail pane.
+- Removed the three duplicate source snapshots (`loop 2.ts`, `strategy 2.ts`,
+  `strategy 3.ts`) and their temporary typecheck exclusions after confirmation.
+
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.
   (Turn compaction shipped early in the engine — decision #18.)
