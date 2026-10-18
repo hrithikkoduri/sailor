@@ -102,10 +102,13 @@ const catalog = await fetchModelCatalog({
 const llm = createLLMClient({
   ...cfg.llm,
   model,
-  priceInPerMTok: cfg.llm.priceInPerMTok ?? catalog?.priceInPerMTok,
-  priceOutPerMTok: cfg.llm.priceOutPerMTok ?? catalog?.priceOutPerMTok,
+  // The CATALOG is the truth for pricing (live provider rates); env values are
+  // only a fallback. (2026-10-18: stale .env prices silently mispriced a whole
+  // round — 2x/10x off for GLM 5.3.)
+  priceInPerMTok: catalog?.priceInPerMTok ?? cfg.llm.priceInPerMTok,
+  priceOutPerMTok: catalog?.priceOutPerMTok ?? cfg.llm.priceOutPerMTok,
   priceCacheReadPerMTok:
-    cfg.llm.priceCacheReadPerMTok ?? catalog?.priceCacheReadPerMTok,
+    catalog?.priceCacheReadPerMTok ?? cfg.llm.priceCacheReadPerMTok,
 });
 const compaction = catalog?.contextLength
   ? compactionForContextWindow(catalog.contextLength)
