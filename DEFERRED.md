@@ -72,11 +72,17 @@ history.
   env flip. _Size:_ S (blocked externally).
 - **`fork()` (checkpoint → new VM)** — start a second sandbox from a
   checkpoint for best-of-N races. _Where:_ `packages/core/src/sandbox/`.
-  _Trigger:_ best-of-N work starts (BUILD_PLAN step 14). _Size:_ M.
+  _Trigger:_ best-of-N work starts (BUILD*PLAN step 14). \_Size:* M.
 - **Retained-sandbox janitor TTL** — parked VMs live until their thread is
   terminal; a TTL bounds long-idle cost. _Where:_ a sweep in
   `apps/server/src/worker/sweep.ts`. _Trigger:_ cost visibility on the Heyo
   bill. _Size:_ S.
+- **Ports/routes for non-coding sandboxes** — `HeyoSandbox` hardcodes
+  `routes: []` (private: exec/shell only). A consumer running a dev server or
+  a browser task needs exposed ports/preview routes on the deployment spec.
+  _Where:_ `packages/core/src/sandbox/heyo.ts` (`HeyoSandboxConfig.routes`,
+  health port). _Trigger:_ first non-coding consumer needing HTTP. _Size:_
+  S–M.
 
 ## Run pipeline — pick-ups in `@anchor/core`
 
@@ -85,7 +91,10 @@ These are independent; the "depends on" notes say when order matters.
 - **Git-credential callback** — replace the one-shot `githubToken` with
   `git: { token: () => Promise<string> }` on the sandbox spec so providers
   re-resolve credentials per clone/push; fixes runs longer than the 1-hour
-  installation-token lifetime silently pushing with stale credentials.
+  installation-token lifetime silently pushing with stale credentials. It also
+  generalizes the credential host — the credentials file hardcodes
+  `github.com`, the one thing between clone/push and any git host (Bitbucket,
+  Azure DevOps).
   _Where:_ `packages/core/src/sandbox/types.ts` + adapters,
   `apps/server/src/runs/execute.ts`. _Trigger:_ none — correctness fix, ready
   now. _Size:_ S–M.
@@ -145,15 +154,27 @@ base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
 - **"Queue instead of interject" affordance** — UI to downgrade an
   interjection back to queued (design decision #28 deferred this). _Where:_
   `apps/dashboard/src/features/chat/`. _Trigger:_ user request. _Size:_ S.
-- **Baseline-relative suite evidence** — FAIL_TO_PASS / PASS_TO_PASS deltas:
+- **Baseline-relative suite evidence** — FAIL*TO_PASS / PASS_TO_PASS deltas:
   `run_tests` gains `junit_path` → `meta.tests` (JUnit XML regex parse);
-  success = no baseline-passing test regresses. _Where:_
+  success = no baseline-passing test regresses. \_Where:*
   `packages/core/src/tools/run-tests.ts`, step-15 task JSON.
   _Trigger:_ evals on real repos whose `main` is not green. _Size:_ M.
 - **`blocked` → user channel** — package carries `disposition: "blocked"` +
   summary; Sailor posts it as a comment + `agent:needs-input` label and the
   human reply becomes the next event. _Where:_ `apps/server/src/github/`.
   _Trigger:_ step 13 client wiring. _Size:_ S.
+
+## Forge providers (git hosts)
+
+- **Bitbucket / Azure DevOps adapters** — Sailor's GitHub layer (App auth +
+  installation tokens, webhook parsing and signature checks, review/comment
+  interjection, checks, PR publication, the `<slug>[bot]` self-identity) has
+  no equivalent for other forges. An adapter mirrors those surfaces per host
+  (Bitbucket: app passwords/OAuth + webhooks; Azure DevOps: PATs/service
+  hooks + PR/review APIs). Anchor is unaffected — sandbox clone/push is plain
+  git once the credential host generalizes (see the git-credential callback
+  item above). _Trigger:_ first non-GitHub consumer or workspace. _Size:_ M
+  each.
 
 ## Model providers
 
