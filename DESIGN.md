@@ -214,6 +214,31 @@ earlier decisions; no legacy workflow runner is retained.
   (`harness/sailor-toolchain:latest`) by `image/build.sh`. A VM boots able to
   run real test suites; `sailor sandbox smoke --toolchain` is the check.
 
+## Decision #52 — SDK naming: say the noun, verb first
+
+Public names must decode at a glance, the way you would say them out loud —
+no internal metaphor in an export. The package's existing names already pass
+this test (`runAgent`, `openSandbox`, `releaseSandbox`, `createLLMClient`),
+and the provider refactor must not regress them: the review sketch's
+`openWorkspace` and `runLifecycle`/`createRunner` never ship.
+
+- **One noun per concept, everywhere:** the type is `Sandbox`, so the
+  functions say `Sandbox` (`openSandbox`, `releaseSandbox`) — not
+  "workspace", "session" or "runner". Internal helpers may be named anything;
+  only exports face this test.
+- **Verb + noun for actions:** `runAgent(task, opts)` — the loop and its
+  lifecycle (sinks, heartbeat, `shouldCancel`, budgets) are options of one
+  function, not a second `createRunner` object; `openSandbox({...})`,
+  `releaseSandbox(handle)`, `planRevival(result, budget)`.
+- **Options over compositor helpers:** `traceSinks: [jsonl, pg]` for the
+  common case; a compose helper exists only if composing is genuinely awkward.
+- **Providers are brand nouns behind subpaths:** `heyo({...})`, `local()`,
+  later `e2b`/`daytona`, imported from `@anchor/core/sandbox/<name>`; the
+  registry takes provider objects, not string enums.
+- **Settled renames from the review sketch:** `SandboxHandleStore` →
+  `SandboxStore` (where a thread's retained handle lives); `teeSinks` and
+  `createRunner` are not exported.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
