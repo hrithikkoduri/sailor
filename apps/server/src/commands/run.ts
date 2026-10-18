@@ -19,11 +19,12 @@ import { TraceRecorder } from "../trace/store.js";
 import {
   codingAgent,
   createLLMClient,
-  createSandbox,
   runAgent,
   type AgentEvent,
   type Sandbox,
 } from "@anchor/core";
+import { heyoProvider } from "../heyo-provider.js";
+import { local } from "@anchor/core/sandbox/local";
 
 const USAGE = `Usage: sailor run <repo> <issue> [options]
 
@@ -53,7 +54,13 @@ interface RunArgs {
 
 function parseArgs(argv: string[]): RunArgs | null {
   const positionals: string[] = [];
-  const args: RunArgs = { repo: "", issue: "", local: false, keep: false, verbose: false };
+  const args: RunArgs = {
+    repo: "",
+    issue: "",
+    local: false,
+    keep: false,
+    verbose: false,
+  };
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -80,7 +87,8 @@ function parseArgs(argv: string[]): RunArgs | null {
 const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
 
 function summarizeInput(input: Record<string, unknown>): string {
-  if (typeof input.command === "string") return input.command.replace(/\s+/g, " ").slice(0, 100);
+  if (typeof input.command === "string")
+    return input.command.replace(/\s+/g, " ").slice(0, 100);
   if (typeof input.path === "string") return input.path;
   if (typeof input.pattern === "string") return `"${input.pattern}"`;
   if (typeof input.summary === "string") return input.summary.slice(0, 100);
@@ -115,7 +123,9 @@ function makePrinter(verbose: boolean): (e: AgentEvent) => void {
         if (verbose) process.stdout.write(e.text);
         break;
       case "llm_call_finished":
-        line(`turn ${e.step}: ${e.toolCallsCount} tool call(s), ${e.usage.totalTokens} tokens, ${e.latencyMs}ms`);
+        line(
+          `turn ${e.step}: ${e.toolCallsCount} tool call(s), ${e.usage.totalTokens} tokens, ${e.latencyMs}ms`,
+        );
         break;
       case "tool_call":
         line(`→ ${e.name}: ${summarizeInput(e.input)}`);
@@ -127,14 +137,21 @@ function makePrinter(verbose: boolean): (e: AgentEvent) => void {
         line(`⚠ guardrail (${e.kind}): ${e.detail}`);
         break;
       case "compacted":
-        line(`⟳ compacted ${e.removedMessages} old messages → ${e.summaryChars}-char summary`);
+        line(
+          `⟳ compacted ${e.removedMessages} old messages → ${e.summaryChars}-char summary`,
+        );
         break;
       case "checkpoint":
         line(`⛳ checkpoint ${e.ref.slice(0, 8)} — ${e.label}`);
         break;
       case "run_finished": {
-        const cost = e.usage.costUsd !== undefined ? `, $${e.usage.costUsd.toFixed(4)}` : "";
-        line(`${e.ok ? "DONE ✓" : "STOPPED ✗"} — ${e.reason}, ${e.steps} turns, ${e.usage.totalTokens} tokens${cost}`);
+        const cost =
+          e.usage.costUsd !== undefined
+            ? `, $${e.usage.costUsd.toFixed(4)}`
+            : "";
+        line(
+          `${e.ok ? "DONE ✓" : "STOPPED ✗"} — ${e.reason}, ${e.steps} turns, ${e.usage.totalTokens} tokens${cost}`,
+        );
         if (e.summary) line(`summary: ${e.summary}`);
         break;
       }
@@ -160,28 +177,27 @@ export async function runCommand(argv: string[]): Promise<number> {
   // npm runs workspace scripts with cwd=apps/server; INIT_CWD is where the
   // user actually typed the command — resolve relative repo paths from there.
   const baseDir = process.env.INIT_CWD ?? process.cwd();
-  const localPath = isUrl(args.repo) ? undefined : path.resolve(baseDir, args.repo);
+  const localPath = isUrl(args.repo)
+    ? undefined
+    : path.resolve(baseDir, args.repo);
   if (localPath && !existsSync(localPath)) {
-    process.stderr.write(`repo path not found: ${localPath} (resolved from ${baseDir})\n`);
+    process.stderr.write(
+      `repo path not found: ${localPath} (resolved from ${baseDir})\n`,
+    );
+    return 1;
+  }
+  if (localPath && !args.local) {
+    process.stderr.write(
+      `local paths need --local (a microVM clones a repoUrl) — got ${localPath}\n`,
+    );
     return 1;
   }
 
-  const sandbox: Sandbox = createSandbox(
+  const provider = args.local ? local() : heyoProvider(cfg);
+  const sandbox: Sandbox = provider.create(
     isUrl(args.repo)
       ? { repoUrl: args.repo, ref: args.ref, keep: args.keep }
       : { localPath, keep: args.keep },
-    args.local
-      ? { local: true }
-      : {
-          heyo: {
-            token: cfg.heyo.token ?? "",
-            server: cfg.heyo.server,
-            namespace: cfg.heyo.namespace,
-            image: cfg.heyo.image,
-            sizeClass: cfg.heyo.sizeClass,
-            diskSizeGb: cfg.heyo.diskSizeGb,
-          },
-        },
   );
 
   process.stdout.write(
@@ -218,12 +234,16 @@ export async function runCommand(argv: string[]): Promise<number> {
 
     await sinkTail; // flush the trace before exiting
     await sandbox.destroy();
-    process.stdout.write(`\ntrace: ${path.relative(baseDir, jsonl.filePath)} (${recorder.events} events)\n`);
+    process.stdout.write(
+      `\ntrace: ${path.relative(baseDir, jsonl.filePath)} (${recorder.events} events)\n`,
+    );
     if (args.keep) process.stdout.write(`sandbox kept: ${sandbox.id}\n`);
     return result.ok ? 0 : 1;
   } catch (err) {
     await sinkTail.catch(() => undefined);
-    process.stderr.write(`\nrun failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(
+      `\nrun failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
     await sandbox.destroy().catch(() => undefined);
     return 1;
   }

@@ -11,16 +11,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { and, eq } from "drizzle-orm";
 import type { Pool } from "pg";
-import { LocalSandbox } from "@anchor/core";
+import { LocalSandbox } from "@anchor/core/sandbox/local";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { deliverPullRequest, traceUrl } from "../../src/github/pr.js";
 import type { GitHubClient } from "../../src/github/client.js";
 import { loadConfig } from "../../src/config.js";
 
-const FIXTURE = fileURLToPath(new URL("../../../../fixtures/buggy-lib", import.meta.url));
+const FIXTURE = fileURLToPath(
+  new URL("../../../../fixtures/buggy-lib", import.meta.url),
+);
 
-const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe" }).toString();
+const git = (cwd: string, ...args: string[]) =>
+  execFileSync("git", args, { cwd, stdio: "pipe" }).toString();
 
 describe("deliverPullRequest", () => {
   let pool: Pool;
@@ -43,7 +46,9 @@ describe("deliverPullRequest", () => {
     git(tmp, "init", "--bare", "-q", "-b", "main", bare);
     await mkdir(work, { recursive: true });
     for (const entry of await readdir(FIXTURE)) {
-      await cp(path.join(FIXTURE, entry), path.join(work, entry), { recursive: true });
+      await cp(path.join(FIXTURE, entry), path.join(work, entry), {
+        recursive: true,
+      });
     }
     await rm(path.join(work, ".git"), { recursive: true, force: true });
     git(work, "init", "-q", "-b", "main");
@@ -58,7 +63,12 @@ describe("deliverPullRequest", () => {
     // row behind, and the (repo, issue_number) unique key would block insert.
     await db
       .delete(schema.threads)
-      .where(and(eq(schema.threads.repo, "acme/demo"), eq(schema.threads.issueNumber, 42)));
+      .where(
+        and(
+          eq(schema.threads.repo, "acme/demo"),
+          eq(schema.threads.issueNumber, 42),
+        ),
+      );
     const [thread] = await db
       .insert(schema.threads)
       .values({
@@ -74,7 +84,8 @@ describe("deliverPullRequest", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (threadId) await db.delete(schema.threads).where(eq(schema.threads.id, threadId));
+    if (threadId)
+      await db.delete(schema.threads).where(eq(schema.threads.id, threadId));
     await pool.end();
     await rm(tmp, { recursive: true, force: true });
   });
@@ -117,7 +128,10 @@ describe("deliverPullRequest", () => {
     expect(commit.exitCode).toBe(0);
 
     const { github, created } = fakeGithub();
-    const [thread] = await db.select().from(schema.threads).where(eq(schema.threads.id, threadId));
+    const [thread] = await db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, threadId));
     const runId = "11111111-1111-1111-1111-111111111111";
     const delivered = await deliverPullRequest({
       db,
@@ -129,29 +143,49 @@ describe("deliverPullRequest", () => {
       summary: "fixed negatives",
     });
 
-    expect(delivered).toMatchObject({ prNumber: 99, headRef: "sailor/issue-42" });
+    expect(delivered).toMatchObject({
+      prNumber: 99,
+      headRef: "sailor/issue-42",
+    });
     expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({ repo: "acme/demo", head: "sailor/issue-42", base: "main" });
+    expect(created[0]).toMatchObject({
+      repo: "acme/demo",
+      head: "sailor/issue-42",
+      base: "main",
+    });
     expect(created[0]!.title).toBe("Fix #42: add() drops negative numbers");
     expect(created[0]!.body).toContain("Fixes #42");
     expect(created[0]!.body).toContain("fixed negatives");
-    expect(created[0]!.body).toContain(traceUrl("http://localhost:5173", threadId, runId));
+    expect(created[0]!.body).toContain(
+      traceUrl("http://localhost:5173", threadId, runId),
+    );
 
     // the branch landed on origin; main is untouched
-    const refs = git(bare, "for-each-ref", "--format=%(refname)").trim().split("\n");
+    const refs = git(bare, "for-each-ref", "--format=%(refname)")
+      .trim()
+      .split("\n");
     expect(refs).toContain("refs/heads/sailor/issue-42");
     expect(refs).toContain("refs/heads/main");
-    expect(git(bare, "rev-list", "--count", "refs/heads/main").trim()).toBe("1");
-    expect(git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim()).toBe("2");
+    expect(git(bare, "rev-list", "--count", "refs/heads/main").trim()).toBe(
+      "1",
+    );
+    expect(
+      git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim(),
+    ).toBe("2");
 
-    const [fresh] = await db.select().from(schema.threads).where(eq(schema.threads.id, threadId));
+    const [fresh] = await db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, threadId));
     expect(fresh!.prNumber).toBe(99);
     expect(fresh!.prUrl).toBe("https://github.com/acme/demo/pull/99");
     expect(fresh!.state).toBe("pr_open");
 
     // Follow-up delivery (babysitting, step 13): the PR exists → the push IS
     // the delivery — the branch updates, no second PR is created.
-    const commit2 = await sandbox.exec('echo "// more" >> src/sum.js && git add -A && git commit -q -m "more"');
+    const commit2 = await sandbox.exec(
+      'echo "// more" >> src/sum.js && git add -A && git commit -q -m "more"',
+    );
     expect(commit2.exitCode).toBe(0);
     const again = await deliverPullRequest({
       db,
@@ -163,7 +197,9 @@ describe("deliverPullRequest", () => {
     });
     expect(again).toMatchObject({ prNumber: 99, headRef: "sailor/issue-42" });
     expect(created).toHaveLength(1); // no second PR
-    expect(git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim()).toBe("3");
+    expect(
+      git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim(),
+    ).toBe("3");
 
     // THE LOOP GUARD: an acknowledgment run's footprint is checkpoint commits
     // with NO tree change. A no-op delivery must push NOTHING — otherwise its
@@ -182,7 +218,9 @@ describe("deliverPullRequest", () => {
     });
     expect(noop).toMatchObject({ prNumber: 99 });
     expect(created).toHaveLength(1);
-    expect(git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim()).toBe("3"); // no new commits landed
+    expect(
+      git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim(),
+    ).toBe("3"); // no new commits landed
 
     await sandbox.destroy();
   });
@@ -202,7 +240,14 @@ describe("deliverPullRequest", () => {
     const sandbox = new LocalSandbox({ localPath: work }, { quiet: true });
     const { github } = fakeGithub();
     await expect(
-      deliverPullRequest({ db, sandbox, github, thread: thread2!, runId: "x", publicUrl: "http://localhost:5173" }),
+      deliverPullRequest({
+        db,
+        sandbox,
+        github,
+        thread: thread2!,
+        runId: "x",
+        publicUrl: "http://localhost:5173",
+      }),
     ).rejects.toThrow(/refusing to push/);
     await db.delete(schema.threads).where(eq(schema.threads.id, thread2!.id));
   });

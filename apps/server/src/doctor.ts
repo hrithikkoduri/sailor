@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { Pool } from "pg";
 import { Redis } from "ioredis";
-import { Hws } from "@heyocomputer/hws";
+import { probeHeyo } from "@anchor/core/sandbox/heyo";
 import type { SailorConfig } from "./config.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
@@ -27,7 +27,11 @@ export interface CheckResult {
 
 /** Real Postgres probe: connect and SELECT 1 (not just "is the port open"). */
 async function pgProbe(url: string, timeoutMs = 2000): Promise<boolean> {
-  const pool = new Pool({ connectionString: url, connectionTimeoutMillis: timeoutMs, max: 1 });
+  const pool = new Pool({
+    connectionString: url,
+    connectionTimeoutMillis: timeoutMs,
+    max: 1,
+  });
   try {
     await pool.query("SELECT 1");
     return true;
@@ -66,32 +70,17 @@ function commandAvailable(cmd: string): string | null {
     `/Applications/Docker.app/Contents/Resources/bin/${cmd}`,
   ];
   for (const candidate of candidates) {
-    const r = spawnSync(candidate, ["--version"], { timeout: 3000, encoding: "utf8" });
+    const r = spawnSync(candidate, ["--version"], {
+      timeout: 3000,
+      encoding: "utf8",
+    });
     if (r.status === 0) return (r.stdout ?? "").trim().split("\n")[0] ?? null;
   }
   return null;
 }
 
-/** Live Heyo credential probe: does the token work, and what can it see? */
-async function heyoProbe(
-  server: string,
-  token: string,
-): Promise<{ ok: true; namespace?: string; admin?: string; deployments?: number } | { ok: false; error: string }> {
-  const lb = new Hws({ server, token, timeoutMs: 10_000 });
-  try {
-    const who = await lb.whoami();
-    let deployments: number | undefined;
-    try {
-      deployments = (await lb.deployments()).length;
-    } catch {
-      deployments = undefined; // token may lack list rights; whoami is the check
-    }
-    return { ok: true, namespace: who.namespace, admin: who.admin_scope, deployments };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message.split("\n")[0] ?? message };
-  }
-}
+/** Live Heyo credential probe lives with the provider now — doctor only maps
+ * its structured info onto the check result. */
 
 export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
@@ -112,7 +101,9 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
     name: "git",
     status: git ? "ok" : "fail",
     detail: git ?? "not found",
-    hint: git ? undefined : "Install git — sandboxes clone repos and checkpoint with it.",
+    hint: git
+      ? undefined
+      : "Install git — sandboxes clone repos and checkpoint with it.",
     required: true,
   });
 
@@ -134,8 +125,12 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   results.push({
     name: "Postgres",
     status: pgUp ? "ok" : "fail",
-    detail: pgUp ? `connected (${cfg.postgres.url})` : `cannot connect (${cfg.postgres.url})`,
-    hint: pgUp ? undefined : "Start the stack: docker compose up -d  (see BUILD_PLAN.md step 2)",
+    detail: pgUp
+      ? `connected (${cfg.postgres.url})`
+      : `cannot connect (${cfg.postgres.url})`,
+    hint: pgUp
+      ? undefined
+      : "Start the stack: docker compose up -d  (see BUILD_PLAN.md step 2)",
     required: true,
   });
 
@@ -143,8 +138,12 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   results.push({
     name: "Redis",
     status: redisUp ? "ok" : "fail",
-    detail: redisUp ? `connected (${cfg.redis.url})` : `cannot connect (${cfg.redis.url})`,
-    hint: redisUp ? undefined : "Start the stack: docker compose up -d  (see BUILD_PLAN.md step 2)",
+    detail: redisUp
+      ? `connected (${cfg.redis.url})`
+      : `cannot connect (${cfg.redis.url})`,
+    hint: redisUp
+      ? undefined
+      : "Start the stack: docker compose up -d  (see BUILD_PLAN.md step 2)",
     required: true,
   });
 
@@ -152,19 +151,30 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   // HEYO_TOKEN gets a LIVE probe: presence alone hides the classic failures
   // (expired token, wrong server, token confined to a different namespace).
   if (cfg.heyo.token) {
-    const probe = await heyoProbe(cfg.heyo.server, cfg.heyo.token);
-    if (probe.ok) {
-      const mismatch = probe.namespace !== undefined && probe.namespace !== cfg.heyo.namespace;
-      const vms = probe.deployments !== undefined ? `, ${probe.deployments} deployment(s) alive` : "";
+    const health = await probeHeyo({
+      server: cfg.heyo.server,
+      token: cfg.heyo.token,
+    });
+    const info = health.info ?? {};
+    const namespace =
+      typeof info.namespace === "string" ? info.namespace : undefined;
+    const admin = typeof info.admin === "string" ? info.admin : undefined;
+    const deployments =
+      typeof info.deployments === "number" ? info.deployments : undefined;
+    if (health.ok) {
+      const mismatch =
+        namespace !== undefined && namespace !== cfg.heyo.namespace;
+      const vms =
+        deployments !== undefined ? `, ${deployments} deployment(s) alive` : "";
       results.push({
         name: "HEYO_TOKEN",
         status: mismatch ? "fail" : "ok",
         detail: mismatch
-          ? `valid, but confined to namespace "${probe.namespace}" while HEYO_NAMESPACE is "${cfg.heyo.namespace}"`
-          : `valid — namespace ${probe.namespace ?? "(unconfined)"}, ${probe.admin ?? "?"} tier${vms}`,
+          ? `valid, but confined to namespace "${namespace}" while HEYO_NAMESPACE is "${cfg.heyo.namespace}"`
+          : `valid — namespace ${namespace ?? "(unconfined)"}, ${admin ?? "?"} tier${vms}`,
         hint: mismatch
           ? "Align HEYO_NAMESPACE with the token's namespace, or mint a token for it."
-          : probe.deployments
+          : deployments
             ? "Deployments alive — sandboxes from a run are still billing. Delete with heyctl or the console."
             : undefined,
         required: false,
@@ -173,7 +183,7 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
       results.push({
         name: "HEYO_TOKEN",
         status: "fail",
-        detail: `set but rejected: ${probe.error}`,
+        detail: `set but rejected: ${health.detail ?? "probe failed"}`,
         hint: "Check HEYO_TOKEN and HEYO_SERVER, or mint a fresh token in the namespace dashboard.",
         required: false,
       });
@@ -191,8 +201,12 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   results.push({
     name: "LLM_API_KEY",
     status: cfg.llm.apiKey ? "ok" : "warn",
-    detail: cfg.llm.apiKey ? `set (${cfg.llm.baseUrl})` : "not set — agent runs unavailable",
-    hint: cfg.llm.apiKey ? undefined : "Needed to run the agent (step 7). Get one at openrouter.ai.",
+    detail: cfg.llm.apiKey
+      ? `set (${cfg.llm.baseUrl})`
+      : "not set — agent runs unavailable",
+    hint: cfg.llm.apiKey
+      ? undefined
+      : "Needed to run the agent (step 7). Get one at openrouter.ai.",
     required: false,
   });
 
@@ -213,8 +227,12 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   results.push({
     name: "GITHUB_WEBHOOK_SECRET",
     status: cfg.github.webhookSecret ? "ok" : "warn",
-    detail: cfg.github.webhookSecret ? "set" : "not set — `sailor serve` refuses to start",
-    hint: cfg.github.webhookSecret ? undefined : "Configure the webhook secret on the GitHub App; put it in .env.",
+    detail: cfg.github.webhookSecret
+      ? "set"
+      : "not set — `sailor serve` refuses to start",
+    hint: cfg.github.webhookSecret
+      ? undefined
+      : "Configure the webhook secret on the GitHub App; put it in .env.",
     required: false,
   });
 
@@ -224,7 +242,11 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
 // --- rendering -------------------------------------------------------------
 
 const ICONS: Record<CheckStatus, string> = { ok: "✓", warn: "⚠", fail: "✗" };
-const COLORS: Record<CheckStatus, string> = { ok: "32", warn: "33", fail: "31" };
+const COLORS: Record<CheckStatus, string> = {
+  ok: "32",
+  warn: "33",
+  fail: "31",
+};
 
 function paint(status: CheckStatus, text: string): string {
   return process.stdout.isTTY ? `\x1b[${COLORS[status]}m${text}\x1b[0m` : text;
@@ -234,12 +256,16 @@ export function renderDoctor(results: CheckResult[]): string {
   const lines: string[] = ["Sailor environment check", ""];
   const nameWidth = Math.max(...results.map((r) => r.name.length));
   for (const r of results) {
-    lines.push(`  ${paint(r.status, ICONS[r.status])}  ${r.name.padEnd(nameWidth)}  ${r.detail}`);
+    lines.push(
+      `  ${paint(r.status, ICONS[r.status])}  ${r.name.padEnd(nameWidth)}  ${r.detail}`,
+    );
     if (r.hint && r.status !== "ok") {
       lines.push(`      ${" ".repeat(nameWidth)}  → ${r.hint}`);
     }
   }
-  const failed = results.filter((r) => r.required && r.status === "fail").length;
+  const failed = results.filter(
+    (r) => r.required && r.status === "fail",
+  ).length;
   const warned = results.filter((r) => r.status === "warn").length;
   lines.push("");
   lines.push(

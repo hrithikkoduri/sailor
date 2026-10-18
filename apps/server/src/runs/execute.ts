@@ -17,24 +17,25 @@ import {
   JsonlTrace,
   compactionForContextWindow,
   createLLMClient,
-  createSandbox,
   fetchModelCatalog,
   openSandbox,
   releaseSandbox,
   runAgent,
-  upsertHeyoSecret,
   type AgentEvent,
   type BudgetLimits,
   type CompactionConfig,
-  type CreateSandboxOptions,
   type HeyoSandboxConfig,
   type LLMClient,
   type ModelCatalogEntry,
   type RevivalRequest,
   type Sandbox,
   type SandboxHandle,
+  type SandboxProvider,
   type SandboxSpec,
 } from "@anchor/core";
+import { upsertHeyoSecret } from "@anchor/core/sandbox/heyo";
+import { local } from "@anchor/core/sandbox/local";
+import { heyoProvider } from "../heyo-provider.js";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
@@ -179,29 +180,6 @@ export function sandboxSpecForThread(
   return isUrl(thread.repo)
     ? { repoUrl: thread.repo }
     : { localPath: path.resolve(baseDir, thread.repo) };
-}
-
-/** The heyo connection config for this product's sandboxes — credentials live
- * here and only here; the package owns what to do with them. */
-function heyoSandboxConfig(
-  cfg: ReturnType<typeof loadConfig>,
-): HeyoSandboxConfig {
-  return {
-    token: cfg.heyo.token ?? "",
-    server: cfg.heyo.server,
-    namespace: cfg.heyo.namespace,
-    image: cfg.heyo.image,
-    imageKind: cfg.heyo.imageKind,
-    ...(cfg.heyo.imageRepo ? { imageRepo: cfg.heyo.imageRepo } : {}),
-    ...(cfg.heyo.imageRef ? { imageRef: cfg.heyo.imageRef } : {}),
-    ...(cfg.heyo.imageDockerfile
-      ? { imageDockerfile: cfg.heyo.imageDockerfile }
-      : {}),
-    ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
-    ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
-    sizeClass: cfg.heyo.sizeClass,
-    diskSizeGb: cfg.heyo.diskSizeGb,
-  };
 }
 
 export async function executeRun(
@@ -387,11 +365,12 @@ export async function executeRun(
       );
     }
   }
-  const sandboxOptions: CreateSandboxOptions = deps.local
-    ? { local: true }
-    : { heyo: heyoSandboxConfig(cfg) };
+  // The provider for this run, named and explicit: the retained handle's
+  // backend is passed verbatim, so a future provider can never be
+  // misclassified as heyo (the old `backend === "local" ? … : "heyo"` trap).
+  const provider: SandboxProvider = deps.local ? local() : heyoProvider(cfg);
   const make = (s: SandboxSpec): Sandbox =>
-    deps.sandboxFactory?.(s) ?? createSandbox(s, sandboxOptions);
+    deps.sandboxFactory?.(s) ?? provider.create(s);
   // Provider catalog (cached): the real context window and prices. Real runs
   // only — injected LLMs (tests) stay offline and keep the static fallbacks.
   const catalog =
@@ -435,14 +414,14 @@ export async function executeRun(
   try {
     await ensureThreadState(db, thread.id, "running");
     const sandbox = await openSandbox({
-      ...sandboxOptions,
+      provider,
       create: make,
       spec,
       ...(thread.sandboxId
         ? {
             adopt: {
               id: thread.sandboxId,
-              backend: thread.sandboxBackend === "local" ? "local" : "heyo",
+              backend: thread.sandboxBackend ?? provider.name,
             } satisfies SandboxHandle,
           }
         : {}),
@@ -754,12 +733,11 @@ export async function releaseThreadSandbox(
 ): Promise<void> {
   if (!thread.sandboxId) return;
   const cfg = loadConfig();
+  const provider =
+    thread.sandboxBackend === "local" ? local() : heyoProvider(cfg);
   await releaseSandbox(
-    {
-      id: thread.sandboxId,
-      backend: thread.sandboxBackend === "local" ? "local" : "heyo",
-    },
-    { heyo: heyoSandboxConfig(cfg) },
+    { id: thread.sandboxId, backend: thread.sandboxBackend ?? provider.name },
+    { provider },
   );
   await db
     .update(schema.threads)
