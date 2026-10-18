@@ -511,7 +511,8 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - Why this matters: a reasoning model's hidden chain is stateless between API
   calls, so nothing visible means nothing materialized. The 40-step spiral had
   no framing, no forcing function, and folded its own findings away (compaction,
-  since raised to 256k/64k).
+  since replaced by model-window-derived budgets: fold at ~55% of the real
+  context window, clamped to the 200–300k range).
 - **Compaction is a visible handoff.** When context folds, the thread shows a
   quiet "Context compacted · N folded, M kept" line that expands to the summary
   the agent now carries (plus the folded transcript in debug mode) — identical

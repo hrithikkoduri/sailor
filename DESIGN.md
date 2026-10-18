@@ -186,7 +186,10 @@ earlier decisions; no legacy workflow runner is retained.
   silent tool turns the engine may inject a runtime-only **materialization
   advisory** (`guardrails.toolOnlyNudgeLimit`, default 8, `false` disables) —
   advisory, dialable, never a gate. Reasoning is journaled, shown in chat and
-  trace, never resent to the model; compaction (256k/64k for Sailor) keeps
+  trace, never resent to the model; compaction is derived from the model's
+  real window (fold at ~55%, clamped to the 200–300k working range with a
+  recent-quarter tail; static 256k/64k only when the catalog is unreachable)
+  so switching models cannot silently break or overrun it. It keeps
   findings instead of folding them into a re-read loop, and renders in the
   thread as an expandable handoff — fold counts, the summary carried forward,
   and (debug mode) the folded transcript.

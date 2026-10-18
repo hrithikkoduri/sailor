@@ -15,16 +15,20 @@ import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
+  compactionForContextWindow,
   createLLMClient,
   createSandbox,
+  fetchModelCatalog,
   openSandbox,
   releaseSandbox,
   runAgent,
   type AgentEvent,
   type BudgetLimits,
+  type CompactionConfig,
   type CreateSandboxOptions,
   type HeyoSandboxConfig,
   type LLMClient,
+  type ModelCatalogEntry,
   type RevivalRequest,
   type Sandbox,
   type SandboxHandle,
@@ -54,6 +58,30 @@ import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
 const activeControllers = new Map<string, AbortController>();
+
+/**
+ * Provider-catalog lookups, cached per endpoint+model for the process
+ * lifetime — one fetch, not one per run. Failures cache as null: fallback
+ * values apply and we don't hammer a dead endpoint.
+ */
+const catalogCache = new Map<string, Promise<ModelCatalogEntry | null>>();
+function catalogFor(cfg: {
+  baseUrl: string;
+  apiKey?: string;
+  model?: string;
+}): Promise<ModelCatalogEntry | null> {
+  const key = `${cfg.baseUrl}|${cfg.model ?? ""}`;
+  let hit = catalogCache.get(key);
+  if (!hit) {
+    hit = fetchModelCatalog({
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey ?? "",
+      model: cfg.model ?? "",
+    });
+    catalogCache.set(key, hit);
+  }
+  return hit;
+}
 
 export function cancelRun(runId: string): boolean {
   const controller = activeControllers.get(runId);
@@ -93,6 +121,8 @@ export interface ExecuteRunDeps {
   publicationPolicy?: PublicationPolicy;
   /** Test seam: override the engine budget for this run. */
   budgets?: Partial<BudgetLimits>;
+  /** Test seam: pin the engine compaction budgets (default: model-window derived). */
+  compaction?: CompactionConfig;
   /** Test seam: budget revival on/off (default: config, SAILOR_BUDGET_REVIVAL). */
   revival?: boolean;
 }
@@ -299,7 +329,30 @@ export async function executeRun(
     : { heyo: heyoSandboxConfig(cfg, gitToken) };
   const make = (s: SandboxSpec): Sandbox =>
     deps.sandboxFactory?.(s) ?? createSandbox(s, sandboxOptions);
-  const llm = deps.llm ?? createLLMClient(cfg.llm);
+  // Provider catalog (cached): the real context window and prices. Real runs
+  // only — injected LLMs (tests) stay offline and keep the static fallbacks.
+  const catalog =
+    !deps.llm && cfg.llm.apiKey && cfg.llm.model
+      ? await catalogFor(cfg.llm)
+      : null;
+  const llm =
+    deps.llm ??
+    createLLMClient({
+      ...cfg.llm,
+      priceInPerMTok: cfg.llm.priceInPerMTok ?? catalog?.priceInPerMTok,
+      priceOutPerMTok: cfg.llm.priceOutPerMTok ?? catalog?.priceOutPerMTok,
+      priceCacheReadPerMTok:
+        cfg.llm.priceCacheReadPerMTok ?? catalog?.priceCacheReadPerMTok,
+    });
+  // Big context, big memory: fold only when the conversation truly grows past
+  // the model's working window (derived from the catalog, clamped to the
+  // 200–300k product range), so long investigations keep their accumulated
+  // findings instead of re-deriving them. Unknown window → the static values.
+  const compaction =
+    deps.compaction ??
+    (catalog?.contextLength
+      ? compactionForContextWindow(catalog.contextLength)
+      : { maxEstimatedTokens: 256_000, keepRecentTokens: 64_000 });
 
   /** The installation-scoped client for this thread (decisions #42/#43). */
   const githubClientForThread = async () => {
@@ -437,13 +490,7 @@ export async function executeRun(
             agent,
             startPhase,
             thread: { store: new PostgresThreadStore(db), id: thread.id },
-            // Big context, big memory: fold only when the conversation truly
-            // grows past the model's working window, so long investigations
-            // keep their accumulated findings instead of re-deriving them.
-            compaction: {
-              maxEstimatedTokens: 256_000,
-              keepRecentTokens: 64_000,
-            },
+            compaction,
             // Product budget dials (SAILOR_MAX_STEPS / TOKENS / USD). The
             // package defaults (40 steps, 1.5M tokens) stop long-horizon work
             // around the 20th call — cumulative tokens grow with every call,
