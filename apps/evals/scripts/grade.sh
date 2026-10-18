@@ -44,4 +44,4 @@ DOCKER_CONFIG="$out/docker-config" "$root/.venv/bin/python" \
   -id "$run_id" \
   --max_workers 1 \
   --report_dir "$out" \
-  "${instance_args[@]}"
+  ${instance_args[@]+"${instance_args[@]}"}
