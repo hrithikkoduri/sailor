@@ -19,4 +19,15 @@ export default defineConfig({
       "/healthz": "http://localhost:8787",
     },
   },
+  // `npm run build -w apps/dashboard && npm run preview -w apps/dashboard`
+  // serves the production bundle against a locally running `harness serve`.
+  preview: {
+    port: 5173,
+    proxy: {
+      "/api": "http://localhost:8787",
+      "/auth": "http://localhost:8787",
+      "/setup": "http://localhost:8787",
+      "/healthz": "http://localhost:8787",
+    },
+  },
 });
