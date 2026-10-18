@@ -40,6 +40,7 @@ const USAGE = `usage: eval --tasks <file.jsonl> [options]
   --model <id>            model override (default: configured LLM)
   --max-steps <n>         budget: steps per task (engine default 40)
   --max-usd <n>           budget: dollars per task (engine default 5)
+  --image-tag <tag>       boot task images as <repo>:<tag> (prewarmed)
   --out <dir>             output directory (default .eval-runs/<timestamp>)`;
 
 function parseArgs(argv: string[]): Map<string, string | true> {
@@ -127,6 +128,14 @@ if (args.has("task")) {
   tasks = tasks.filter((task) => task.id === wanted);
 }
 if (args.has("limit")) tasks = tasks.slice(0, Number(args.get("limit")));
+if (args.has("image-tag")) {
+  const tag = String(args.get("image-tag"));
+  tasks = tasks.map((task) =>
+    task.image
+      ? { ...task, image: task.image.replace(/:[^:/]+$/, `:${tag}`) }
+      : task,
+  );
+}
 if (tasks.length === 0) {
   say(`no tasks matched in ${tasksFile}`);
   process.exit(1);

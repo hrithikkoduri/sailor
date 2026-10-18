@@ -50,6 +50,20 @@ agent.run(task)
 print("MINI_DONE")
 `;
 
+/**
+ * The install line, idempotent by design: `scripts/prewarm-mini-images.mjs`
+ * runs the exact same command inside each task image and COMMITS the result
+ * as `<repo>:mini-eval`, so eval runs boot a prewarmed image and skip the
+ * (emulated, ~8-minute) install entirely.
+ *
+ * `litellm==1.106.0` is pinned to the version validated on the host — the
+ * container's resolution otherwise picks a build whose import chain needs
+ * `mcp`, which is not a declared dependency (hence `mcp` too, as insurance).
+ */
+export const MINI_INSTALL_COMMAND =
+  "/opt/mini-venv/bin/python -c 'import minisweagent' 2>/dev/null || " +
+  "{ python -m venv /opt/mini-venv && /opt/mini-venv/bin/pip install --quiet mini-swe-agent 'litellm==1.106.0' mcp; }";
+
 export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
   return {
     name: "mini-swe-agent",
@@ -67,10 +81,10 @@ export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
       await writeFile("/tmp/mini-task.md", task.problem);
       await writeFile("/tmp/mini-driver.py", DRIVER);
 
-      const install = await ctx.sandbox.exec(
-        "python -m venv /opt/mini-venv && /opt/mini-venv/bin/pip install --quiet mini-swe-agent",
-        { cwd: "/", timeoutSecs: 900 },
-      );
+      const install = await ctx.sandbox.exec(MINI_INSTALL_COMMAND, {
+        cwd: "/",
+        timeoutSecs: 1800,
+      });
       if (install.exitCode !== 0) {
         throw new Error(
           `mini-swe-agent install failed: ${install.output.trim().slice(0, 400)}`,
