@@ -1,113 +1,177 @@
-# Deferred work — the ledger
+# Deferred work — the contributor ledger
 
-Decisions are made now; work is built when its trigger fires. Nothing here is
-forgotten, and nothing here is "someday" — each item names the event that pulls
-it back. When an item ships, delete it from this file and record the _decision_
-in `DESIGN.md`.
+Everything here is a decision already made and work intentionally not built
+yet. Each item names the event that pulls it back ("trigger"), where it lives,
+and its rough size, so anyone can pick one up without reading the whole
+history.
 
-**Standing principles** (apply to every item below)
+**How to pick one up**
 
-- Mechanics in Anchor (`packages/core`), policy in Sailor (`apps/server`,
-  `apps/dashboard`); Anchor exposes interfaces, never infrastructure.
-- Anchor is configuration-free: options go in, nothing reads env (decision #16).
-- SDK naming (decision #52): `runAgent`, `openSandbox` — say the noun, verb
-  first; no `runLifecycle` / `openWorkspace` / `createRunner`.
-- Vendor-free core: external integrations (trace platforms, model vendors) are
-  separate packages or consumer code.
+1. Open an issue naming the item (one item per PR keeps review small).
+2. Two rules the codebase never breaks: **mechanics in `@anchor/core`**
+   (`packages/core`), **policy in Sailor** (`apps/server`, `apps/dashboard`);
+   and Anchor never reads configuration — options go in, nothing touches env.
+3. Gate every change with:
+   ```bash
+   npm run typecheck
+   npm test -w packages/core
+   npm test -w apps/server
+   npm run test:ui -w apps/dashboard          # dashboard changes
+   RUN_LIVE_HEYO_TESTS=0 \
+     DATABASE_URL=postgres://sailor:sailor@localhost:5432/sailor_test \
+     REDIS_URL=redis://localhost:6379/15 npm run test:integration -w apps/server
+   ```
+4. When an item ships: delete it here, record the decision in `DESIGN.md`.
 
 ## Tracing & observability
 
-- **OTel trace sink** — the first external adapter; one OTLP sink reaches
-  Langfuse / Honeycomb / Datadog / Grafana. _Trigger:_ wanting hosted traces
-  (after the slice-5 sink fan-out lands). _Size:_ S–M.
-- **LangSmith / Braintrust native adapters** — per-vendor span mapping.
-  Braintrust doubles as an **eval consumer** (step 15) off the same event
-  stream. _Trigger:_ actively using the platform. _Size:_ S each.
+- **OTel trace sink** — translate `AgentEvent`s into OTLP spans; one adapter
+  reaches Langfuse / Honeycomb / Datadog / Grafana. Needs the `traceSinks`
+  fan-out first (run pipeline below). _Where:_ new `packages/trace-otel`.
+  _Trigger:_ wanting hosted traces. _Size:_ S–M.
+- **LangSmith adapter** — map run/step/tool events to LangSmith runs + spans.
+  _Where:_ new `packages/trace-langsmith`. _Trigger:_ actively using LangSmith.
+  _Size:_ S.
+- **Braintrust adapter (tracing + evals)** — same stream also builds eval
+  records for step 15. _Where:_ new `packages/trace-braintrust`.
+  _Trigger:_ actively using Braintrust. _Size:_ S.
 - **Export tool-author helpers** — `requireString`, `requireSandbox`,
-  `formatExec` are internal today; Sailor validates inline. _Trigger:_ next
-  tool authored outside Sailor. _Size:_ XS.
+  `formatExec` are internal to `tools/types.ts`; Sailor validates inline.
+  _Where:_ `packages/core/src/tools/index.ts` exports. _Trigger:_ next tool
+  authored outside Sailor. _Size:_ XS — good first issue.
 
 ## Sandbox providers
 
-- **Slice 1 — `SandboxProvider` + registry + subpath exports + conformance
-  suite.** _Status:_ in flight; not deferred.
-- **E2B adapter / Daytona adapter** — each maps its own tiers to the generic
-  `size` and passes the conformance suite. _Trigger:_ a second VM vendor is
-  actually needed (region, cost, comparison). _Size:_ M each.
-- **Egress control enforcement** — capability flag lands with slice 1;
-  enforcement waits. _Trigger:_ a provider supports it and a product needs it.
+- **`SandboxProvider` interface + registry + subpath exports + conformance
+  suite** — replaces the `"heyo" | "local"` union with `provider.name` and
+  makes `createSandbox`/`releaseSandbox`/`doctor` provider-agnostic; the
+  conformance suite (`@anchor/core/testing`) proves new adapters. _Status:_
+  **in flight** (draft PR).
+- **E2B adapter** — implement `create/adopt/release/probe` for E2B (exec,
+  clone, checkpoint, retain) and pass the conformance suite. _Where:_
+  `packages/core/src/sandbox/e2b.ts` + `@anchor/core/sandbox/e2b` subpath.
+  _Trigger:_ a second VM vendor is needed (region, cost, comparison).
   _Size:_ M.
-- **Artifact→git image fallback chain** — try the primary image source, and on
-  job failure destroy + recreate from the secondary (design sketched in the
-  provider session; remember to widen the build-secret refresh condition to
-  "git anywhere in the chain"). _Trigger:_ artifact kind is primary in
-  production **and** store flakiness is observed on pulls. _Size:_ S–M.
+- **Daytona adapter** — same shape as E2B. _Where:_
+  `packages/core/src/sandbox/daytona.ts`. _Trigger:_ same. _Size:_ M.
+- **Egress control enforcement** — capability flag lands with the provider
+  interface; enforcement (per-VM allowlists) waits for a provider that
+  supports it. _Where:_ `packages/core/src/sandbox/`. _Trigger:_ a product
+  needs network restriction. _Size:_ M.
+- **Artifact→git image fallback chain** — try the primary image source; on job
+  failure, destroy and recreate from the secondary. Remember to widen the
+  build-secret refresh condition to "git anywhere in the chain". _Where:_
+  `packages/core/src/sandbox/heyo.ts` `start()`, `apps/server/src/runs/execute.ts`.
+  _Trigger:_ artifact kind primary in production **and** store flakiness seen
+  on pulls. _Size:_ S–M.
 - **Publish the ext4 + flip `HEYO_IMAGE_KIND=artifact`** — blocked externally:
   Heyo's namespace artifact store rejects uploads (`Broken pipe` at 1 GiB,
   `502 app-lb could not reach its artifact store` at 64 MiB, `setRepo` 502).
   The rootfs is built and verified locally. _Trigger:_ store heals → one
   `heyctl artifact push rootfs.ext4 --tag harness/sailor-toolchain:latest` +
-  env flip. _Size:_ S (blocked).
-- **`fork()` (checkpoint → new VM)** — for step 14 best-of-N. _Trigger:_
-  best-of-N work starts. _Size:_ M.
-- **Retained-sandbox janitor TTL** — parked VMs live until the thread is
-  terminal; a TTL would bound long-idle cost. _Trigger:_ cost visibility on
-  the Heyo bill. _Size:_ S.
+  env flip. _Size:_ S (blocked externally).
+- **`fork()` (checkpoint → new VM)** — start a second sandbox from a
+  checkpoint for best-of-N races. _Where:_ `packages/core/src/sandbox/`.
+  _Trigger:_ best-of-N work starts (BUILD_PLAN step 14). _Size:_ M.
+- **Retained-sandbox janitor TTL** — parked VMs live until their thread is
+  terminal; a TTL bounds long-idle cost. _Where:_ a sweep in
+  `apps/server/src/worker/sweep.ts`. _Trigger:_ cost visibility on the Heyo
+  bill. _Size:_ S.
 
-## Package slices (the review's order, minus what has shipped)
+## Run pipeline — pick-ups in `@anchor/core`
 
-- **Slice 2 — git-token callback + provider `prepare()`**: `git: { token: () =>
-Promise<string> }` (fixes >1h runs pushing with expired credentials) and the
-  provider absorbs the build-secret refresh (`upsertHeyoSecret` call site).
-  _Size:_ S–M.
-- **Slice 3 — `openSandbox` store-backed session**: `sources: [checkpoint,
-head, base]`, `SandboxStore`, adoption/fallback callbacks become store ops.
-  _Size:_ M.
-- **Slice 4 — `createLLMClient({ catalog: "auto" })`**: prices + compaction
-  derived internally. _Size:_ S.
-- **Slice 5 — `TraceSink` + `traceSinks: [...]`**: shared sequence + redaction
-  before fan-out; move live/transcript projectors next to the event schema
-  (versioned with it). _Size:_ M.
-- **Slice 6 — `runAgent` grows the lifecycle**: sinks, heartbeat,
-  `shouldCancel`, status mapping, usage/cost — one entry point. _Size:_ L,
-  do last.
-- **Slice 7 — `planRevival` + `ThreadBudget` + `latestEvidenceForTree`**: pure
-  policy primitives; Sailor persists the decisions. _Size:_ S.
-- **`createAnchor` facade** — ~20 lines of sugar over the slices' calls.
-  _Trigger:_ a second consumer wants the same wiring bundle (eval CLI at step
-  15 likely). _Size:_ XS once the slices land.
+These are independent; the "depends on" notes say when order matters.
 
-## Product & UX
+- **Git-credential callback** — replace the one-shot `githubToken` with
+  `git: { token: () => Promise<string> }` on the sandbox spec so providers
+  re-resolve credentials per clone/push; fixes runs longer than the 1-hour
+  installation-token lifetime silently pushing with stale credentials.
+  _Where:_ `packages/core/src/sandbox/types.ts` + adapters,
+  `apps/server/src/runs/execute.ts`. _Trigger:_ none — correctness fix, ready
+  now. _Size:_ S–M.
+- **Provider `prepare()` hook** — fold the build-secret refresh
+  (`upsertHeyoSecret` call in `execute.ts`) into the Heyo provider as
+  `prepare()`, called with the git callback; removes provider vocabulary from
+  Sailor. Depends on the provider interface. _Where:_
+  `packages/core/src/sandbox/heyo.ts`. _Trigger:_ provider interface lands.
+  _Size:_ S.
+- **Store-backed `openSandbox` session** — `sources: [checkpointRef, headRef,
+base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
+  and fallback callbacks become store operations. Sailor supplies the
+  Postgres implementation. _Where:_ `packages/core/src/sandbox/index.ts`;
+  `apps/server/src/threads/`. _Trigger:_ none — completes the continuity
+  work. _Size:_ M.
+- **Model-aware LLM factory** — `createLLMClient({ catalog: "auto" })` fetches
+  the provider catalog once, fills missing prices, derives compaction
+  defaults; delete `catalogFor` + the fallback wiring from `execute.ts`.
+  _Where:_ `packages/core/src/llm/`. _Trigger:_ none — extraction of shipped
+  behavior. _Size:_ S.
+- **`TraceSink` + `traceSinks: [...]` fan-out** — sink interface, one shared
+  sequence number, redaction before every sink; move `createLiveProjector`
+  and `projectConversation` next to the event schema so they version with it.
+  The seam external tracing adapters plug into. _Where:_
+  `packages/core/src/trace/`, `packages/core/src/engine/events.ts`,
+  `apps/server/src/runs/live-projector.ts`, `apps/server/src/chat/projection.ts`.
+  _Trigger:_ none — unblocks the OTel item. _Size:_ M.
+- **`runAgent` lifecycle** — fold heartbeat (`withHeartbeat` in
+  `apps/server/src/runs/lease.ts`), cancel polling, sink fan-out, status
+  mapping, and usage/cost into `runAgent` options; leaves `executeRun` as DB
+  bookkeeping (~150 lines). Depends on the two items above. _Where:_
+  `packages/core/src/engine/loop.ts`, `apps/server/src/runs/execute.ts`.
+  _Trigger:_ after slices 3+5. _Size:_ L.
+- **Revival policy primitives** — `planRevival(result, parentBudget)` pure
+  function + a `ThreadBudget` accumulator (spend across runs);
+  `latestEvidenceForTree(sandbox, evidence)` + tool guard for publication
+  evidence. _Where:_ `packages/core/src/engine/`,
+  `apps/server/src/agents/github-tools.ts`. _Trigger:_ none — extraction of
+  shipped behavior. _Size:_ S.
+- **`createAnchor` facade** — ~20 lines of sugar over the run-pipeline calls
+  (captures llm/provider/stores, returns `{ run, doctor }`). _Trigger:_ a
+  second consumer wants the same wiring bundle (the eval CLI at step 15
+  likely). _Size:_ XS once the items above land.
+
+## Product & UX (Sailor)
 
 - **Event presentation config** — shipped as a defaults map
-  (`apps/dashboard/src/features/chat/presentation.ts`); follow-up: operator-
-  editable (env/JSON) only if someone asks. _Size:_ XS.
-- **Review context** — shipped: webhook captures `diff_hunk` / `line` / `side`
-  / `subject_type` / PR title, the task renderer includes the anchor + hunk,
-  and the chat shows an expandable system receipt. Follow-ups: resolve
-  `issue_comment` context the same way (no hunk exists there), reply
-  threading (`in_reply_to_id`), "outdated" comment state. _Size:_ S.
-- **"Queue instead of interject" affordance** — the #28-deferred UI for
-  downgrading an interjection. _Trigger:_ user request. _Size:_ S.
-- **Baseline-relative suite evidence** — FAIL_TO_PASS / PASS_TO_PASS deltas
-  (`run_tests` gains `junit_path` → `meta.tests`). _Trigger:_ step 15 evals on
-  real repos whose `main` is not green. _Size:_ M.
+  (`apps/dashboard/src/features/chat/presentation.ts`); make it
+  operator-editable (env/JSON) only if someone asks. _Trigger:_ user request.
+  _Size:_ XS — good first issue.
+- **Review context follow-ups** — webhook capture + task rendering + chat
+  receipt shipped for reviews. Remaining: `issue_comment` context (no hunk
+  exists — resolve file/line from the comment API), reply threading via
+  `in_reply_to_id`, "outdated" comment state. _Where:_
+  `apps/server/src/server/app.ts`, `apps/server/src/github/render.ts`.
+  _Trigger:_ next review-thread complaint. _Size:_ S.
+- **"Queue instead of interject" affordance** — UI to downgrade an
+  interjection back to queued (design decision #28 deferred this). _Where:_
+  `apps/dashboard/src/features/chat/`. _Trigger:_ user request. _Size:_ S.
+- **Baseline-relative suite evidence** — FAIL_TO_PASS / PASS_TO_PASS deltas:
+  `run_tests` gains `junit_path` → `meta.tests` (JUnit XML regex parse);
+  success = no baseline-passing test regresses. _Where:_
+  `packages/core/src/tools/run-tests.ts`, step-15 task JSON.
+  _Trigger:_ evals on real repos whose `main` is not green. _Size:_ M.
 - **`blocked` → user channel** — package carries `disposition: "blocked"` +
   summary; Sailor posts it as a comment + `agent:needs-input` label and the
-  reply becomes the next event. _Trigger:_ step 13 client wiring. _Size:_ S.
+  human reply becomes the next event. _Where:_ `apps/server/src/github/`.
+  _Trigger:_ step 13 client wiring. _Size:_ S.
 
 ## Model providers
 
-- **Native Anthropic / Gemini adapters**, **opaque reasoning replay**, and
-  **`cache_control` markers** (for opt-in-caching providers). _Trigger:_
-  actually running those models. _Size:_ M / S / XS.
-- **Vercel AI-SDK bridge**. _Trigger:_ a third ecosystem asks. _Size:_ M.
+- **Native Anthropic / Gemini adapters** — first-class clients (not the
+  OpenAI-compat shim) incl. **opaque reasoning replay** (carry signed
+  reasoning blocks across turns). _Where:_ `packages/core/src/llm/`.
+  _Trigger:_ actually running those models. _Size:_ M / S.
+- **`cache_control` markers** — for providers that require explicit cache
+  breakpoints. _Where:_ `packages/core/src/llm/`. _Trigger:_ an
+  opt-in-caching provider is used. _Size:_ XS.
+- **Vercel AI-SDK bridge** — adapter over `LLMClient`. _Where:_ new
+  `packages/llm-ai-sdk`. _Trigger:_ a third ecosystem asks. _Size:_ M.
 
 ## Program-level
 
-- **Steps 14 (best-of-N), 15 (evals), 19 (write-up), 20/21 (stretch)** —
-  tracked in `BUILD_PLAN.md`.
+- **Steps 14 (best-of-N), 15 (evals), 19 (write-up), 20/21 (stretch)** — see
+  `BUILD_PLAN.md`.
 - **Heyo platform issues (operator-dependent)** — artifact-store upload path
-  (broken pipe / 502 / `setRepo` credential refusal), `get.us2.heyo.work` TLS
-  handshake failure. Reported via the owner; retry when acknowledged.
-  `BUILD_PLAN.md` step 16 carries the details.
+  (`Broken pipe` / `502` / `setRepo` credential refusal),
+  `get.us2.heyo.work` TLS handshake failure. Reported via the owner; retry
+  when acknowledged. Details in `BUILD_PLAN.md` step 16.
