@@ -363,6 +363,25 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   feed and rail. No behavior change; typecheck + build green; `run.agent` now also shown in the
   rail (chat vs coding turns).
 
+### Step 18e — Trace becomes a whole-thread span explorer ✅ (same-day, from review)
+- **What:** the Trace tab is now a **LangSmith-inspired explorer over the ENTIRE thread**, not a
+  single run: `GET /api/threads/:id/trace` returns every run + all its spans in one payload
+  (token deltas excluded — reconstructable from `llm_call_finished`, and they'd dominate;
+  tool output trimmed to 4k for transport) plus **thread-level totals**. The client builds the
+  span tree (`features/trace/build-tree.ts`): run → phase → agent step (LLM call, duration =
+  latency, tokens = usage) → tool call (paired with its result by name; duration/ok from meta);
+  guardrails/checkpoints/errors hang off the innermost open container; spans without explicit
+  durations get estimated ones from sibling chronology (marked `~`). UI: left tree (status dot,
+  token chip, duration, aligned mini **waterfall bar** per row), right detail pane with
+  **Input / Output / Metadata** tabs (agent text renders as markdown). `?run=` focuses a run —
+  PR trace links and conversation "trace" chips land on the right node. Thread header shows
+  runs (coding/chat split), total tokens, cost, wall time, turns. The explorer live-refreshes
+  while its tab is open during an active run.
+- **Files:** `src/server/api.ts` (+trace route), `apps/dashboard/src/features/trace/*`
+  (api, build-tree, trace-explorer; old trace-view/run-panel deleted)
+- **Done when:** ✅ endpoint covered by integration tests (totals, delta exclusion, visibility,
+  401); typecheck + build green; suites 66 integration / 95 package / 40 app unit.
+
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.
   (Turn compaction shipped early in the engine — decision #18.)

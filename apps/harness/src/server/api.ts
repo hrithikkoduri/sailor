@@ -15,7 +15,7 @@
  */
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { User } from "../db/schema.js";
 import type { Queues } from "../queue/index.js";
@@ -238,6 +238,67 @@ export function createApiRoutes(deps: ApiDeps): Hono {
         heartbeatAt: run.heartbeatAt,
       },
       trace: trace.map((e) => ({ id: String(e.id), seq: e.seq, type: e.type, payload: e.payload, ts: e.ts })),
+    });
+  });
+
+  // The whole-thread trace: every run + its spans in one payload — the
+  // dashboard's explorer renders this as ONE tree (LangSmith-style, by
+  // request). Token deltas are excluded (reconstructable from
+  // llm_call_finished and they'd dominate the payload); heavy tool output is
+  // trimmed for transport. Thread-level aggregates ride along in `totals`.
+  app.get("/api/threads/:id/trace", async (c) => {
+    const user = await requireUser(c);
+    if (!ok(user)) return user;
+    const thread = await loadThread(c.req.param("id"));
+    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
+
+    const runs = await deps.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.threadId, thread.id))
+      .orderBy(asc(schema.runs.createdAt));
+    const runIds = runs.map((r) => r.id);
+    const rows = runIds.length
+      ? await deps.db
+          .select()
+          .from(schema.traceEvents)
+          .where(and(inArray(schema.traceEvents.runId, runIds), ne(schema.traceEvents.type, "llm_text_delta")))
+          .orderBy(asc(schema.traceEvents.runId), asc(schema.traceEvents.seq))
+      : [];
+
+    const spans = rows.map((e) => {
+      let payload = e.payload as Record<string, unknown>;
+      const content = payload.content;
+      if (e.type === "tool_result" && typeof content === "string" && content.length > 4000) {
+        payload = { ...payload, content: `${content.slice(0, 4000)}\n… (truncated)` };
+      }
+      return { id: String(e.id), runId: e.runId, seq: e.seq, type: e.type, payload, ts: e.ts };
+    });
+
+    const finishedRuns = runs.filter((r) => r.finishedAt);
+    return c.json({
+      thread: threadSummary(thread),
+      totals: {
+        runs: runs.length,
+        codingRuns: runs.filter((r) => r.agent !== "chat").length,
+        chatRuns: runs.filter((r) => r.agent === "chat").length,
+        tokensIn: runs.reduce((n, r) => n + r.tokensIn, 0),
+        tokensOut: runs.reduce((n, r) => n + r.tokensOut, 0),
+        usd: runs.reduce((n, r) => n + Number(r.usd), 0).toFixed(4),
+        startedAt: runs.find((r) => r.startedAt)?.startedAt ?? runs[0]?.createdAt ?? null,
+        finishedAt: finishedRuns.length ? finishedRuns[finishedRuns.length - 1]!.finishedAt : null,
+      },
+      runs: runs.map((r) => ({
+        ...runSummary(r),
+        steps: r.steps,
+        tokensIn: r.tokensIn,
+        tokensOut: r.tokensOut,
+        usd: r.usd,
+        keepSandbox: r.keepSandbox,
+        startedAt: r.startedAt,
+        finishedAt: r.finishedAt,
+      })),
+      spans,
     });
   });
 

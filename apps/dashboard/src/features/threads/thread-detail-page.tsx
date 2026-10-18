@@ -2,9 +2,9 @@
  * ThreadDetailPage — the conversation view.
  *
  * Chat tab (default): conversation + composer; live runs stream into a
- * bubble via `useThreadStream`. Trace tab (`?run=`) renders one run's full
- * timeline — the PR trace link lands here. The rail holds context, runs,
- * and pending events with explicit Interject.
+ * bubble via `useThreadStream`. Trace tab (`?run=`) opens the WHOLE-THREAD
+ * trace explorer with that run focused — the PR trace link lands here.
+ * The rail holds context, runs, and pending events with explicit Interject.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -16,9 +16,8 @@ import { useThreadStream } from "@/features/chat/use-thread-stream";
 import { emptyLive } from "@/features/chat/live";
 import { interjectEvent, postMessage } from "@/features/chat/api";
 import { ContextRail } from "@/features/threads/components/context-rail";
-import { RunPanel } from "@/features/trace/run-panel";
+import { TraceExplorer } from "@/features/trace/trace-explorer";
 import { cancelRun, getThread, keepSandbox, type ThreadDetail } from "@/features/threads/api";
-import { getRun, type RunDetail } from "@/features/trace/api";
 import { StatusPill } from "@/elements/status-pill";
 import { useAction } from "@/hooks/use-action";
 import { ApiError } from "@/utils/api-client";
@@ -33,18 +32,19 @@ export function ThreadDetailPage() {
   const runParam = params.get("run");
 
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
-  const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+  const [traceVersion, setTraceVersion] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, error, run } = useAction();
 
-  const selectedRunId = runParam ?? detail?.runs.find((r) => r.status === "running")?.id ?? detail?.runs[0]?.id ?? null;
-  const selectedRunIdRef = useRef<string | null>(null);
-  selectedRunIdRef.current = selectedRunId;
+  const runParamRef = useRef<string | null>(null);
+  runParamRef.current = runParam;
 
   const refetch = useCallback(async () => {
     try {
       const next = await getThread(id);
       setDetail(next);
+      // Live trace: keep the explorer fresh while its tab is open.
+      if (runParamRef.current) setTraceVersion((v) => v + 1);
       setLive((prev) => {
         if (!prev) return prev;
         const stillActive = next.runs.some(
@@ -58,28 +58,13 @@ export function ThreadDetailPage() {
     }
   }, [id, navigate]);
 
-  const refetchRun = useCallback(async () => {
-    const runId = selectedRunIdRef.current;
-    if (!runId) return;
-    try {
-      setRunDetail(await getRun(runId));
-    } catch {
-      /* transient */
-    }
-  }, []);
-
   const { live, setLive } = useThreadStream(id, () => {
     void refetch();
-    void refetchRun();
   });
 
   useEffect(() => {
     void refetch();
   }, [refetch]);
-
-  useEffect(() => {
-    void refetchRun();
-  }, [selectedRunId, refetchRun]);
 
   // Hydrate the live bubble the moment we know a run is active (before its
   // first streamed event arrives).
@@ -90,10 +75,7 @@ export function ThreadDetailPage() {
   }, [detail, live, setLive]);
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
-    if (await run(key, fn)) {
-      await refetch();
-      await refetchRun();
-    }
+    if (await run(key, fn)) await refetch();
   };
 
   if (!detail) {
@@ -108,6 +90,7 @@ export function ThreadDetailPage() {
   const activeRun = runs.find((r) => r.status === "running" || r.status === "queued");
   const isTerminal = TERMINAL.has(thread.state);
   const shownError = error ?? loadError;
+  const latestRunId = activeRun?.id ?? runs[0]?.id ?? null;
 
   return (
     <AppShell
@@ -161,7 +144,7 @@ export function ThreadDetailPage() {
               Chat
             </button>
             <button
-              onClick={() => selectedRunId && setParams({ run: selectedRunId }, { replace: true })}
+              onClick={() => latestRunId && setParams({ run: latestRunId }, { replace: true })}
               className={cn(
                 "cursor-pointer rounded-md px-2.5 py-1 text-xs transition-colors",
                 runParam ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -190,15 +173,7 @@ export function ThreadDetailPage() {
           )}
 
           {runParam ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-3xl px-4 py-6">
-                {runDetail && runDetail.run.id === runParam ? (
-                  <RunPanel runDetail={runDetail} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">Loading trace…</p>
-                )}
-              </div>
-            </div>
+            <TraceExplorer threadId={id} focusRunId={runParam} version={traceVersion} />
           ) : (
             <>
               <Conversation
@@ -213,7 +188,6 @@ export function ThreadDetailPage() {
                   onSend={async (text) => {
                     const res = await postMessage(id, text);
                     await refetch();
-                    await refetchRun();
                     return { eventId: res.eventId };
                   }}
                 />

@@ -1,27 +1,42 @@
-/** Trace surface: one run's full timeline. */
+/**
+ * Trace surface — the WHOLE thread in one payload (LangSmith-style view).
+ */
 import { api } from "@/utils/api-client";
-import type { RunSummary } from "@/features/threads/api";
+import type { RunSummary, ThreadSummary } from "@/features/threads/api";
 
-export interface TraceRow {
+export interface TraceSpan {
   id: string;
+  runId: string;
   seq: number;
   type: string;
   payload: Record<string, unknown>;
   ts: string;
 }
 
-export interface RunDetail {
-  run: RunSummary & {
-    startPhase: string | null;
-    steps: number;
-    tokensIn: number;
-    tokensOut: number;
-    usd: string;
-    keepSandbox: boolean;
-    cancelRequestedAt: string | null;
-    heartbeatAt: string | null;
-  };
-  trace: TraceRow[];
+export interface TraceRun extends RunSummary {
+  steps: number;
+  tokensIn: number;
+  tokensOut: number;
+  usd: string;
+  keepSandbox: boolean;
 }
 
-export const getRun = (id: string) => api<RunDetail>(`/api/runs/${id}`);
+export interface ThreadTraceTotals {
+  runs: number;
+  codingRuns: number;
+  chatRuns: number;
+  tokensIn: number;
+  tokensOut: number;
+  usd: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ThreadTrace {
+  thread: ThreadSummary;
+  totals: ThreadTraceTotals;
+  runs: TraceRun[];
+  spans: TraceSpan[];
+}
+
+export const getThreadTrace = (id: string) => api<ThreadTrace>(`/api/threads/${id}/trace`);

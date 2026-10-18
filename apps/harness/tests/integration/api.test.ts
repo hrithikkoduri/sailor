@@ -369,6 +369,33 @@ describe("dashboard api", () => {
     expect(event!.status).toBe("consumed");
   });
 
+  it("whole-thread trace: totals + spans across runs, deltas excluded, hidden threads 404", async () => {
+    // Seed a delta row that must NOT appear (reconstructable from the finish).
+    await db.insert(schema.traceEvents).values({
+      runId: runOkId,
+      seq: 5,
+      type: "llm_text_delta",
+      payload: { type: "llm_text_delta", text: "tok" },
+    });
+
+    const res = await app.request(`/api/threads/${threadId}/trace`, { headers: { cookie } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      totals: { runs: number; tokensIn: number; usd: string };
+      runs: Array<{ id: string; steps: number }>;
+      spans: Array<{ type: string; runId: string }>;
+    };
+    expect(body.totals.runs).toBe(2);
+    expect(body.totals.tokensIn).toBe(1234); // runOk only; runLive has none yet
+    expect(body.runs.find((r) => r.id === runOkId)?.steps).toBe(9);
+    expect(body.spans.length).toBeGreaterThan(0);
+    expect(body.spans.map((s) => s.type)).not.toContain("llm_text_delta");
+    expect(body.spans.every((s) => typeof s.runId === "string")).toBe(true);
+
+    expect((await app.request(`/api/threads/${hiddenThreadId}/trace`, { headers: { cookie } })).status).toBe(404);
+    expect((await app.request(`/api/threads/${threadId}/trace`)).status).toBe(401);
+  });
+
   it("SSE: the stream greets, then relays hub nudges for this thread", async () => {
     const server = serve({ fetch: app.fetch, port: 0 });
     await new Promise<void>((resolve) => server.once("listening", () => resolve()));
