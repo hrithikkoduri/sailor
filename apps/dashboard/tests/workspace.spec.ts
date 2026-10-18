@@ -110,6 +110,9 @@ test("conversation: draft survives failure, retry sends, trace is the entire thr
   await expect(
     page.getByRole("button", { name: /Entire thread/ }),
   ).toBeVisible();
+  // The cache metric explains the bill: cached reads over total input.
+  await expect(page.getByText("Cache", { exact: true })).toBeVisible();
+  await expect(page.getByText("91%", { exact: true })).toBeVisible();
   const workspace = await page.locator("[data-trace-workspace]").boundingBox();
   expect(workspace!.y).toBeLessThan(165);
   await page.getByRole("button", { name: /^run · label/ }).click();

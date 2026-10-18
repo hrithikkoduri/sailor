@@ -155,6 +155,22 @@ export function TraceExplorer({
     () => (data ? buildThreadTree(data.runs, data.spans) : null),
     [data],
   );
+  // Cache hit rate: cached input reads over total prompt tokens, straight
+  // from the recorded usage — the metric that explains the bill.
+  const cache = useMemo(() => {
+    if (!data) return null;
+    let cached = 0;
+    let prompt = 0;
+    for (const span of data.spans) {
+      if (span.type !== "llm_call_finished") continue;
+      const usage = span.payload.usage as
+        | { promptTokens?: number; cachedTokens?: number }
+        | undefined;
+      prompt += usage?.promptTokens ?? 0;
+      cached += usage?.cachedTokens ?? 0;
+    }
+    return prompt > 0 ? { cached, prompt } : null;
+  }, [data]);
   const threadNode: SpanNode | null = data
     ? {
         id: "thread",
@@ -235,6 +251,15 @@ export function TraceExplorer({
             label: "Tokens",
             value: fmtTokens(data.totals.tokensIn + data.totals.tokensOut),
             sub: `${fmtTokens(data.totals.tokensIn)} in / ${fmtTokens(data.totals.tokensOut)} out`,
+          },
+          {
+            label: "Cache",
+            value: cache
+              ? `${Math.round((cache.cached / cache.prompt) * 100)}%`
+              : "—",
+            sub: cache
+              ? `${fmtTokens(cache.cached)} of ${fmtTokens(cache.prompt)} input read from cache`
+              : "No cached reads recorded yet",
           },
           {
             label: "Cost",

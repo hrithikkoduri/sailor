@@ -148,7 +148,7 @@ export const trace = {
       text: "The empty array is read before we validate its length. I’ll add a regression test first.",
       toolCalls: [],
       latencyMs: 1240,
-      usage: { promptTokens: 3280, completionTokens: 220 },
+      usage: { promptTokens: 3280, completionTokens: 220, cachedTokens: 3000 },
     }),
     event(4, "tool_call", {
       phase: "reproduce",
@@ -181,7 +181,7 @@ export const trace = {
       step: 2,
       text: "The fix is verified. All 24 tests pass.",
       latencyMs: 820,
-      usage: { promptTokens: 1120, completionTokens: 96 },
+      usage: { promptTokens: 1120, completionTokens: 96, cachedTokens: 1000 },
     }),
     event(11, "run_finished", {
       ok: true,
