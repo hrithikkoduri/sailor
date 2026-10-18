@@ -323,11 +323,20 @@ command sent to exec = timeout --signal=KILL <timeoutSecs> bash -c 'cd /workspac
 
 **Fork point = after the reproduce phase.** One shared run writes the failing test + diagnoses the bug, commits a checkpoint, then N sandboxes fork from that commit and race the fix. Each attempt verifies against the *same* failing test → fair comparison, cheaper attempts. Config flag `--fork-from-scratch` kept as an escape hatch.
 
-## Eval suite (decision)
+## Eval suite (decision; placement revised 2026-10-18)
 
 Task spec (JSON): repo + base commit + issue text + setup/test commands + success criteria + budget.
 Sources: SWE-bench Lite subset + seeded bugs in repos we control.
-`sailor eval` runs all tasks end-to-end → solve rate, $/task, p50/p95 time, failure-mode breakdown (repro-failed / wrong-fix / timeout / budget / loop / tool-error). Full JSONL trace per task.
+The runner lives in `apps/evals` — a repo-level benchmark app that drives
+`@anchor/core` directly (no product stack), with pluggable arms ("sailor" =
+the product's agent config minus GitHub tools; "mini-swe-agent" = a foreign
+harness baseline) and the official swebench grader in local Docker as an
+external adapter. Deliberately **not** a `sailor` subcommand (the score is
+about the harness, not the product) and **not** inside `@anchor/core` yet (one
+comparison is not a library — the generic runner lifts to Anchor once its
+shape survives a real run). Runs all tasks end-to-end → solve rate, $/task,
+p50/p95 time, failure-mode breakdown (repro-failed / wrong-fix / timeout /
+budget / loop / tool-error). Full JSONL trace per task.
 
 ## Secrets
 

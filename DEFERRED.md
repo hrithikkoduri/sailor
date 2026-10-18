@@ -189,13 +189,17 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Export the tool-author helpers (`requireString`, `optionalString`,
   `requireSandbox`, `formatExec`).
 
-**Phase 1 — the eval runner (a Sailor-side consumer of Anchor; unblocked)**
+**Phase 1 — the eval runner (the harness benchmark; drives Anchor directly)**
 
-- Anchor directly — no worker/queue/webhook — with the sailor agent minus
-  GitHub tools; sandbox = the toolchain VM (public repos clone with no
-  credentials; the agent does not need deps to produce a patch).
-- `sailor eval` command: task JSONL (SWE-bench Lite subset) → per-task run →
-  `git diff` patch → `predictions.jsonl` + per-task trace + cost.
+- `apps/evals`: a repo-level app — no worker/queue/webhook — that imports
+  `@anchor/core` directly and runs task JSONL (SWE-bench Lite subset) through
+  pluggable arms: "sailor" (createSailorAgent minus GitHub tools) and
+  "mini-swe-agent" (subprocess, same model). Sandbox = the toolchain VM
+  (public repos clone with no credentials; producing a patch needs no
+  installed deps).
+- Per task: fresh sandbox at base commit → arm runs → `git diff` →
+  `predictions.jsonl` + per-task trace + cost. Keep the runner loop as ONE
+  isolated module — it's the future Anchor lift (`anchor eval`).
 - Grader: official `swebench` harness locally in Docker; parse the report.
 - Baseline arm: mini-swe-agent, same model — "minimal harness A% vs Sailor's
   agent on Anchor B%".
