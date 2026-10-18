@@ -483,6 +483,18 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   Unknown completion is not reported as a confirmed kill. Live VM tests now
   require an explicit `RUN_LIVE_HEYO_TESTS=1`, not just credentials in .env.
 
+### Live phase trail above the composer
+
+- The running run's approach is visible where direction is given: a small
+  strip above the composer shows the ordered phases (`understand → act →
+  validate → respond`). Entered phases get a check, the current one shimmers,
+  later ones wait; skips are honest because the list comes from the journal's
+  recorded `phase_started` events, not assumptions. `run_started` now carries
+  the full phase list, the REST projection exposes `phases`/`visited`/`phase`,
+  and SSE forwards a `started` frame. Refresh mid-run reconstructs the trail
+  from the journal; completion hides it immediately; reduced motion renders the
+  current phase as plain ink.
+
 ### Local debug display + trace failure visibility
 
 - ⌘⇧D / Ctrl+Shift+D toggles debug mode. It persists locally, is also available

@@ -22,6 +22,9 @@ export function createLiveProjector(
         ) as Record<string, unknown>,
       );
     switch (event.type) {
+      case "run_started":
+        publish({ kind: "started", phases: event.phases });
+        break;
       case "llm_call_started":
         text = "";
         reasoning = "";

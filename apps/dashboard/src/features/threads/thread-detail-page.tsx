@@ -25,8 +25,9 @@ import {
 import { AppShell } from "@/features/shell/app-shell";
 import { Conversation } from "@/features/chat/conversation";
 import { ChatComposer } from "@/features/chat/components/composer";
+import { PhaseTrail } from "@/features/chat/components/phase-trail";
 import { useThreadStream } from "@/features/chat/use-thread-stream";
-import { emptyLive } from "@/features/chat/live";
+import { emptyLive, mergeConversation } from "@/features/chat/live";
 import { interjectEvent, postMessage } from "@/features/chat/api";
 import { cancelRun, getThread, keepSandbox, type ThreadDetail } from "./api";
 import { StatusPill } from "@/elements/status-pill";
@@ -133,6 +134,15 @@ export function ThreadDetailPage() {
     );
   const { thread, runs, pendingEvents } = detail;
   const active = runs.find((r) => ["running", "queued"].includes(r.status));
+  const phaseLive = active && live?.runId === active.id ? live : null;
+  const phaseTrail = active
+    ? mergeConversation(active.conversation, phaseLive)
+    : undefined;
+  const showPhaseTrail =
+    !!active &&
+    active.status === "running" &&
+    !phaseLive?.finished &&
+    (phaseTrail?.phases?.length ?? 0) > 1;
   const initial = detail.events.find((e) => e.kind === "issue_labeled");
   const title =
     typeof initial?.payload.title === "string"
@@ -328,6 +338,15 @@ export function ThreadDetailPage() {
             live={live}
             onOpenRun={(runId) => setParams({ run: runId })}
           />
+          {showPhaseTrail && (
+            <div className="mx-auto w-full max-w-[800px] px-5 pt-3 sm:px-8">
+              <PhaseTrail
+                phases={phaseTrail!.phases!}
+                visited={phaseTrail!.visited ?? []}
+                current={phaseLive?.phase ?? phaseTrail!.phase ?? null}
+              />
+            </div>
+          )}
           <ChatComposer
             busy={!!active}
             disabled={TERMINAL.has(thread.state)}

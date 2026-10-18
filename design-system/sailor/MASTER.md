@@ -91,6 +91,11 @@ behavior and motion. Vendored fixes must be recorded in the dashboard README.
   Expanding reveals action verbs and outcomes, not argument/output JSON; those
   remain in Trace. Open while working, collapse as the next assistant step starts,
   and allow manual reopening. Reasoning remains independently expandable.
+- While a run is working, a small phase trail sits above the composer:
+  `Understand → Act → Validate → Respond`, with entered phases checked, the
+  current one shimmering, and later ones waiting. It reflects what the trace
+  actually recorded (skips stay visible), disappears on completion, and renders
+  the current phase as plain ink under reduced motion.
 - Local debug mode (⌘⇧D / Ctrl+Shift+D) keeps action groups open and reveals
   per-tool expandable input/output. Failed calls have red labels and output plus
   explicit failure text. Keep a visible active indicator and a pointer-accessible

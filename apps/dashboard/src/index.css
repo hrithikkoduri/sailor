@@ -150,6 +150,36 @@
   }
 }
 
+/* The running phase sweeps a quiet shine; reduced motion renders plain ink. */
+.phase-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 25%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 75%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: phase-shimmer 1.8s linear infinite;
+}
+@keyframes phase-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phase-shimmer {
+    animation: none;
+    background: none;
+    color: var(--foreground);
+  }
+}
+
 /* Shared layout vocabulary, not page-specific color overrides. */
 .page-heading {
   font-size: 26px;

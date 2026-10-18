@@ -35,6 +35,9 @@ export function projectConversation(
   status: string,
 ) {
   const parts: ConversationPart[] = [];
+  const phases: string[] = [];
+  const visited: string[] = [];
+  let phase: string | null = null;
   let step = 0;
   let finished = !["running", "queued"].includes(status);
   let sequence = -1;
@@ -57,6 +60,23 @@ export function projectConversation(
     sequence = Math.max(sequence, event.seq);
     const p = (event.payload ?? {}) as Record<string, unknown>;
     if (typeof p.step === "number") step = p.step;
+    if (event.type === "run_started") {
+      const listed = p.phases;
+      if (Array.isArray(listed))
+        phases.splice(
+          0,
+          phases.length,
+          ...listed.filter((item): item is string => typeof item === "string"),
+        );
+    }
+    if (event.type === "phase_started") {
+      const id = typeof p.phase === "string" ? p.phase : undefined;
+      if (id) {
+        phase = id;
+        if (!visited.includes(id)) visited.push(id);
+        if (!phases.includes(id)) phases.push(id);
+      }
+    }
     if (event.type === "llm_call_started") textPart("text", event.seq);
     if (event.type === "llm_text_delta") {
       textPart("text", event.seq).text +=
@@ -143,5 +163,5 @@ export function projectConversation(
     }
   }
   if (finished) for (const part of parts) part.complete = true;
-  return { parts, sequence, finished };
+  return { parts, sequence, finished, phases, visited, phase };
 }

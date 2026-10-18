@@ -6,6 +6,7 @@ export interface LiveEvent {
   sequence?: number;
   step?: number;
   kind:
+    | "started"
     | "llm_started"
     | "delta"
     | "reasoning"
@@ -28,11 +29,15 @@ export interface LiveEvent {
   ok?: boolean;
   summary?: string | null;
   message?: string;
+  /** run_started carries the strategy's full phase list, in order. */
+  phases?: string[];
 }
 export interface LiveState extends RunConversation {
   runId: string;
   phase: string | null;
   startedAt: number;
+  phases: string[];
+  visited: string[];
 }
 export const emptyLive = (runId: string, phase: string | null): LiveState => ({
   runId,
@@ -41,6 +46,8 @@ export const emptyLive = (runId: string, phase: string | null): LiveState => ({
   parts: [],
   sequence: -1,
   finished: false,
+  phases: [],
+  visited: [],
 });
 
 const rank = (p: ConversationPart) =>
@@ -62,6 +69,9 @@ export function mergeConversation(
     parts,
     sequence: live.sequence,
     finished: live.finished || saved?.finished === true,
+    phases: live.phases.length ? live.phases : saved?.phases,
+    visited: live.visited.length ? live.visited : saved?.visited,
+    phase: live.phase ?? saved?.phase ?? null,
   };
 }
 
@@ -154,8 +164,18 @@ export function applyLiveEvent(
         });
       break;
     }
+    case "started":
+      if (Array.isArray(event.phases) && event.phases.length)
+        next.phases = event.phases;
+      break;
     case "phase":
-      next.phase = event.phase ?? next.phase;
+      if (event.phase) {
+        next.phase = event.phase;
+        if (!next.visited.includes(event.phase))
+          next.visited = [...next.visited, event.phase];
+        if (!next.phases.includes(event.phase))
+          next.phases = [...next.phases, event.phase];
+      }
       break;
     case "run_finished":
       next.finished = true;

@@ -83,6 +83,22 @@ describe("conversation projection", () => {
     });
     expect(result.finished).toBe(true);
   });
+  it("tracks the phase trail: listed phases, actually-visited order, current phase", () => {
+    const result = projectConversation(
+      [
+        event(0, "run_started", {
+          task: "t",
+          phases: ["understand", "act", "validate", "respond"],
+        }),
+        event(1, "phase_started", { phase: "understand" }),
+        event(2, "phase_started", { phase: "validate" }),
+      ],
+      "running",
+    );
+    expect(result.phases).toEqual(["understand", "act", "validate", "respond"]);
+    expect(result.visited).toEqual(["understand", "validate"]);
+    expect(result.phase).toBe("validate");
+  });
   it("uses finish summaries for legacy coding runs that ended in tool calls", () => {
     const result = projectConversation(
       [event(0, "run_finished", { summary: "Fixed the bug." })],
@@ -106,6 +122,21 @@ describe("conversation projection", () => {
 });
 
 describe("live projection", () => {
+  it("forwards the phase list and phase moves for the composer trail", () => {
+    const frames: Record<string, unknown>[] = [];
+    const emit = createLiveProjector((frame) => frames.push(frame));
+    emit({
+      type: "run_started",
+      task: "t",
+      phases: ["understand", "act", "validate", "respond"],
+    });
+    expect(frames.at(-1)).toMatchObject({
+      kind: "started",
+      phases: ["understand", "act", "validate", "respond"],
+    });
+    emit({ type: "phase_started", phase: "act" });
+    expect(frames.at(-1)).toMatchObject({ kind: "phase", phase: "act" });
+  });
   it("redacts token-shaped values before live debug input/output reaches the browser", () => {
     const frames: Record<string, unknown>[] = [];
     const emit = createLiveProjector(frame => frames.push(frame));
