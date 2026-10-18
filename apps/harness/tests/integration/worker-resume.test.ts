@@ -114,11 +114,7 @@ describe("worker recovery pipeline", () => {
         ],
       },
       { tools: [{ name: "run_tests", arguments: "{}" }] }, // full suite passes (fix stays put)
-      {
-        tools: [
-          { name: "request_transition", arguments: JSON.stringify({ to: "verify", reason: "full suite is green" }) },
-        ],
-      }, // agent-requested → verify
+      { tools: [{ name: "advance", arguments: "{}" }] }, // checked → verify
       { tools: [{ name: "finish", arguments: JSON.stringify({ summary: "fixed after resume", success: true }) }] },
     ];
     workerConnection = createQueueConnection(redisUrl);

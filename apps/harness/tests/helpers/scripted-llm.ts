@@ -42,7 +42,8 @@ export function scriptedLLM(queue: Scripted[]): LLMClient & { seen: LLMRequest[]
 
 /** The fixture fix as a scripted conversation (reproduce → fix → verify → finish). */
 export const FIX_FIXTURE_SCRIPT: Scripted[] = [
-  { tools: [{ name: "run_tests", arguments: "{}" }] }, // fails → phase: fix
+  { tools: [{ name: "run_tests", arguments: "{}" }] }, // fails — reproduce evidence
+  { tools: [{ name: "advance", arguments: "{}" }] }, // checked → phase: fix
   {
     tools: [
       {
@@ -55,11 +56,7 @@ export const FIX_FIXTURE_SCRIPT: Scripted[] = [
       },
     ],
   },
-  { tools: [{ name: "run_tests", arguments: "{}" }] }, // full suite passes (fix stays put)
-  {
-    tools: [
-      { name: "request_transition", arguments: JSON.stringify({ to: "verify", reason: "full suite is green" }) },
-    ],
-  }, // agent-requested → phase: verify
+  { tools: [{ name: "run_tests", arguments: "{}" }] }, // full suite passes
+  { tools: [{ name: "advance", arguments: "{}" }] }, // checked → phase: verify
   { tools: [{ name: "finish", arguments: JSON.stringify({ summary: "fixed negatives", success: true }) }] },
 ];

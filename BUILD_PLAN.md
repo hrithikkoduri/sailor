@@ -89,8 +89,8 @@ Hono (webhook intake) · long-lived worker process · Heyo microVM sandboxes (`h
 - **What:** the **engine** (`packages/agent/src/engine/`: loop, budgets, events, strategy
   contract, protocol context) + the first built-in agent (`agents/coding/`) + repo map.
   Guardrails: step/token/$ budgets, loop detection (identical call 3× → blocked), nudges for
-  no-tool-call turns. Phase advances happen on **tool evidence** (failing/passing run_tests),
-  never on the model's claims. `harness run <repo> <issue> [--local]` is the CLI entry.
+  no-tool-call turns. Phase moves are agent-driven with evidence checks (**decision #35** —
+  failing/passing run_tests gate the `advance` calls), never on the model's unchecked claims. `harness run <repo> <issue> [--local]` is the CLI entry.
 - **Files:** `packages/agent/src/{engine/*,agents/coding/*}`, `apps/harness/src/commands/run.ts`,
   `fixtures/buggy-lib/`, `packages/agent/tests/unit/engine.test.ts`
 - **Done when:** ✅ **live run 2026-10-17 (local backend):** reproduce (suite fails) → fix
