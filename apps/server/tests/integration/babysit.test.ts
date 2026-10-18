@@ -8,11 +8,20 @@ import { eq, inArray } from "drizzle-orm";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
+import {
+  createQueueConnection,
+  createQueues,
+  type Queues,
+} from "../../src/queue/index.js";
 import { runBabysitSweep } from "../../src/worker/babysit.js";
 import { appendEvent } from "../../src/threads/inbox.js";
 import type { GitHubAppService } from "../../src/github/app.js";
-import type { GitHubClient, GithubCheckRun, GithubComment, GithubPullRequestState } from "../../src/github/client.js";
+import type {
+  GitHubClient,
+  GithubCheckRun,
+  GithubComment,
+  GithubPullRequestState,
+} from "../../src/github/client.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("runBabysitSweep", () => {
@@ -29,14 +38,21 @@ describe("runBabysitSweep", () => {
   });
 
   afterAll(async () => {
-    if (threadIds.length > 0) await db.delete(schema.threads).where(inArray(schema.threads.id, threadIds));
+    if (threadIds.length > 0)
+      await db
+        .delete(schema.threads)
+        .where(inArray(schema.threads.id, threadIds));
     await queues.close();
     await pool.end();
   });
 
-let issueSeq = 50;
+  let issueSeq = 50;
 
-  const newThread = async (tag: string, issue: number, opts: { turnsUsed?: number } = {}) => {
+  const newThread = async (
+    tag: string,
+    issue: number,
+    opts: { turnsUsed?: number } = {},
+  ) => {
     const repo = `test/babysit-${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const [thread] = await db
       .insert(schema.threads)
@@ -89,23 +105,32 @@ let issueSeq = 50;
     clientFor: async () => github,
     tokenFor: async () => "fake-token",
     appSlug: async () => undefined,
+    botIdentity: async () => undefined,
     getInstallation: async () => {
       throw new Error("not used");
     },
   });
 
   const sweep = (github: GitHubClient, threadId: string) =>
-    runBabysitSweep({ db, queues, githubApp: fakeApp(github), botLogin: "sailor-bot" }, { threadId });
+    runBabysitSweep(
+      { db, queues, githubApp: fakeApp(github), botLogin: "sailor-bot" },
+      { threadId },
+    );
 
   it("failed checks → a babysit turn is queued with the CI task", async () => {
     const thread = await newThread("ci", 50);
     const results = await sweep(
-      fakeGithub({ checks: [{ name: "unit", status: "completed", conclusion: "failure" }] }),
+      fakeGithub({
+        checks: [{ name: "unit", status: "completed", conclusion: "failure" }],
+      }),
       thread.id,
     );
 
     expect(results).toEqual([{ threadId: thread.id, action: "ci_failed" }]);
-    const runs = await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id));
+    const runs = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.threadId, thread.id));
     expect(runs).toHaveLength(1);
     expect(runs[0]!.trigger).toBe("babysit_ci");
     expect(runs[0]!.task).toContain("unit");
@@ -113,46 +138,84 @@ let issueSeq = 50;
 
   it("merge conflict → a fix turn (the condition with no webhook)", async () => {
     const thread = await newThread("conflict", 51);
-    const results = await sweep(fakeGithub({ pr: { mergeable: false, mergeable_state: "dirty" } }), thread.id);
+    const results = await sweep(
+      fakeGithub({ pr: { mergeable: false, mergeable_state: "dirty" } }),
+      thread.id,
+    );
 
     expect(results).toEqual([{ threadId: thread.id, action: "conflict" }]);
-    const runs = await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id));
+    const runs = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.threadId, thread.id));
     expect(runs[0]!.task).toContain("conflicts with main");
   });
 
   it("a merged PR → the thread goes terminal, no turn", async () => {
     const thread = await newThread("merged", 52);
-    const results = await sweep(fakeGithub({ pr: { state: "closed", merged: true } }), thread.id);
+    const results = await sweep(
+      fakeGithub({ pr: { state: "closed", merged: true } }),
+      thread.id,
+    );
 
     expect(results).toEqual([{ threadId: thread.id, action: "merged" }]);
-    const [after] = await db.select().from(schema.threads).where(eq(schema.threads.id, thread.id));
+    const [after] = await db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, thread.id));
     expect(after!.state).toBe("merged");
-    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id))).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.runs)
+        .where(eq(schema.runs.threadId, thread.id)),
+    ).toHaveLength(0);
   });
 
   it("budgets stop the babysitter", async () => {
     const thread = await newThread("budget", 53, { turnsUsed: 20 }); // default budgetMaxTurns = 20
     const results = await sweep(
-      fakeGithub({ checks: [{ name: "unit", status: "completed", conclusion: "failure" }] }),
+      fakeGithub({
+        checks: [{ name: "unit", status: "completed", conclusion: "failure" }],
+      }),
       thread.id,
     );
 
     expect(results).toEqual([{ threadId: thread.id, action: "budget" }]);
-    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id))).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.runs)
+        .where(eq(schema.runs.threadId, thread.id)),
+    ).toHaveLength(0);
   });
 
   it("an active run defers the sweep (one turn at a time)", async () => {
     const thread = await newThread("busy", 54);
-    await db.insert(schema.runs).values({ threadId: thread.id, trigger: "manual", status: "queued" });
+    await db
+      .insert(schema.runs)
+      .values({ threadId: thread.id, trigger: "manual", status: "queued" });
 
     const results = await sweep(
-      fakeGithub({ checks: [{ name: "unit", status: "completed", conclusion: "failure" }] }),
+      fakeGithub({
+        checks: [{ name: "unit", status: "completed", conclusion: "failure" }],
+      }),
       thread.id,
     );
 
     expect(results).toEqual([{ threadId: thread.id, action: "busy" }]);
-    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id))).toHaveLength(1);
-    expect(await db.select().from(schema.events).where(eq(schema.events.threadId, thread.id))).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.runs)
+        .where(eq(schema.runs.threadId, thread.id)),
+    ).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(schema.events)
+        .where(eq(schema.events.threadId, thread.id)),
+    ).toHaveLength(0);
   });
 
   it("unanswered human comments → an interject turn", async () => {
@@ -171,21 +234,35 @@ let issueSeq = 50;
     );
 
     expect(results).toEqual([{ threadId: thread.id, action: "comments" }]);
-    const runs = await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id));
+    const runs = await db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.threadId, thread.id));
     expect(runs[0]!.trigger).toBe("babysit_comment");
     expect(runs[0]!.task).toContain("please fix the typo");
   });
 
   it("a duplicate finding while one is pending → quiet, no double enqueue", async () => {
     const thread = await newThread("dup", 56);
-    await appendEvent(db, { threadId: thread.id, kind: "check_run", payload: { checks: ["unit"] } });
+    await appendEvent(db, {
+      threadId: thread.id,
+      kind: "check_run",
+      payload: { checks: ["unit"] },
+    });
 
     const results = await sweep(
-      fakeGithub({ checks: [{ name: "unit", status: "completed", conclusion: "failure" }] }),
+      fakeGithub({
+        checks: [{ name: "unit", status: "completed", conclusion: "failure" }],
+      }),
       thread.id,
     );
 
     expect(results).toEqual([{ threadId: thread.id, action: "quiet" }]);
-    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread.id))).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.runs)
+        .where(eq(schema.runs.threadId, thread.id)),
+    ).toHaveLength(0);
   });
 });

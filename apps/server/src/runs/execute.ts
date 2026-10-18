@@ -126,6 +126,8 @@ export interface ExecuteRunDeps {
   compaction?: CompactionConfig;
   /** Test seam: budget revival on/off (default: config, SAILOR_BUDGET_REVIVAL). */
   revival?: boolean;
+  /** Commit attribution inside the sandbox — the App's bot identity. */
+  gitIdentity?: { name: string; email: string };
 }
 
 export interface ExecuteRunOutcome {
@@ -325,6 +327,7 @@ export async function executeRun(
   const spec: SandboxSpec = {
     ...sandboxSpecForThread(thread, baseDir),
     retain,
+    ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
   };
 
   // Off-machine checkpoints (B): the side branch the push webhook ignores. It
@@ -446,6 +449,7 @@ export async function executeRun(
                 baseDir,
               ),
               retain,
+              ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
             },
           }
         : {}),

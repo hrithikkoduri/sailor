@@ -28,6 +28,11 @@ export interface GitHubAppService {
    * string, which goes stale the moment the App is renamed.
    */
   appSlug(): Promise<string | undefined>;
+  /**
+   * The App's bot identity for commit attribution: `{ name, email }` with
+   * GitHub's noreply email when the bot user resolves. Undefined when not.
+   */
+  botIdentity(): Promise<{ name: string; email: string } | undefined>;
 }
 
 export interface GitHubAppOptions {
@@ -65,6 +70,9 @@ export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
   // The App slug rarely changes (renames only) — cache it; a failed read
   // retries next call so a boot-time flake cannot freeze the fallback.
   let slugPromise: Promise<string | undefined> | undefined;
+  let identityPromise:
+    | Promise<{ name: string; email: string } | undefined>
+    | undefined;
 
   async function appRequest<T>(method: string, path: string): Promise<T> {
     const res = await doFetch(`https://api.github.com${path}`, {
@@ -103,27 +111,55 @@ export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
     return mint(installationId);
   }
 
+  // Rename-proof bot identity: webhooks present us as `<slug>[bot]` — never
+  // trust a configured string for a self-check. Named (not inline) so
+  // botIdentity can compose with it.
+  const appSlug = (): Promise<string | undefined> => {
+    slugPromise ??= appRequest<{ slug?: string }>("GET", "/app")
+      .then((info) => {
+        const slug =
+          typeof info.slug === "string" && info.slug ? info.slug : undefined;
+        if (!slug) slugPromise = undefined;
+        return slug;
+      })
+      .catch(() => {
+        slugPromise = undefined;
+        return undefined;
+      });
+    return slugPromise;
+  };
+
   return {
     getInstallation: (installationId) =>
       appRequest("GET", `/app/installations/${installationId}`),
     tokenFor,
     clientFor: async (installationId) =>
       createGitHubClient({ token: await tokenFor(installationId) }),
-    // Rename-proof bot identity: webhooks present us as `<slug>[bot]` — never
-    // trust a configured string for a self-check.
-    appSlug: () => {
-      slugPromise ??= appRequest<{ slug?: string }>("GET", "/app")
-        .then((info) => {
-          const slug =
-            typeof info.slug === "string" && info.slug ? info.slug : undefined;
-          if (!slug) slugPromise = undefined;
-          return slug;
-        })
-        .catch(() => {
-          slugPromise = undefined;
-          return undefined;
-        });
-      return slugPromise;
+    appSlug,
+    // Commit attribution: `<slug>[bot]` with GitHub's noreply email when the
+    // bot user's id resolves (`<id>+<slug>[bot]@users.noreply.github.com`);
+    // the plain login form is the fallback.
+    botIdentity: () => {
+      identityPromise ??= (async () => {
+        const slug = await appSlug();
+        if (!slug) return undefined;
+        const login = `${slug}[bot]`;
+        const info = await appRequest<{ id?: number }>(
+          "GET",
+          `/users/${encodeURIComponent(login)}`,
+        ).catch(() => undefined);
+        const id = typeof info?.id === "number" ? info.id : undefined;
+        return {
+          name: login,
+          email: id
+            ? `${id}+${login}@users.noreply.github.com`
+            : `${login}@users.noreply.github.com`,
+        };
+      })().then((identity) => {
+        if (!identity) identityPromise = undefined; // retry next call
+        return identity;
+      });
+      return identityPromise;
     },
   };
 }

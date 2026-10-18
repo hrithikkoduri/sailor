@@ -77,6 +77,8 @@ export async function workerCommand(argv: string[]): Promise<number> {
   // Rename-proof bot identity (GET /app) — same source as serve; env fallback.
   const resolvedSlug = githubApp ? await githubApp.appSlug() : undefined;
   const botLogin = resolvedSlug ? `${resolvedSlug}[bot]` : cfg.github.botLogin;
+  // Commit attribution for published branches: the App's bot identity.
+  const botIdentity = githubApp ? await githubApp.botIdentity() : undefined;
 
   const queueConnection = createQueueConnection(cfg.redis.url);
   const queues = createQueues(queueConnection);
@@ -99,6 +101,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
         notify,
         live,
         ...(githubApp ? { githubApp } : {}),
+        ...(botIdentity ? { gitIdentity: botIdentity } : {}),
       });
       const watching =
         outcome.disposition === "watch"

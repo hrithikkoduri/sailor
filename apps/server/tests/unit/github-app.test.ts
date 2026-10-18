@@ -114,4 +114,55 @@ describe("github app service", () => {
     expect(await app.appSlug()).toBe("sailor-app-dev");
     expect(attempts).toBe(2);
   });
+
+  it("resolves the bot identity (login + noreply email) for commit attribution", async () => {
+    const urls: string[] = [];
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith("/app"))
+        return new Response(JSON.stringify({ slug: "sailor-app-dev" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      return new Response(JSON.stringify({ id: 12345 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const app = createGitHubApp({
+      appId: "1",
+      privateKey: privatePem,
+      fetchFn,
+    });
+
+    expect(await app.botIdentity()).toEqual({
+      name: "sailor-app-dev[bot]",
+      email: "12345+sailor-app-dev[bot]@users.noreply.github.com",
+    });
+    // The bot user lookup went to the login, not the slug.
+    expect(urls.some((u) => u.includes("sailor-app-dev%5Bbot%5D"))).toBe(true);
+  });
+
+  it("bot identity degrades to the plain login when the user id is unavailable", async () => {
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/app"))
+        return new Response(JSON.stringify({ slug: "sailor-app-dev" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      return new Response("nope", { status: 500 });
+    }) as typeof fetch;
+    const app = createGitHubApp({
+      appId: "1",
+      privateKey: privatePem,
+      fetchFn,
+    });
+
+    expect(await app.botIdentity()).toEqual({
+      name: "sailor-app-dev[bot]",
+      email: "sailor-app-dev[bot]@users.noreply.github.com",
+    });
+  });
 });
