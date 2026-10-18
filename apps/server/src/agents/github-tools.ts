@@ -123,11 +123,18 @@ export function githubTools(deps: {
             : verification === "failed"
               ? "The observed test run failed on this tree."
               : "No passing test run on this exact tree was recorded. This is not a claim that tests passed.";
+        // The checkpoint becomes the commit on the PR — give it a real subject
+        // (the first line of the publication summary), not a meta phrase.
+        const firstLine =
+          input.summary.trim().split("\n")[0]!.trim().replace(/[.\s]+$/, "");
+        const issuePrefix =
+          deps.thread.issueNumber != null
+            ? `#${deps.thread.issueNumber}: `
+            : "";
+        const subject = `${issuePrefix}${firstLine}`.slice(0, 72);
         let checkpointRef: string | undefined;
         if (await deps.sandbox.hasChangesFrom("HEAD")) {
-          checkpointRef = (
-            await deps.sandbox.checkpoint("requested changes ready for review")
-          ).sha;
+          checkpointRef = (await deps.sandbox.checkpoint(subject)).sha;
           await deps.db
             .update(schema.threads)
             .set({ checkpointSha: checkpointRef })
