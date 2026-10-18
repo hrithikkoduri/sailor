@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ChevronDown,
-  Layers2,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { ChevronDown, Layers2, RefreshCw, Search } from "lucide-react";
 import { getThreadTrace, type ThreadTrace } from "./api";
 import { buildThreadTree, type SpanNode } from "./build-tree";
 import { SpanRow } from "./components/span-row";
@@ -31,6 +26,65 @@ const find = (nodes: SpanNode[], id: string): SpanNode | undefined => {
 const ids = (nodes: SpanNode[]): string[] =>
   nodes.flatMap((n) => [n.id, ...ids(n.children)]);
 
+/**
+ * Live runs haven't finalized their row yet — tokens/usd land on the run when
+ * it ends — so thread totals would read 0/0/$0 while work is happening. The
+ * same usage already rides on every llm_call_finished span; fold the
+ * unfinished runs' spans in so the header (and each run node) stays live.
+ * Finished runs keep their authoritative row totals.
+ */
+function withLiveTotals(data: ThreadTrace): ThreadTrace {
+  const live = new Set(
+    data.runs
+      .filter((run) => ["queued", "running"].includes(run.status))
+      .map((run) => run.id),
+  );
+  if (live.size === 0) return data;
+  const perRun = new Map<
+    string,
+    { tokensIn: number; tokensOut: number; usd: number }
+  >();
+  for (const span of data.spans) {
+    if (span.type !== "llm_call_finished" || !live.has(span.runId)) continue;
+    const usage = span.payload.usage as
+      | { promptTokens?: number; completionTokens?: number; costUsd?: number }
+      | undefined;
+    const acc = perRun.get(span.runId) ?? { tokensIn: 0, tokensOut: 0, usd: 0 };
+    acc.tokensIn += usage?.promptTokens ?? 0;
+    acc.tokensOut += usage?.completionTokens ?? 0;
+    acc.usd += usage?.costUsd ?? 0;
+    perRun.set(span.runId, acc);
+  }
+  let liveIn = 0;
+  let liveOut = 0;
+  let liveUsd = 0;
+  for (const acc of perRun.values()) {
+    liveIn += acc.tokensIn;
+    liveOut += acc.tokensOut;
+    liveUsd += acc.usd;
+  }
+  return {
+    ...data,
+    runs: data.runs.map((run) => {
+      const acc = perRun.get(run.id);
+      return acc
+        ? {
+            ...run,
+            tokensIn: acc.tokensIn,
+            tokensOut: acc.tokensOut,
+            usd: acc.usd.toFixed(4),
+          }
+        : run;
+    }),
+    totals: {
+      ...data.totals,
+      tokensIn: data.totals.tokensIn + liveIn,
+      tokensOut: data.totals.tokensOut + liveOut,
+      usd: (Number(data.totals.usd) + liveUsd).toFixed(4),
+    },
+  };
+}
+
 export function TraceExplorer({
   threadId,
   focusRunId,
@@ -50,7 +104,7 @@ export function TraceExplorer({
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      setData(await getThreadTrace(threadId));
+      setData(withLiveTotals(await getThreadTrace(threadId)));
       setError("");
     } catch {
       setError("The trace could not be loaded. Please try again.");
@@ -136,7 +190,10 @@ export function TraceExplorer({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div data-trace-metrics className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-6 gap-y-1 border-b border-border bg-card/40 px-4 py-2 md:px-6">
+      <div
+        data-trace-metrics
+        className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-6 gap-y-1 border-b border-border bg-card/40 px-4 py-2 md:px-6"
+      >
         {[
           {
             label: "Turns",
@@ -169,7 +226,11 @@ export function TraceExplorer({
             sub: "Recorded usage",
           },
         ].map((metric) => (
-          <div key={metric.label} title={metric.sub} className="flex items-baseline gap-2">
+          <div
+            key={metric.label}
+            title={metric.sub}
+            className="flex items-baseline gap-2"
+          >
             <span className="text-[11px] text-muted-foreground">
               {metric.label}
             </span>
@@ -200,7 +261,10 @@ export function TraceExplorer({
           Span details
         </Button>
       </div>
-      <div data-trace-workspace className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div
+        data-trace-workspace
+        className="flex min-h-0 flex-1 flex-col md:flex-row"
+      >
         <div
           className={cn(
             "min-h-0 flex-1 flex-col border-border md:flex md:w-[44%] md:max-w-[520px] md:flex-none md:border-r",
@@ -210,7 +274,13 @@ export function TraceExplorer({
           <div className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border px-3">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
-              <Input aria-label="Search trace spans" placeholder="Find a span…" value={query} onChange={e => setQuery(e.target.value)} className="h-8 rounded-md bg-card pl-8 text-xs shadow-none" />
+              <Input
+                aria-label="Search trace spans"
+                placeholder="Find a span…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-8 rounded-md bg-card pl-8 text-xs shadow-none"
+              />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
