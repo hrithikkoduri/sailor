@@ -13,7 +13,8 @@ is the config loader (the same knobs the product reads).
 src/runner.ts       the generic runner: tasks → sandbox → arm → git diff (the
                     future Anchor lift; one isolated module, by design)
 src/arms/anchor.ts  system under test #1: codingAgent + benchmark context
-                    (#2 planned: mini-swe-agent, in the SAME container)
+src/arms/mini-swe.ts  system under test #2: mini-swe-agent via its python
+                    bindings, in the SAME container (the baseline)
 src/tasks.ts        SWE-bench row → EvalTask, incl. the task's Docker image
                     (arms never see gold patches)
 src/main.ts         CLI: predictions.jsonl + results.jsonl + run.json + traces/
@@ -50,6 +51,11 @@ node apps/evals/scripts/fetch-tasks.mjs --limit 10 --out apps/evals/data/swebenc
 DOCKER_BIN=/Applications/Docker.app/Contents/Resources/bin/docker \
   npm run eval -w apps/evals -- --tasks data/swebench-lite-10.jsonl \
   --provider docker --model z-ai/glm-5.3 --max-steps 60
+
+# the baseline arm — same tasks, same model, same container:
+DOCKER_BIN=/Applications/Docker.app/Contents/Resources/bin/docker \
+  npm run eval -w apps/evals -- --tasks data/swebench-lite-10.jsonl \
+  --provider docker --model z-ai/glm-5.3 --arm mini
 
 # 3. bigger sets: Verified (500) or the full benchmark (2294) — fetch on demand
 node apps/evals/scripts/fetch-tasks.mjs --dataset SWE-bench/SWE-bench_Verified \

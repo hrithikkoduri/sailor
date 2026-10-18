@@ -73,10 +73,15 @@ export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
           },
         },
       );
-      // Exit code is diagnostic, not a verdict — the diff is the artifact.
-      return run.exitCode === 0
-        ? {}
-        : { reason: `mini exited ${run.exitCode}` };
+      // A non-zero exit means the harness itself failed to run — the system
+      // under test failing to launch is a failure, not an empty patch — so
+      // surface its output tail instead of swallowing it.
+      if (run.exitCode !== 0) {
+        throw new Error(
+          `mini run exited ${run.exitCode}: ${run.output.trim().slice(-500)}`,
+        );
+      }
+      return {};
     },
   };
 }

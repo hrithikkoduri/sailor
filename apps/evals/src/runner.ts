@@ -73,19 +73,26 @@ export interface EvalRunOptions {
 }
 
 /**
- * The workspace's final diff, staged first so untracked files are included
- * and committed work still counts (`--cached <base>` covers all of it).
+ * The workspace's final diff, staged first so untracked files are included,
+ * diffed against the sandbox's OWN pre-run HEAD.
+ *
+ * Never the task's `baseRef`: benchmark images ship the repo at a commit
+ * whose file modes already differ from the dataset's base_commit, and diffing
+ * against base_commit turns that drift into >100 mode-only blocks around the
+ * real change. The pre-run HEAD is the sandbox's actual starting state, so
+ * the diff is the agent's work exactly — and a committing agent's commits
+ * still count, because the index is compared to that pre-run commit.
  */
 async function extractPatch(
   sandbox: Sandbox,
-  baseRef: string,
+  headRef: string,
 ): Promise<string> {
   const diff = await sandbox.exec(
-    `git add -A && git diff --cached --binary ${baseRef}`,
+    `git add -A && git diff --cached --binary ${headRef}`,
     { timeoutSecs: 120 },
   );
   if (diff.exitCode === 0) return diff.stdout;
-  // A shallow or unusual clone may lack the base commit in its object store.
+  // A degraded repo may not resolve the ref — report the worktree as-is.
   const fallback = await sandbox.exec(
     `git add -A && git diff --cached --binary`,
     { timeoutSecs: 120 },
@@ -117,8 +124,17 @@ export async function runEvalSuite(
     );
 
     let result: EvalTaskResult;
+    let headRef = task.baseRef;
     try {
       await sandbox.start();
+      // The pre-run commit: extraction diffs against THIS, never the task's
+      // base_ref (image tasks carry mode drift versus the dataset commit).
+      const head = await sandbox.exec("git rev-parse HEAD", {
+        timeoutSecs: 60,
+      });
+      if (head.exitCode === 0 && /^[0-9a-f]{40}$/.test(head.stdout.trim())) {
+        headRef = head.stdout.trim();
+      }
       const outcome =
         (await options.arm.run(task, {
           sandbox,
@@ -134,7 +150,7 @@ export async function runEvalSuite(
         taskId: task.id,
         arm: options.arm.name,
         status: "completed",
-        patch: await extractPatch(sandbox, task.baseRef),
+        patch: await extractPatch(sandbox, headRef),
         ...(outcome.usage ? { usage: outcome.usage } : {}),
         ...(outcome.steps !== undefined ? { steps: outcome.steps } : {}),
         ...(outcome.reason ? { reason: outcome.reason } : {}),
@@ -142,7 +158,7 @@ export async function runEvalSuite(
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const patch = await extractPatch(sandbox, task.baseRef).catch(() => "");
+      const patch = await extractPatch(sandbox, headRef).catch(() => "");
       result = {
         taskId: task.id,
         arm: options.arm.name,
