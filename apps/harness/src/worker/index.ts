@@ -15,14 +15,17 @@ import { Worker } from "bullmq";
 import { loadConfig } from "../config.js";
 import { createDb, createPool } from "../db/index.js";
 import {
+  BABYSIT_REPEAT_MS,
   createQueueConnection,
   createQueues,
   type BabysitJobData,
   type RunJobData,
 } from "../queue/index.js";
+import { createGitHubClient } from "../github/client.js";
 import { executeRun } from "../runs/execute.js";
 import { drainInbox } from "../threads/inbox.js";
 import { handleSweep } from "./sweep.js";
+import { runBabysitSweep } from "./babysit.js";
 
 const USAGE = `Usage: harness worker [options]
 
@@ -59,6 +62,9 @@ export async function workerCommand(argv: string[]): Promise<number> {
   const pool = createPool(cfg.postgres.url);
   const db = createDb(pool);
 
+  // GitHub access for the babysitter + PR delivery (optional in dev).
+  const github = cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined;
+
   const queueConnection = createQueueConnection(cfg.redis.url);
   const queues = createQueues(queueConnection);
   const runsWorkerConnection = createQueueConnection(cfg.redis.url);
@@ -67,7 +73,13 @@ export async function workerCommand(argv: string[]): Promise<number> {
   const runs = new Worker<RunJobData>(
     "runs",
     async (job) => {
-      const outcome = await executeRun({ db, runId: job.data.runId, local, heartbeatEveryMs });
+      const outcome = await executeRun({
+        db,
+        runId: job.data.runId,
+        local,
+        heartbeatEveryMs,
+        ...(github ? { github } : {}),
+      });
       const watching =
         outcome.disposition === "watch"
           ? ` [watch${outcome.resumeAt ? ` → resume at ${outcome.resumeAt}` : ""}]`
@@ -76,8 +88,13 @@ export async function workerCommand(argv: string[]): Promise<number> {
         `[worker] run ${job.data.runId} → ${outcome.status}${outcome.summary ? ` — ${outcome.summary.replace(/\s+/g, " ").slice(0, 90)}` : ""}${watching}\n`,
       );
       // Post-turn consumer: events that queued up while this run was busy
-      // become the NEXT run (coalesced into one task).
-      const drained = await drainInbox({ db, queues }, outcome.threadId);
+      // become the NEXT run (coalesced into one task). A cancelled run
+      // (interjected — decision #28) resumes the batch at the phase it stopped.
+      const drained = await drainInbox(
+        { db, queues },
+        outcome.threadId,
+        outcome.status === "cancelled" && outcome.phase ? { startPhase: outcome.phase } : {},
+      );
       if (drained) process.stdout.write(`[worker] inbox drain → run ${drained.id} queued\n`);
     },
     { connection: runsWorkerConnection, concurrency: 1 },
@@ -85,7 +102,23 @@ export async function workerCommand(argv: string[]): Promise<number> {
 
   const babysit = new Worker<BabysitJobData>(
     "babysit",
-    async () => {
+    async (job) => {
+      // Two kinds of scheduled work share this queue: the stale-run sweep
+      // (recovery) and the PR babysitter (step 13).
+      if (job.name === "babysit") {
+        if (!github) return; // no token — nothing to inspect
+        const results = await runBabysitSweep(
+          { db, queues, github, botLogin: cfg.github.botLogin },
+          { threadId: job.data.threadId },
+        );
+        const notable = results.filter((r) => r.action !== "quiet" && r.action !== "busy");
+        if (notable.length > 0) {
+          process.stdout.write(
+            `[worker] babysit: ${notable.map((r) => `${r.threadId.slice(0, 8)} → ${r.action}`).join("; ")}\n`,
+          );
+        }
+        return;
+      }
       const results = await handleSweep({ db, queues }, { staleAfterMs });
       if (results.length > 0) {
         process.stdout.write(`[worker] sweep: ${results.length} stale run(s) recovered → resume queued\n`);
@@ -97,9 +130,13 @@ export async function workerCommand(argv: string[]): Promise<number> {
   // The recurring sweep (BullMQ 6 Job Scheduler — the modern replacement for
   // repeatable jobs; the scheduler id keeps it singular).
   await queues.babysit.upsertJobScheduler("sweep-stale-runs", { every: sweepEveryMs }, { name: "sweep", data: {} });
+  // The PR babysitter: every 10 minutes, check open agent PRs for silent
+  // problems (merge conflicts, failed checks, missed comments) — step 13.
+  await queues.babysit.upsertJobScheduler("babysit-prs", { every: BABYSIT_REPEAT_MS }, { name: "babysit", data: {} });
 
   process.stdout.write(
-    `[worker] up — backend: ${local ? "local (dev, no isolation)" : "heyo"}, sweep every ${sweepEveryMs}ms, queue: runs (concurrency 1)\n`,
+    `[worker] up — backend: ${local ? "local (dev, no isolation)" : "heyo"}, sweep every ${sweepEveryMs}ms, queue: runs (concurrency 1)` +
+      `${github ? `, babysit every ${Math.round(BABYSIT_REPEAT_MS / 60_000)}min` : " (no GITHUB_TOKEN — babysitter idle)"}\n`,
   );
 
   let shuttingDown = false;

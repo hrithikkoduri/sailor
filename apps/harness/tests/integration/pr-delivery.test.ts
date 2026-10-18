@@ -88,6 +88,13 @@ describe("deliverPullRequest", () => {
         created.push(input);
         return { number: 99, html_url: "https://github.com/acme/demo/pull/99" };
       },
+      getPullRequest: async () => {
+        throw new Error("not used in this test");
+      },
+      getCheckRuns: async () => [],
+      listIssueComments: async () => [],
+      commentOnIssue: async () => undefined,
+      addLabels: async () => undefined,
       whoami: async () => ({ login: "harness-bot", type: "Bot" }),
     };
     return { github, created };
@@ -136,11 +143,21 @@ describe("deliverPullRequest", () => {
     expect(fresh!.prUrl).toBe("https://github.com/acme/demo/pull/99");
     expect(fresh!.state).toBe("pr_open");
 
-    // idempotent gate: a thread that already has a PR is left alone
-    expect(
-      await deliverPullRequest({ db, sandbox, github, thread: fresh!, runId, publicUrl: "http://localhost:5173" }),
-    ).toBeNull();
-    expect(created).toHaveLength(1);
+    // Follow-up delivery (babysitting, step 13): the PR exists → the push IS
+    // the delivery — the branch updates, no second PR is created.
+    const commit2 = await sandbox.exec('echo "// more" >> src/sum.js && git add -A && git commit -q -m "more"');
+    expect(commit2.exitCode).toBe(0);
+    const again = await deliverPullRequest({
+      db,
+      sandbox,
+      github,
+      thread: fresh!,
+      runId,
+      publicUrl: "http://localhost:5173",
+    });
+    expect(again).toMatchObject({ prNumber: 99, headRef: "harness/issue-42" });
+    expect(created).toHaveLength(1); // no second PR
+    expect(git(bare, "rev-list", "--count", "refs/heads/harness/issue-42").trim()).toBe("3");
 
     await sandbox.destroy();
   });

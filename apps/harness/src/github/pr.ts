@@ -9,9 +9,9 @@
  *      just works — for GitHub and for a local bare origin in tests)
  *   2. API: open the PR with a trace link back to the dashboard
  *
- * Then the thread records prNumber/prUrl and moves to `pr_open`. Idempotent
- * by gate: a thread that already has a PR is left alone (follow-up pushes to
- * an open PR are step 13's job).
+ * Then the thread records prNumber/prUrl and moves to `pr_open`. The first
+ * delivery opens the PR; follow-ups (PR already open — babysitting) just
+ * update the branch: the push IS the delivery.
  */
 import { eq } from "drizzle-orm";
 import type { Sandbox } from "@harness/agent";
@@ -43,16 +43,21 @@ export function traceUrl(publicUrl: string, threadId: string, runId: string): st
 
 export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<DeliveredPullRequest | null> {
   const { db, sandbox, github, thread } = deps;
-  if (thread.prNumber) return null; // a PR is already open for this thread
 
   const head = thread.headRef ?? headRefFor(thread.issueNumber);
   assertSafeHeadRef(head, thread.baseRef);
 
-  // The branch may exist from a previous delivery attempt — force-pushing our
-  // own harness/* branch is the idempotent thing to do.
+  // Push first — for a first delivery this creates the branch; for a FOLLOW-UP
+  // (babysitting: the PR already exists) it updates it in place. Force-pushing
+  // our own harness/* branch is the idempotent thing to do.
   const push = await sandbox.exec(`git push --force origin HEAD:refs/heads/${head}`, { timeoutSecs: 300 });
   if (push.exitCode !== 0) {
     throw new Error(`git push failed (${push.exitCode}): ${push.output.trim().slice(0, 500)}`);
+  }
+
+  if (thread.prNumber) {
+    // The PR exists: the push above IS the delivery (step 13).
+    return { prNumber: thread.prNumber, prUrl: thread.prUrl ?? "", headRef: head };
   }
 
   const issue = await github.getIssue(thread.repo, thread.issueNumber);

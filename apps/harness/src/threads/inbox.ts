@@ -10,6 +10,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { Queues } from "../queue/index.js";
+import { renderGithubTask } from "../github/render.js";
 import { wakeThread, type WokenRun } from "./wake.js";
 
 export interface NewEvent {
@@ -51,9 +52,11 @@ export async function consumeEvents(db: Db, eventIds: bigint[]): Promise<void> {
     .where(inArray(schema.events.id, eventIds));
 }
 
-/** Minimal rendering of an event batch into a run's task (real triage arrives with steps 12–13). */
+/** Render an event batch into the next turn's task (GitHub-aware, decision #28 voice). */
 export function renderInboxTask(events: Array<{ kind: string; payload: unknown }>): string {
-  return events.map((e) => `[${e.kind}] ${JSON.stringify(e.payload).slice(0, 500)}`).join("\n");
+  return events
+    .map((e) => renderGithubTask(e.kind, (e.payload ?? {}) as Record<string, unknown>))
+    .join("\n\n");
 }
 
 /**
@@ -64,14 +67,22 @@ export function renderInboxTask(events: Array<{ kind: string; payload: unknown }
  * rendered batch, trigger "inbox". The events are consumed the moment the run
  * exists — the instruction survives in `runs.task` even if the run later
  * fails. Returns null when there is nothing to do or the thread is still busy.
+ *
+ * `startPhase`: a cancelled run (interjected) passes the phase it stopped in,
+ * so the batch resumes there (subsumption — decision #28).
  */
 export async function drainInbox(
   deps: { db: Db; queues: Queues },
   threadId: string,
+  opts: { startPhase?: string } = {},
 ): Promise<WokenRun | null> {
   const pending = await pendingEvents(deps.db, threadId);
   if (pending.length === 0) return null;
-  const run = await wakeThread(deps, threadId, { trigger: "inbox", task: renderInboxTask(pending) });
+  const run = await wakeThread(deps, threadId, {
+    trigger: "inbox",
+    task: renderInboxTask(pending),
+    ...(opts.startPhase !== undefined ? { startPhase: opts.startPhase } : {}),
+  });
   if (run) await consumeEvents(deps.db, pending.map((e) => e.id));
   return run;
 }

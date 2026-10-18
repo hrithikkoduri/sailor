@@ -206,8 +206,14 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   **Pre-wired:** run dispositions — `finish(disposition:"watch", watch, resumeAt)` lands as
   `runs.disposition` + `threads.watch`, and the declared resume phase survives on the thread;
   the sweep and targeted nudges consume it here.
-- **Files:** `src/worker/babysit.ts`, `src/github/checks.ts`
-- **Done when:** push a red commit to the PR branch → agent detects + fixes → checks green.
+- **Files:** `src/worker/{babysit,sweep}.ts`, `src/github/{checks,render,client,pr}.ts`,
+  `src/server/app.ts`, `src/runs/execute.ts`, `src/threads/inbox.ts`
+- **Done when:** ✅ built + mock-e2e tested (2026-10-17): check_run failure → babysit turn (webhook + sweep);
+  review-while-busy → durable cancel + parked event (interject); own push → ack turn; PR closed → terminal
+  (+ active run cancelled); merge conflict → sweep-found turn; budgets cap; active run defers; duplicate
+  findings stay singular. Follow-up runs clone the PR branch and `deliverPullRequest` updates the existing
+  PR in place; `blocked` → comment + `agent:needs-input`; the renderer is the one #28 voice (webhook, drain,
+  sweep). **Live demo pending `GITHUB_TOKEN`:** push a red commit → agent detects + fixes → checks green.
 
 ---
 

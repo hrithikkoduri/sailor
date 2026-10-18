@@ -22,6 +22,28 @@ export interface GithubPullRequest {
   html_url: string;
 }
 
+export interface GithubPullRequestState {
+  number: number;
+  state: string; // open | closed
+  merged: boolean;
+  mergeable: boolean | null;
+  mergeable_state?: string;
+  html_url: string;
+  head: { ref: string; sha: string };
+}
+
+export interface GithubCheckRun {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface GithubComment {
+  body: string | null;
+  created_at: string;
+  user?: { login?: string; type?: string };
+}
+
 export interface GitHubClient {
   getIssue(repo: string, issueNumber: number): Promise<GithubIssue>;
   createPullRequest(input: {
@@ -31,6 +53,15 @@ export interface GitHubClient {
     title: string;
     body: string;
   }): Promise<GithubPullRequest>;
+  /** The PR's live state — used by the babysitter (checks, conflicts, merge). */
+  getPullRequest(repo: string, prNumber: number): Promise<GithubPullRequestState>;
+  /** Check runs for a commit — the sweep's definition of "CI failed". */
+  getCheckRuns(repo: string, ref: string): Promise<GithubCheckRun[]>;
+  /** PR/issue conversation comments, newest first as GitHub returns them. */
+  listIssueComments(repo: string, issueNumber: number): Promise<GithubComment[]>;
+  /** Post a comment (the blocked → needs-input channel, decision #40). */
+  commentOnIssue(repo: string, issueNumber: number, body: string): Promise<void>;
+  addLabels(repo: string, issueNumber: number, labels: string[]): Promise<void>;
   whoami(): Promise<{ login: string; type: string }>;
 }
 
@@ -74,6 +105,20 @@ export function createGitHubClient(opts: GitHubClientOptions): GitHubClient {
         base: input.base,
         body: input.body,
       }),
+    getPullRequest: (repo, prNumber) => request("GET", `/repos/${repo}/pulls/${prNumber}`),
+    getCheckRuns: async (repo, ref) => {
+      const res = await request<{ check_runs: GithubCheckRun[] }>(
+        "GET",
+        `/repos/${repo}/commits/${ref}/check-runs?per_page=50`,
+      );
+      return res.check_runs;
+    },
+    listIssueComments: (repo, issueNumber) =>
+      request("GET", `/repos/${repo}/issues/${issueNumber}/comments?per_page=50`),
+    commentOnIssue: (repo, issueNumber, body) =>
+      request("POST", `/repos/${repo}/issues/${issueNumber}/comments`, { body }),
+    addLabels: (repo, issueNumber, labels) =>
+      request("POST", `/repos/${repo}/issues/${issueNumber}/labels`, { labels }),
     whoami: () => request("GET", "/user"),
   };
 }

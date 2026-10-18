@@ -79,9 +79,30 @@ export interface ExecuteRunOutcome {
   /** Product-defined watch spec (e.g. { checks: true, comments: true }). */
   watch?: Record<string, unknown>;
   resumeAt?: string;
+  /** The phase the run ended in — the drain uses it to resume cancelled work. */
+  phase?: string;
 }
 
 const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
+
+/**
+ * Where a thread's work happens. GitHub threads clone the repo — and once a PR
+ * exists, its HEAD BRANCH: the pushed branch is the handoff point across runs
+ * (babysitting continues on it; first runs start from the default branch and
+ * push a new one at delivery).
+ */
+export function sandboxSpecForThread(
+  thread: Pick<typeof schema.threads.$inferSelect, "source" | "repo" | "headRef" | "prNumber">,
+  baseDir: string,
+): SandboxSpec {
+  if (thread.source === "github") {
+    return {
+      repoUrl: githubRepoUrl(thread.repo),
+      ...(thread.prNumber != null && thread.headRef ? { ref: thread.headRef } : {}),
+    };
+  }
+  return isUrl(thread.repo) ? { repoUrl: thread.repo } : { localPath: path.resolve(baseDir, thread.repo) };
+}
 
 export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcome> {
   const { db } = deps;
@@ -123,12 +144,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
-  const spec: SandboxSpec =
-    thread.source === "github"
-      ? { repoUrl: githubRepoUrl(thread.repo) }
-      : isUrl(thread.repo)
-        ? { repoUrl: thread.repo }
-        : { localPath: path.resolve(baseDir, thread.repo) };
+  const spec = sandboxSpecForThread(thread, baseDir);
   const sandbox =
     deps.sandboxFactory?.(spec) ??
     createSandbox(
@@ -218,11 +234,12 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
         .where(eq(schema.threads.id, thread.id));
     }
 
-    // The last mile (step 12): a succeeded GitHub run becomes a PR. Delivery
-    // is best-effort for the run's status, but it must happen BEFORE the
-    // sandbox dies — the work lives there.
+    // The last mile (steps 12–13): a succeeded GitHub run pushes its work.
+    // First delivery opens the PR; follow-ups (PR already open) update the
+    // branch in place. Delivery is best-effort for the run's status, but it
+    // must happen BEFORE the sandbox dies — the work lives there.
     let delivered: { prNumber: number; prUrl: string } | null = null;
-    if (status === "succeeded" && !thread.prNumber && thread.source === "github") {
+    if (status === "succeeded" && thread.source === "github") {
       const github =
         deps.github ?? (cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined);
       if (github) {
@@ -247,6 +264,26 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       }
     }
 
+    // A blocked conclusion reaches the humans where the work lives: the
+    // question is posted as a comment + a needs-input label (decision #40).
+    if (outcome.disposition === "blocked" && thread.source === "github") {
+      const github =
+        deps.github ?? (cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined);
+      if (github) {
+        const target = thread.prNumber ?? thread.issueNumber;
+        try {
+          const question = outcome.summary?.trim() || "I need a human decision to continue.";
+          await github.commentOnIssue(thread.repo, target, `🤖 **Blocked — needs input**\n\n${question}`);
+          await github.addLabels(thread.repo, target, ["agent:needs-input"]);
+          process.stdout.write(`[run ${run.id}] blocked → commented on ${thread.repo}#${target}\n`);
+        } catch (err) {
+          process.stdout.write(
+            `[run ${run.id}] blocked comment failed: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+      }
+    }
+
     const finalState: ThreadState =
       status === "succeeded" ? (delivered || thread.prNumber ? "pr_open" : "queued") : "queued";
     await ensureThreadState(db, thread.id, finalState);
@@ -261,6 +298,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
       disposition: outcome.disposition,
       watch: outcome.watch,
       resumeAt: outcome.resumeAt,
+      phase: outcome.phase,
     };
   } catch (err) {
     await sinkTail.catch(() => undefined);
