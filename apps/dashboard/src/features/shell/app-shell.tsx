@@ -66,12 +66,12 @@ export function AppShell({
                 asChild
                 className="h-11 hover:bg-transparent"
               >
-                <NavLink to="/" aria-label="Harness home">
+                <NavLink to="/" aria-label="Sailor home">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                     <Layers2 className="size-4" />
                   </span>
                   <span data-sidebar-label className="text-base font-semibold tracking-[-.04em]">
-                    harness<span className="text-muted-foreground">.</span>
+                    sailor<span className="text-muted-foreground">.</span>
                   </span>
                 </NavLink>
               </SidebarMenuButton>

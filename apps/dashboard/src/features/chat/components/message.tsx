@@ -68,7 +68,7 @@ export function AgentMessage({
       </span>
       <div className="min-w-0 flex-1">
         <div className="mb-3 flex h-6 items-center gap-2 text-xs">
-          <span className="font-semibold">Harness</span>
+          <span className="font-semibold">Sailor</span>
           <span className="text-[11px] text-muted-foreground">
             {streaming ? "Working on it" : at ? timeAgo(at) : ""}
           </span>

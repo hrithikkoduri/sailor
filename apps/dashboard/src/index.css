@@ -180,77 +180,77 @@
   }
 }
 
-.prose-harness {
+.prose-sailor {
   line-height: 1.8;
   overflow-wrap: anywhere;
 }
-.prose-harness > * + * {
+.prose-sailor > * + * {
   margin-top: 0.85rem;
 }
-.prose-harness h1,
-.prose-harness h2,
-.prose-harness h3 {
+.prose-sailor h1,
+.prose-sailor h2,
+.prose-sailor h3 {
   font-weight: 600;
   line-height: 1.5;
   letter-spacing: -0.02em;
   margin-top: 1.4rem;
 }
-.prose-harness h1 {
+.prose-sailor h1 {
   font-size: 1.2rem;
 }
-.prose-harness h2 {
+.prose-sailor h2 {
   font-size: 1.1rem;
 }
-.prose-harness h3 {
+.prose-sailor h3 {
   font-size: 1rem;
 }
-.prose-harness ul,
-.prose-harness ol {
+.prose-sailor ul,
+.prose-sailor ol {
   padding-left: 1.4rem;
 }
-.prose-harness ul {
+.prose-sailor ul {
   list-style: disc;
 }
-.prose-harness ol {
+.prose-sailor ol {
   list-style: decimal;
 }
-.prose-harness li + li {
+.prose-sailor li + li {
   margin-top: 0.3rem;
 }
-.prose-harness li::marker {
+.prose-sailor li::marker {
   color: var(--muted-foreground);
 }
-.prose-harness a {
+.prose-sailor a {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.prose-harness code {
+.prose-sailor code {
   font-family: var(--font-mono);
   font-size: 0.82em;
   background: var(--muted);
   border-radius: 4px;
   padding: 0.15rem 0.3rem;
 }
-.prose-harness pre code {
+.prose-sailor pre code {
   background: none;
   padding: 0;
 }
-.prose-harness blockquote {
+.prose-sailor blockquote {
   border-left: 2px solid var(--input);
   padding-left: 1rem;
   color: var(--muted-foreground);
 }
-.prose-harness table {
+.prose-sailor table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.88em;
 }
-.prose-harness td,
-.prose-harness th {
+.prose-sailor td,
+.prose-sailor th {
   border: 1px solid var(--border);
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
-.prose-harness hr {
+.prose-sailor hr {
   border-color: var(--border);
 }

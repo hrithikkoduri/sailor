@@ -32,7 +32,7 @@ export function Markdown({
   className?: string;
 }) {
   return (
-    <div className={`prose-harness text-sm text-foreground ${className ?? ""}`}>
+    <div className={`prose-sailor text-sm text-foreground ${className ?? ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

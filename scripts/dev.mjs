@@ -115,8 +115,8 @@ function start(name, args) {
   return child;
 }
 
-start("serve", ["run", "serve:watch", "-w", "apps/harness"]);
-start("worker", ["run", "worker:watch", "-w", "apps/harness"]);
+start("serve", ["run", "serve:watch", "-w", "apps/server"]);
+start("worker", ["run", "worker:watch", "-w", "apps/server"]);
 start("web", ["run", "dev", "-w", "apps/dashboard"]);
 
 log("stack", "dashboard → http://localhost:5173  ·  webhooks → :8787 (tunnel: ngrok)");

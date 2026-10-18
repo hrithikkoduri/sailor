@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// The API + auth live in `harness serve` (apps/harness, :8787). In dev we
+// The API + auth live in `sailor serve` (apps/server, :8787). In dev we
 // proxy to it; production will serve the built assets from the same origin.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -20,7 +20,7 @@ export default defineConfig({
     },
   },
   // `npm run build -w apps/dashboard && npm run preview -w apps/dashboard`
-  // serves the production bundle against a locally running `harness serve`.
+  // serves the production bundle against a locally running `sailor serve`.
   preview: {
     port: 5173,
     proxy: {

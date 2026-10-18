@@ -1,9 +1,9 @@
-# @harness/dashboard
+# @sailor/dashboard
 
-The Harness product UI — consumer #1 of `@harness/agent`. React 19 + Vite 8 +
+The Sailor product UI — consumer #1 of `@anchor/core`. React 19 + Vite 8 +
 Tailwind v4, with **Animate UI** (shadcn registry) primitives and a design
 system sourced from the **ui-ux-pro-max** skill (constitution:
-`../../design-system/harness/MASTER.md` — porcelain / graphite).
+`../../design-system/sailor/MASTER.md` — porcelain / graphite).
 
 ## Structure (and the rules that keep it honest)
 

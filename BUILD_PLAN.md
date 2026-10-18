@@ -20,13 +20,13 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 
 ## Phase 0 — Foundations
 
-### Step 1 — Project scaffold + `harness doctor`
+### Step 1 — Project scaffold + `sailor doctor`
 - **What:** finish the skeleton so every later step has a home: `src/config.ts` (env loading),
   `src/log.ts` (structured logging), `src/cli.ts` (command router), vitest setup.
-  `harness doctor` reports: Node version, docker?, Postgres reachable?, Redis reachable?,
+  `sailor doctor` reports: Node version, docker?, Postgres reachable?, Redis reachable?,
   HEYO_TOKEN set?, LLM key set?
 - **Files:** `package.json`, `tsconfig.json`, `src/config.ts`, `src/log.ts`, `src/cli.ts`
-- **Done when:** `npm run typecheck` passes and `harness doctor` prints a green/red status table.
+- **Done when:** `npm run typecheck` passes and `sailor doctor` prints a green/red status table.
 
 ### Step 2 — Full infra stack: Postgres + Redis + BullMQ + schema ✅
 - **What:** `docker-compose.yml` (Postgres 16 + Redis 7), schema **in Drizzle** (`src/db/schema.ts` —
@@ -36,7 +36,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   `trace_events`. Budgets = columns on threads/runs.
 - **Files:** `docker-compose.yml`, `drizzle.config.ts`, `src/db/{index.ts,migrate.ts,schema.ts}`,
   `drizzle/0000_*.sql`, `src/queue/index.ts`, `tests/integration/*`
-- **Done when:** ✅ `docker compose up -d && npm run migrate && harness doctor` all green;
+- **Done when:** ✅ `docker compose up -d && npm run migrate && sailor doctor` all green;
   a test job enqueues into BullMQ and is picked up by a stub worker.
 
 ---
@@ -46,7 +46,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 ### Step 3 — Sandbox interface + `local` backend ✅
 - **What:** the `Sandbox` interface with the **tool-call contract**
   (self-contained commands, real kill deadline, secrets-as-env). `LocalSandbox` runs
-  commands as processes in `.harness/sandboxes/<id>/repo` on the Mac with
+  commands as processes in `.anchor/sandboxes/<id>/repo` on the Mac with
   process-group SIGTERM→SIGKILL on timeout. Checkpoints = git commits.
   Injected via `--local`/tests only — never selectable by config.
 - **Files:** `src/sandbox/{types.ts,local.ts,index.ts}`, `tests/unit/local-sandbox.test.ts`
@@ -60,7 +60,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   boot → `exec` (wrapped with guest `timeout` since Heyo's API timeout doesn't kill, and
   with an embedded `cd` since Heyo's `cwd` option isn't dependable) → checkpoint commits →
   destroy (or keep). Git credentials for private repos land in `/etc/git-credentials`,
-  outside `/workspace`. `harness sandbox smoke` is the standing proof command.
+  outside `/workspace`. `sailor sandbox smoke` is the standing proof command.
 - **Files:** `src/sandbox/heyo.ts`, `src/sandbox/index.ts` (factory), `src/commands/smoke.ts`
 - **Done when:** ✅ smoke test against Heyo Cloud passes (2026-10-17):
   VM boots → repo clones → tests run → checkpoint sha recorded → VM destroyed — **6.2s total**.
@@ -88,19 +88,19 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   Raw `fetch` (no SDK); retry on 429/5xx with exponential backoff + jitter; immediate
   throw on other 4xx; latency + token + cost accounting (`LLM_PRICE_IN/OUT_PER_MTOK`).
 - **Files:** `src/llm/{types,openai,index}.ts`, `src/commands/llm-smoke.ts`
-- **Done when:** ✅ `harness llm smoke` passes against OpenRouter
+- **Done when:** ✅ `sailor llm smoke` passes against OpenRouter
   (deepseek/deepseek-v4.1-flash): text round-trip (`finish: stop`) + tool-call round-trip
   with valid JSON arguments. Note discovered live: reasoning models spend completion
   budget on chain-of-thought — tiny max_tokens yields empty text; usage counts it.
 
 ### Step 7 — Agent loop (reproduce → fix → verify) ★ vertical slice ✅
-- **What:** the **engine** (`packages/agent/src/engine/`: loop, budgets, events, strategy
+- **What:** the **engine** (`packages/core/src/engine/`: loop, budgets, events, strategy
   contract, protocol context) + the first built-in agent (`agents/coding/`) + repo map.
   Guardrails: step/token/$ budgets, loop detection (identical call 3× → blocked), nudges for
   no-tool-call turns. Phase moves are agent-driven with evidence checks (**decision #35** —
-  failing/passing run_tests gate the `advance` calls), never on the model's unchecked claims. `harness run <repo> <issue> [--local]` is the CLI entry.
-- **Files:** `packages/agent/src/{engine/*,agents/coding/*}`, `apps/harness/src/commands/run.ts`,
-  `fixtures/buggy-lib/`, `packages/agent/tests/unit/engine.test.ts`
+  failing/passing run_tests gate the `advance` calls), never on the model's unchecked claims. `sailor run <repo> <issue> [--local]` is the CLI entry.
+- **Files:** `packages/core/src/{engine/*,agents/coding/*}`, `apps/server/src/commands/run.ts`,
+  `fixtures/buggy-lib/`, `packages/core/tests/unit/engine.test.ts`
 - **Done when:** ✅ **live run 2026-10-17 (local backend):** reproduce (suite fails) → fix
   (one minimal edit) → verify (suite green + diff review + spot checks) → finish —
   **8 turns, 22.7k tokens, 13.2s.** Fixed live along the way: npm flag pass-through in
@@ -120,7 +120,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   boundary (applb_/sk-/gh*_/Bearer/user:pass@URLs). The event stream was extended to be a
   *complete journal* (llm `text` + `toolCalls`, tool `content`) — the replay material step 9
   consumes. This doubles as the PR's trace link (step 12/17).
-- **Files:** `packages/agent/src/trace/{redact,jsonl}.ts`, `apps/harness/src/trace/store.ts`,
+- **Files:** `packages/core/src/trace/{redact,jsonl}.ts`, `apps/server/src/trace/store.ts`,
   `tests/unit/trace.test.ts`, `tests/integration/trace.test.ts`
 - **Done when:** ✅ live run produced a 77-event trace showing the full story
   (reproduce → fix → verify → finish), in the file *and* row-order-tested in the DB.
@@ -152,8 +152,8 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - **App:** `PostgresThreadStore` (durable ThreadStore on `threads.messages/summary/phase`,
   pulled forward from step 11); `executeRun` — a reusable injectable executor (heartbeats,
   AbortController registry via `cancelRun`, dual-sink traces, status/usage/checkpoint
-  recording); `harness worker` — runs consumer (concurrency 1) + the sweep as a BullMQ 6
-  **Job Scheduler** + graceful drain on SIGTERM; `harness runs enqueue` — the manual door
+  recording); `sailor worker` — runs consumer (concurrency 1) + the sweep as a BullMQ 6
+  **Job Scheduler** + graceful drain on SIGTERM; `sailor runs enqueue` — the manual door
   into the pipeline; migration 0002 (`runs.task`).
 - **Lease coherence (learned live):** `--stale-after-ms` must be ≥ 1.5× the heartbeat
   interval, validated at startup — the demo's 3s threshold vs 30s cadence made the sweep
@@ -177,7 +177,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   concurrent wakes create exactly one run (Promise.all integration test); run N+1 rehydrates
   run N's conversation (covered by the store roundtrip + worker-resume tests).
 
-### Step 12 — GitHub integration + webhooks (`harness serve`)
+### Step 12 — GitHub integration + webhooks (`sailor serve`)
 - **What:** PAT client (fetch issue, create branch, push commits, open PR with trace link —
   **never touches main**). Hono webhook service: signature verify, dedup
   (`X-GitHub-Delivery` + business keys), `issues: labeled` → create thread → enqueue run.
@@ -223,11 +223,11 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - **What:** after the shared reproduce checkpoint, fork N sandboxes in parallel, race the
   fix, pick winner = tests pass + smallest diff. Losers destroyed.
 - **Files:** `src/agent/bestofn.ts`
-- **Done when:** `harness run … --best-of 3` reports attempts + winner rationale.
+- **Done when:** `sailor run … --best-of 3` reports attempts + winner rationale.
 
 ### Step 15 — Eval suite
 - **What:** task JSON schema; SWE-bench Lite subset loader (30–50 tasks) + seeded bugs in
-  fixtures we own; `harness eval` runs everything → solve rate, $/task, p50/p95 time,
+  fixtures we own; `sailor eval` runs everything → solve rate, $/task, p50/p95 time,
   **failure-mode breakdown** (repro-failed / wrong-fix / timeout / budget / loop / tool-error).
 - **Pre-eval requirements (from review — blocking):**
   - Baseline capture in `reproduce`: the first full-suite run records per-test results, so
@@ -238,7 +238,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   - `run_tests` gains structured results: `junit_path` → `meta.tests` (regex-parsed JUnit XML,
     zero-dep); task JSON carries `failToPass`/`passToPass`.
   - Optional de-flake: rerun baseline failures once before recording.
-- **Files:** `src/eval/*`, `eval/tasks/*.json`, `packages/agent` (run_tests + coding strategy gates)
+- **Files:** `src/eval/*`, `eval/tasks/*.json`, `packages/core` (run_tests + coding strategy gates)
 - **Done when:** one command produces the full report + per-task traces.
 
 ### Step 16 — Toolchain VM image
@@ -303,7 +303,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   `POST /api/events/:id/interject` cancels the active run and the message becomes the next
   turn (#28) — the double-Enter sketch, reconciled without new machinery. **No `messages`
   table** (deviation, on purpose): the record already exists as events + traces, and the
-  streaming row is a live projection, not stored state. **Live channel** (`harness:live`):
+  streaming row is a live projection, not stored state. **Live channel** (`sailor:live`):
   the executor publishes compact projections — cumulative assistant text at ~10/s (decision
   #14 semantics), phase moves, tool call/result, finish — serve relays them as `event: live`
   on the same SSE stream; the client renders a streaming bubble with a caret and reconciles
@@ -318,7 +318,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   the DB, the live bubble rebuilds from the stream.
 
 ### Step 18b — UI rebuild on a designed system ✅ (same-day, from review)- **What:** the dashboard got a real design system, not vibes: the **ui-ux-pro-max skill**
-  (vendored at `.opencode/skills/`, design system persisted at `design-system/harness/MASTER.md`)
+  (vendored at `.opencode/skills/`, design system persisted at `design-system/sailor/MASTER.md`)
   chose the direction — *"Code dark + run green"*: slate-OLED surfaces, run-green CTA,
   JetBrains Mono + IBM Plex Sans, dense dashboard scale, stagger-list motion, explicit
   anti-pattern list. **Animate UI** (shadcn registry) powers the primitives: animated
@@ -422,6 +422,21 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   and real HTTP SSE delivery. Integration checks use an isolated test database
   and Redis DB 15, not the live worker queue.
 
+### Naming — package: Anchor (`@anchor/core`), product: Sailor
+
+- The framework package is **Anchor** (`@anchor/core`, directory `packages/core`)
+  and the product is **Sailor** (`apps/server` + `apps/dashboard`; CLI bin `sailor`).
+- One sweep renamed the whole surface: npm names + workspace links, env prefixes
+  (`SAILOR_PORT`, `SAILOR_PUBLIC_URL`), Redis channels (`sailor:updates`,
+  `sailor:live`), session/oauth cookies, PR branches (`sailor/issue-*`), the local
+  Postgres role/database (ALTER — demo data preserved), sandbox scratch + id
+  prefixes (`.anchor/`, `sb-anchor-*`), UI copy + wordmark, docs, and the design
+  constitution path (`design-system/sailor/MASTER.md`).
+- External names are intentionally unchanged until renamed at their source: the
+  Heyo namespace (token-scoped) and the GitHub App slug (`repoinbox-dev`).
+- The push guard accepts pre-rename `harness/issue-*` branches so the existing PR
+  keeps being babysat; new PRs open on `sailor/issue-<n>`.
+
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.
   (Turn compaction shipped early in the engine — decision #18.)
@@ -430,12 +445,12 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 ## Phase 6 — Extraction & ecosystem (stretch, after eval results)
 
 ### Step 20 — Extract the framework: own repo, published package, consumer #1
-- **What:** move `packages/agent` to its own repository (own README, docs, CI, license);
+- **What:** move `packages/core` to its own repository (own README, docs, CI, license);
   make it publishable (`exports` map, `files`, version 0.1.0, scope decided at publish
-  time); publish to npm/GitHub Packages; in the harness, replace the workspace dependency
+  time); publish to npm/GitHub Packages; in the sailor, replace the workspace dependency
   with the published version. A minimal `examples/` runs the framework without any of our
   infra (no GitHub, no Postgres — just a local dir + an LLM key).
-- **Done when:** a fresh clone of the harness `npm install`s the published package and all
+- **Done when:** a fresh clone of the sailor `npm install`s the published package and all
   tests pass without the workspace; the framework repo's CI is green; the example runs
   standalone.
 
@@ -444,7 +459,7 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   destroy) and run a slice of the eval suite on it; publish side-by-side numbers
   (Heyo vs E2B) in the README. Intro: `SANDBOX_BACKEND=heyo|e2b` config surface
   (`local` remains CLI-injected, dev-only — decision #1).
-- **Done when:** `SANDBOX_BACKEND=e2b harness eval --subset` produces numbers next to the
+- **Done when:** `SANDBOX_BACKEND=e2b sailor eval --subset` produces numbers next to the
   Heyo run, and the interface's drop-in claim is proven by a real third-party backend.
 
 ---

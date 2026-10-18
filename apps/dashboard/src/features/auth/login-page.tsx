@@ -28,7 +28,7 @@ export function LoginPage() {
           className="flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
           <Layers2 className="size-5" />
-          harness.
+          sailor.
         </a>
         <div className="max-w-md">
           <p className="eyebrow mb-6">More context. Less busywork.</p>

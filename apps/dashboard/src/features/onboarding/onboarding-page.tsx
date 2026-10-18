@@ -73,7 +73,7 @@ export function OnboardingPage() {
             <p className="eyebrow mb-3">A thoughtful start</p>
             <h1 className="page-heading">Bring your repositories along.</h1>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Install the Harness GitHub App to give your agent a place to work.
+              Install the Sailor GitHub App to give your agent a place to work.
               You stay in control of which repositories it can access.
             </p>
             <div className="surface mt-8 p-6">
@@ -146,7 +146,7 @@ export function OnboardingPage() {
             <p className="eyebrow mb-3">All set</p>
             <h1 className="page-heading">Your next fix is a label away.</h1>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Add this label to an issue in an enabled repository. Harness will
+              Add this label to an issue in an enabled repository. Sailor will
               pick it up, work through the fix, and open a pull request.
             </p>
             <div className="surface mt-6 flex items-center justify-between px-5 py-4">

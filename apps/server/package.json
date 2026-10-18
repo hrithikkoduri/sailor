@@ -1,0 +1,45 @@
+{
+  "name": "@sailor/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Sailor product: issue-to-PR pipeline around @anchor/core.",
+  "type": "module",
+  "bin": {
+    "sailor": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "cli": "tsx src/cli.ts",
+    "serve": "tsx src/cli.ts serve",
+    "serve:watch": "tsx watch --clear-screen=false src/cli.ts serve",
+    "worker:watch": "tsx watch --clear-screen=false src/cli.ts worker",
+    "doctor": "tsx src/cli.ts doctor",
+    "migrate": "tsx src/cli.ts migrate",
+    "db:generate": "drizzle-kit generate",
+    "test": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anchor/core": "*",
+    "@heyocomputer/hws": "^0.4.0",
+    "@hono/node-server": "^2.1.5",
+    "@node-rs/argon2": "^2.2.2",
+    "bullmq": "^6.3.16",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.13",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

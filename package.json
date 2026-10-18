@@ -1,8 +1,8 @@
 {
-  "name": "coding-agent-harness",
+  "name": "sailor",
   "version": "0.1.0",
   "private": true,
-  "description": "Issue-to-PR coding harness: label a GitHub issue, get a fix PR with tests and a full trace, running in an isolated Firecracker microVM.",
+  "description": "Sailor — label a GitHub issue and get a fix PR with tests and a full trace, running in an isolated Firecracker microVM. Built on Anchor (@anchor/core).",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -12,11 +12,11 @@
     "build": "npm run typecheck && npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:integration": "npm run test:integration -w apps/harness --",
+    "test:integration": "npm run test:integration -w apps/server --",
     "dev": "node scripts/dev.mjs",
-    "harness": "npm run harness -w apps/harness --",
-    "doctor": "npm run doctor -w apps/harness --",
-    "migrate": "npm run migrate -w apps/harness --"
+    "sailor": "npm run cli -w apps/server --",
+    "doctor": "npm run doctor -w apps/server --",
+    "migrate": "npm run migrate -w apps/server --"
   },
   "engines": {
     "node": ">=20"

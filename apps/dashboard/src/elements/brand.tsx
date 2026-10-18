@@ -17,7 +17,7 @@ export function Wordmark() {
     <span className="flex items-center gap-2.5 select-none">
       <Logo size={34} />
       <span className="text-lg font-semibold tracking-[-.04em] text-foreground">
-        harness.
+        sailor.
       </span>
     </span>
   );

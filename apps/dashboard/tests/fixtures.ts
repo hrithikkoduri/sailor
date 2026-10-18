@@ -18,7 +18,7 @@ export const thread = {
   source: "github",
   prNumber: 48,
   prUrl: "https://github.com/acme/worker-service/pull/48",
-  headRef: "harness/issue-42",
+  headRef: "sailor/issue-42",
   baseRef: "main",
   phase: "verify",
   summary: null,

@@ -5,15 +5,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: harness
-      POSTGRES_PASSWORD: harness
-      POSTGRES_DB: harness
+      POSTGRES_USER: sailor
+      POSTGRES_PASSWORD: sailor
+      POSTGRES_DB: sailor
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U harness"]
+      test: ["CMD-SHELL", "pg_isready -U sailor"]
       interval: 2s
       timeout: 3s
       retries: 15
