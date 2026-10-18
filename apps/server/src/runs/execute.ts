@@ -160,6 +160,12 @@ function heyoSandboxConfig(
     namespace: cfg.heyo.namespace,
     image: cfg.heyo.image,
     imageKind: cfg.heyo.imageKind,
+    ...(cfg.heyo.imageRepo ? { imageRepo: cfg.heyo.imageRepo } : {}),
+    ...(cfg.heyo.imageRef ? { imageRef: cfg.heyo.imageRef } : {}),
+    ...(cfg.heyo.imageDockerfile
+      ? { imageDockerfile: cfg.heyo.imageDockerfile }
+      : {}),
+    ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
     sizeClass: cfg.heyo.sizeClass,
     diskSizeGb: cfg.heyo.diskSizeGb,
     githubToken: gitToken,

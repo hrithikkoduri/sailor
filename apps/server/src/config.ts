@@ -21,8 +21,13 @@ export interface SailorConfig {
     server: string;
     namespace: string;
     image: string;
-    /** How `image` resolves: a prebuilt artifact, or a Dockerfile manifest the host builds. */
-    imageKind: "artifact" | "dockerfile";
+    /** How `image` resolves: a prebuilt artifact, a store Dockerfile manifest, or a git source. */
+    imageKind: "artifact" | "dockerfile" | "git";
+    /** git kind: repo URL, ref, Dockerfile path, and the git-token secret. */
+    imageRepo: string | undefined;
+    imageRef: string | undefined;
+    imageDockerfile: string | undefined;
+    imageAuth: { secret: string; key?: string } | undefined;
     sizeClass: HeyoSizeClass;
     diskSizeGb: number;
   };
@@ -194,10 +199,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       server: env.HEYO_SERVER ?? "https://admin.us5.heyo.work",
       namespace: env.HEYO_NAMESPACE ?? "sailor",
       image: env.HEYO_IMAGE ?? "heyo/bun:latest",
-      // A Dockerfile manifest in the store (pushed by image/build.sh) is built
-      // by the host on first boot; a prebuilt artifact is just pulled.
+      // artifact: pull a prebuilt rootfs from the store. dockerfile: a store
+      // Dockerfile manifest the host builds. git: the host clones + builds
+      // (private repos need HEYO_IMAGE_GIT_SECRET, an app-lb secret name).
       imageKind:
-        env.HEYO_IMAGE_KIND === "dockerfile" ? "dockerfile" : "artifact",
+        env.HEYO_IMAGE_KIND === "git"
+          ? "git"
+          : env.HEYO_IMAGE_KIND === "dockerfile"
+            ? "dockerfile"
+            : "artifact",
+      imageRepo: env.HEYO_IMAGE_GIT_REPO || undefined,
+      imageRef: env.HEYO_IMAGE_GIT_REF || undefined,
+      imageDockerfile: env.HEYO_IMAGE_GIT_DOCKERFILE || undefined,
+      imageAuth: env.HEYO_IMAGE_GIT_SECRET
+        ? {
+            secret: env.HEYO_IMAGE_GIT_SECRET,
+            ...(env.HEYO_IMAGE_GIT_SECRET_KEY
+              ? { key: env.HEYO_IMAGE_GIT_SECRET_KEY }
+              : {}),
+          }
+        : undefined,
       sizeClass: sizeClass(env.HEYO_SIZE_CLASS),
       diskSizeGb: Number(env.HEYO_DISK_GB ?? "4") || 4,
     },
