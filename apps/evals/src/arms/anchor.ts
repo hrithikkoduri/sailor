@@ -18,14 +18,33 @@ import type { EvalArm, EvalArmContext } from "../runner.js";
 import type { EvalTask } from "../tasks.js";
 
 /**
- * The eval adds exactly one block to the package's composed prompt. The
- * package defaults are a colleague's operating philosophy (proportionate
- * effort, honest stopping) — correct for the product. A benchmark is
- * relentless: it is scored only by the project's tests, so it must keep
- * acting until they pass. This is the block-system working as designed.
+ * The eval adds block overrides + one new block. The package defaults are a
+ * colleague's operating philosophy (proportionate effort, honest stopping) —
+ * correct for the product. A benchmark is a scored fight: the project's own
+ * tests decide it, so the agent keeps attacking until they pass. These blocks
+ * apply only here; the package prompt is untouched for product use.
  */
+export const EVAL_TONE = [
+  "Be direct, relentless, and specific. This run is a fight against a failing behavior:",
+  "every unverified claim is a lost position, every passing test a captured one.",
+  "Lead with outcomes and evidence. No filler, no theater, no excuses — report only what this run verified.",
+].join(" ");
+
+export const EVAL_JUDGMENT = [
+  "The latest request defines the work. Inspect the actual repository instead of debating hypothetical constraints.",
+  "When an approach fails, use the new evidence to adapt immediately — do not stop while a known failure remains.",
+  "Change direction only on new evidence. Finish only when the failing behavior is fixed and proven.",
+].join(" ");
+
+export const EVAL_VERIFICATION = [
+  "Verification is how you win: reproduce the failure, fix it, then prove it —",
+  "run the relevant tests and your repro before and after, and reproduce any exact outputs the report shows.",
+  "Never claim unrun tests passed; mark anything unverified as a hypothesis.",
+  "A failing or missing relevant check means the work is not done — keep going until it passes.",
+].join(" ");
+
 const BENCHMARK_DISCIPLINE = [
-  "This run is evaluated exactly and only by the project's own tests. Keep acting until the change is complete and verified:",
+  "This run is a scored battle decided exactly and only by the project's own tests. Keep attacking until the change is complete and verified:",
   "- Keep issuing commands, reading their results, and iterating. Do not end the run with a mid-work status report while anything the report describes remains unimplemented or unverified.",
   "- Workflow: (1) locate the relevant code and tests; (2) reproduce the reported behavior with a command; (3) make the minimal source change; (4) run the relevant test FILES and your repro; (5) check edge cases and reproduce any exact outputs or formats the report shows, byte for byte.",
   "- Do not modify test files or leave scratch files; keep the final diff to source changes that fix the reported behavior.",
@@ -60,6 +79,9 @@ export function anchorArm(): EvalArm {
           ...codingAgent.strategy,
           systemPrompt: (args) =>
             buildCodingPrompt({
+              tone: EVAL_TONE,
+              judgment: EVAL_JUDGMENT,
+              verification: EVAL_VERIFICATION,
               context: [context, args.context].filter(Boolean).join("\n\n"),
               ...(args.summary ? { summary: args.summary } : {}),
               additionalSections: [
