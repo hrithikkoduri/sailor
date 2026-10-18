@@ -4,8 +4,8 @@ export function Logo({ size = 40 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden>
       <defs>
         <linearGradient id="harness-logo" x1="0" y1="0" x2="48" y2="48">
-          <stop stopColor="#818cf8" />
-          <stop offset="1" stopColor="#a855f7" />
+          <stop stopColor="#4ade80" />
+          <stop offset="1" stopColor="#22c55e" />
         </linearGradient>
       </defs>
       <rect
@@ -35,7 +35,7 @@ export function Wordmark() {
   return (
     <span className="flex items-center gap-2.5 select-none">
       <Logo size={34} />
-      <span className="text-lg font-semibold tracking-tight text-zinc-100">Harness</span>
+      <span className="text-lg font-semibold tracking-tight text-foreground">Harness</span>
     </span>
   );
 }

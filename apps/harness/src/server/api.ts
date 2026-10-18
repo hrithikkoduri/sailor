@@ -21,7 +21,8 @@ import type { User } from "../db/schema.js";
 import type { Queues } from "../queue/index.js";
 import type { UserFromRequest } from "../auth/routes.js";
 import { requestCancel } from "../runs/lease.js";
-import { drainInbox, pendingEvents } from "../threads/inbox.js";
+import { appendEvent, drainInbox, pendingEvents } from "../threads/inbox.js";
+import { isTerminal } from "../threads/state.js";
 import { createStreamHub, type StreamHub } from "./stream.js";
 
 export interface ApiDeps {
@@ -152,6 +153,12 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       .where(eq(schema.runs.threadId, thread.id))
       .orderBy(desc(schema.runs.createdAt));
     const pending = await pendingEvents(deps.db, thread.id);
+    const eventRows = await deps.db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.threadId, thread.id))
+      .orderBy(asc(schema.events.id))
+      .limit(200);
     const [installation] =
       thread.installationId != null
         ? await deps.db
@@ -160,13 +167,38 @@ export function createApiRoutes(deps: ApiDeps): Hono {
             .where(eq(schema.installations.installationId, thread.installationId))
         : [];
 
+    // The conversation's agent side: each run's last assistant text (the
+    // finish summary covers runs that ended without one — step 18).
+    const agentText = new Map<string, string>();
+    for (const run of runs) {
+      const [last] = await deps.db
+        .select({ payload: schema.traceEvents.payload })
+        .from(schema.traceEvents)
+        .where(and(eq(schema.traceEvents.runId, run.id), eq(schema.traceEvents.type, "llm_call_finished")))
+        .orderBy(desc(schema.traceEvents.seq))
+        .limit(1);
+      const text = (last?.payload as { text?: string } | undefined)?.text?.trim();
+      agentText.set(run.id, text && text.length > 0 ? text : "");
+    }
+
     return c.json({
       thread: {
         ...threadSummary(thread),
         installationAccount: installation?.accountLogin ?? null,
         issueUrl: thread.source === "github" ? `https://github.com/${thread.repo}/issues/${thread.issueNumber}` : null,
       },
-      runs: runs.map(runSummary),
+      runs: runs.map((r) => ({
+        ...runSummary(r),
+        agentText: agentText.get(r.id) || null,
+      })),
+      events: eventRows.map((e) => ({
+        id: String(e.id),
+        kind: e.kind,
+        payload: e.payload,
+        status: e.status,
+        receivedAt: e.receivedAt,
+        consumedAt: e.consumedAt,
+      })),
       pendingEvents: pending.map((e) => ({
         id: String(e.id),
         kind: e.kind,
@@ -301,6 +333,55 @@ export function createApiRoutes(deps: ApiDeps): Hono {
     hub.notify(thread.id);
     log(`api: interject on idle thread ${thread.id} → ${run ? `run ${run.id} queued` : "no-op"}`);
     return c.json({ ok: true, action: run ? "woken" : "no-op", runId: run?.id ?? null });
+  });
+
+  // --- chat (step 18): a dashboard message is an inbox event like any other ---
+
+  app.post("/api/threads/:id/messages", async (c) => {
+    const user = await requireUser(c);
+    if (!ok(user)) return user;
+    const thread = await loadThread(c.req.param("id"));
+    if (!thread || !threadVisibleTo(thread, user.id)) return c.json({ error: "thread not found" }, 404);
+    if (isTerminal(thread.state)) {
+      return c.json({ error: `thread is ${thread.state} — it takes no more turns` }, 409);
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as { text?: unknown };
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!text) return c.json({ error: "empty message" }, 400);
+    if (text.length > 8000) return c.json({ error: "message too long (8000 characters max)" }, 400);
+
+    const author = user.login ?? user.name ?? user.email ?? "you";
+    const evt = await appendEvent(deps.db, {
+      threadId: thread.id,
+      kind: "chat_message",
+      payload: { body: text, author, via: "dashboard" },
+    });
+
+    // Same policy as human GitHub comments (decision #28): while a run is
+    // active the message INTERJECTS — cancel the run; the event becomes the
+    // next turn (resumed at the cancelled run's phase). Idle → run it now.
+    const [active] = await deps.db
+      .select({ id: schema.runs.id, status: schema.runs.status })
+      .from(schema.runs)
+      .where(and(eq(schema.runs.threadId, thread.id), inArray(schema.runs.status, ["queued", "running"])))
+      .orderBy(desc(schema.runs.createdAt))
+      .limit(1);
+
+    let interjected = false;
+    let runId: string | null = active?.id ?? null;
+    if (active?.status === "running") {
+      await requestCancel(deps.db, active.id);
+      interjected = true;
+      log(`api: chat message on thread ${thread.id} — interject, cancel requested on run ${active.id}`);
+    } else if (active?.status !== "queued") {
+      const run = await drainInbox({ db: deps.db, queues: deps.queues }, thread.id);
+      runId = run?.id ?? null;
+      log(`api: chat message on idle thread ${thread.id} → ${run ? `run ${run.id} queued` : "no-op"}`);
+    }
+
+    hub.notify(thread.id);
+    return c.json({ ok: true, eventId: String(evt.id), interjected, runId });
   });
 
   // --- SSE (nudges only — the client refetches) --------------------------------------

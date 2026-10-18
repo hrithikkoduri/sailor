@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
@@ -29,6 +29,8 @@ describe("dashboard api", () => {
   let threadId: string;
   let hiddenThreadId: string;
   let idleThreadId: string;
+  let chatThreadId: string;
+  const terminalThreadIds: string[] = [];
   let runOkId: string;
   let runLiveId: string;
   let runQueuedId: string;
@@ -102,6 +104,24 @@ describe("dashboard api", () => {
       payload: { body: "please also handle the edge case", author: "octocat" },
     });
 
+    // A clean thread for the chat flows (isolation from the interject test).
+    const [chat] = await db
+      .insert(schema.threads)
+      .values({ repo: `test/api-chat-${stamp}`, issueNumber: 4, source: "github", state: "queued", userId })
+      .returning();
+    chatThreadId = chat!.id;
+
+    // A consumed issue_labeled event — the conversation feed's human side.
+    const labeled = await appendEvent(db, {
+      threadId,
+      kind: "issue_labeled",
+      payload: { number: 1, title: "add() drops negative numbers", label: "agent:fix" },
+    });
+    await db
+      .update(schema.events)
+      .set({ status: "consumed", consumedAt: new Date() })
+      .where(eq(schema.events.id, labeled.id));
+
     // Two runs: an older succeeded one (with trace) and a live one.
     const [runOk] = await db
       .insert(schema.runs)
@@ -126,7 +146,23 @@ describe("dashboard api", () => {
       { runId: runOkId, seq: 0, type: "run_started", payload: { type: "run_started", task: "Fix issue #1", phases: ["reproduce", "fix", "verify"] } },
       { runId: runOkId, seq: 1, type: "phase_started", payload: { type: "phase_started", phase: "reproduce" } },
       { runId: runOkId, seq: 2, type: "tool_call", payload: { type: "tool_call", phase: "reproduce", step: 1, name: "run_tests", input: {} } },
-      { runId: runOkId, seq: 3, type: "run_finished", payload: { type: "run_finished", ok: true, steps: 9, usage: { promptTokens: 1234, completionTokens: 567 }, reason: "finished", disposition: "done" } },
+      {
+        runId: runOkId,
+        seq: 3,
+        type: "llm_call_finished",
+        payload: {
+          type: "llm_call_finished",
+          phase: "verify",
+          step: 9,
+          text: "Done — the fix is verified.",
+          toolCalls: [],
+          textChars: 29,
+          toolCallsCount: 0,
+          usage: { promptTokens: 900, completionTokens: 90 },
+          latencyMs: 1200,
+        },
+      },
+      { runId: runOkId, seq: 4, type: "run_finished", payload: { type: "run_finished", ok: true, steps: 9, usage: { promptTokens: 1234, completionTokens: 567 }, reason: "finished", disposition: "done" } },
     ]);
 
     const [runLive] = await db
@@ -154,8 +190,9 @@ describe("dashboard api", () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.events).where(inArray(schema.events.threadId, [threadId, hiddenThreadId, idleThreadId]));
-    await db.delete(schema.threads).where(inArray(schema.threads.id, [threadId, hiddenThreadId, idleThreadId]));
+    const threadIds = [threadId, hiddenThreadId, idleThreadId, chatThreadId, ...terminalThreadIds];
+    await db.delete(schema.events).where(inArray(schema.events.threadId, threadIds));
+    await db.delete(schema.threads).where(inArray(schema.threads.id, threadIds));
     await db.delete(schema.users).where(inArray(schema.users.id, [userId, otherUserId]));
     await queues.close();
     await pool.end();
@@ -186,11 +223,14 @@ describe("dashboard api", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       thread: { id: string; repo: string; turnsUsed: number; prUrl: string };
-      runs: Array<{ id: string; status: string }>;
+      runs: Array<{ id: string; status: string; agentText: string | null }>;
+      events: Array<{ id: string; kind: string; status: string }>;
       pendingEvents: unknown[];
     };
     expect(body.thread).toMatchObject({ id: threadId, turnsUsed: 2 });
     expect(body.runs.map((r) => r.id)).toEqual([runLiveId, runOkId]);
+    expect(body.runs.find((r) => r.id === runOkId)?.agentText).toBe("Done — the fix is verified.");
+    expect(body.events.map((e) => e.kind)).toContain("issue_labeled");
     expect(body.pendingEvents).toHaveLength(0);
 
     expect((await app.request(`/api/threads/${hiddenThreadId}`, { headers: { cookie } })).status).toBe(404);
@@ -204,8 +244,67 @@ describe("dashboard api", () => {
       trace: Array<{ seq: number; type: string }>;
     };
     expect(body.run).toMatchObject({ id: runOkId, steps: 9, tokensIn: 1234 });
-    expect(body.trace.map((e) => e.seq)).toEqual([0, 1, 2, 3]);
-    expect(body.trace.map((e) => e.type)).toEqual(["run_started", "phase_started", "tool_call", "run_finished"]);
+    expect(body.trace.map((e) => e.seq)).toEqual([0, 1, 2, 3, 4]);
+    expect(body.trace.map((e) => e.type)).toEqual([
+      "run_started",
+      "phase_started",
+      "tool_call",
+      "llm_call_finished",
+      "run_finished",
+    ]);
+  });
+
+  it("chat: idle → woken, queued → waits, busy → interjects, terminal → refuses", async () => {
+    const post = (threadId: string, text: string) =>
+      app.request(`/api/threads/${threadId}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ text }),
+      });
+
+    // idle: the message becomes the turn right away.
+    const first = await post(chatThreadId, "Please also cover the negative case.");
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as { interjected: boolean; runId: string | null };
+    expect(firstBody.runId).toBeTruthy();
+    expect(firstBody.interjected).toBe(false);
+
+    const [chatRun] = await db.select().from(schema.runs).where(eq(schema.runs.threadId, chatThreadId));
+    expect(chatRun!.trigger).toBe("inbox");
+    const [chatEvent] = await db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.threadId, chatThreadId));
+    expect(chatEvent!.kind).toBe("chat_message");
+    expect(chatEvent!.status).toBe("consumed");
+
+    // queued: the active run owns the turn — the message waits genuinely.
+    const second = await post(chatThreadId, "One more thing — add a test for zero.");
+    const secondBody = (await second.json()) as { interjected: boolean; runId: string | null };
+    expect(secondBody.interjected).toBe(false);
+    expect(secondBody.runId).toBe(chatRun!.id);
+    const pendingRows = await db
+      .select()
+      .from(schema.events)
+      .where(and(eq(schema.events.threadId, chatThreadId), eq(schema.events.status, "pending")));
+    expect(pendingRows).toHaveLength(1);
+
+    // busy: interject — durable cancel + the message becomes the next turn.
+    await db.update(schema.runs).set({ status: "running", startedAt: new Date() }).where(eq(schema.runs.id, chatRun!.id));
+    const third = await post(chatThreadId, "Actually, prioritize the zero case.");
+    const thirdBody = (await third.json()) as { interjected: boolean; runId: string | null };
+    expect(thirdBody.interjected).toBe(true);
+    expect(thirdBody.runId).toBe(chatRun!.id);
+    const [cancelled] = await db.select().from(schema.runs).where(eq(schema.runs.id, chatRun!.id));
+    expect(cancelled!.cancelRequestedAt).toBeTruthy();
+
+    // terminal threads take no more turns.
+    const [done] = await db
+      .insert(schema.threads)
+      .values({ repo: `test/api-done-${stamp}`, issueNumber: 9, source: "github", state: "merged", userId })
+      .returning();
+    terminalThreadIds.push(done!.id);
+    expect((await post(done!.id, "hello?")).status).toBe(409);
   });
 
   it("cancel: a running run gets the durable flag; a queued run flips to cancelled", async () => {

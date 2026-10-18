@@ -24,7 +24,7 @@ import {
 import { createGitHubApp } from "../github/app.js";
 import { executeRun } from "../runs/execute.js";
 import { drainInbox } from "../threads/inbox.js";
-import { createThreadNotifier } from "../server/stream.js";
+import { createLivePublisher, createThreadNotifier } from "../server/stream.js";
 import { handleSweep } from "./sweep.js";
 import { runBabysitSweep } from "./babysit.js";
 
@@ -77,6 +77,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
   // dashboard through Redis pub/sub (serve holds the subscriber side).
   const updatesConnection = createQueueConnection(cfg.redis.url);
   const notify = createThreadNotifier(updatesConnection);
+  const live = createLivePublisher(updatesConnection);
 
   const runs = new Worker<RunJobData>(
     "runs",
@@ -87,6 +88,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
         local,
         heartbeatEveryMs,
         notify,
+        live,
         ...(githubApp ? { githubApp } : {}),
       });
       const watching =

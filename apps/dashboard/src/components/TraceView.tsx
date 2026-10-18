@@ -6,7 +6,7 @@
  */
 import { useState, type ReactNode } from "react";
 import type { TraceRow } from "../api";
-import { fmtTokens } from "./badges";
+import { fmtTokens } from "@/lib/format";
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
@@ -14,7 +14,7 @@ const num = (v: unknown): number | undefined => (typeof v === "number" ? v : und
 function Collapse({ preview, children }: { preview?: string; children: ReactNode }) {
   return (
     <details className="group">
-      <summary className="cursor-pointer list-none text-xs text-zinc-500 transition hover:text-zinc-300">
+      <summary className="cursor-pointer list-none text-xs text-muted-foreground transition hover:text-slate-300">
         {preview ? <span className="mr-2">{preview}</span> : null}
         <span className="underline decoration-dotted">show</span>
       </summary>
@@ -26,7 +26,7 @@ function Collapse({ preview, children }: { preview?: string; children: ReactNode
 function Json({ value }: { value: unknown }) {
   const text = JSON.stringify(value, null, 2) ?? "null";
   return (
-    <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-xs leading-relaxed text-zinc-300">
+    <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-[#0b1322] p-3 font-mono text-xs leading-relaxed text-slate-300">
       {text}
     </pre>
   );
@@ -37,10 +37,10 @@ function Text({ text }: { text: string }) {
   const [open, setOpen] = useState(!long);
   const shown = open ? text : `${text.slice(0, 400)}…`;
   return (
-    <div className="text-sm leading-relaxed whitespace-pre-wrap text-zinc-200">
+    <div className="text-sm leading-relaxed whitespace-pre-wrap text-slate-200">
       {shown}
       {long && (
-        <button onClick={() => setOpen((v) => !v)} className="ml-2 text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-300">
+        <button onClick={() => setOpen((v) => !v)} className="ml-2 text-xs text-muted-foreground underline decoration-dotted hover:text-slate-300">
           {open ? "less" : "more"}
         </button>
       )}
@@ -60,13 +60,13 @@ function Row({ row }: { row: TraceRow }) {
     case "run_started": {
       const phases = Array.isArray(p.phases) ? (p.phases as unknown[]).map(String) : [];
       return (
-        <div className="rounded-xl border border-indigo-400/30 bg-indigo-500/[0.07] p-4">
-          <div className="text-xs font-semibold tracking-wide text-indigo-200 uppercase">Run started</div>
-          <div className="mt-1.5 text-sm whitespace-pre-wrap text-zinc-200">{str(p.task) ?? ""}</div>
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div className="text-xs font-semibold tracking-wide text-primary uppercase">Run started</div>
+          <div className="mt-1.5 text-sm whitespace-pre-wrap text-slate-200">{str(p.task) ?? ""}</div>
           {phases.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {phases.map((phase) => (
-                <span key={phase} className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] text-zinc-400">
+                <span key={phase} className="rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
                   {phase}
                 </span>
               ))}
@@ -80,26 +80,26 @@ function Row({ row }: { row: TraceRow }) {
       const via = str(p.via);
       return (
         <div className="mt-5 flex items-center gap-3">
-          <span className="text-[11px] font-semibold tracking-widest text-zinc-300 uppercase">{str(p.phase)}</span>
+          <span className="text-[11px] font-semibold tracking-widest text-slate-300 uppercase">{str(p.phase)}</span>
           {via && (
             <span
               className={`rounded-full border px-2 py-0.5 text-[10px] ${
                 via === "advance_forced"
                   ? "border-amber-400/40 bg-amber-500/10 text-amber-200"
-                  : "border-white/10 bg-white/[0.04] text-zinc-400"
+                  : "border-border bg-muted/40 text-muted-foreground"
               }`}
             >
               {viaLabel[via] ?? via}
             </span>
           )}
-          <div className="h-px flex-1 bg-white/10" />
+          <div className="h-px flex-1 bg-muted" />
         </div>
       );
     }
 
     case "llm_call_started":
       return (
-        <div className="py-0.5 text-xs text-zinc-500">
+        <div className="py-0.5 text-xs text-muted-foreground">
           thinking · step {num(p.step) ?? "?"} <span className="animate-pulse">▍</span>
         </div>
       );
@@ -112,13 +112,13 @@ function Row({ row }: { row: TraceRow }) {
       const toolCalls = Array.isArray(p.toolCalls) ? (p.toolCalls as Array<Record<string, unknown>>) : [];
       const text = str(p.text) ?? "";
       return (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="rounded-xl border border-border bg-card/40 p-4">
           {text.trim().length > 0 && <Text text={text} />}
           {toolCalls.length > 0 && (
             <div className="mt-3 space-y-1.5">
               {toolCalls.map((call, i) => (
-                <div key={i} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-                  <span className="font-mono text-xs text-indigo-200">{str(call.name) ?? "tool"}</span>
+                <div key={i} className="rounded-lg border border-border bg-black/30 px-3 py-2">
+                  <span className="font-mono text-xs text-primary">{str(call.name) ?? "tool"}</span>
                   <div className="mt-1">
                     <Json value={call.arguments ?? call.input ?? {}} />
                   </div>
@@ -126,7 +126,7 @@ function Row({ row }: { row: TraceRow }) {
               ))}
             </div>
           )}
-          <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-zinc-500">
+          <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
             <span>↑ {fmtTokens(num(usage.promptTokens) ?? 0)} in</span>
             <span>↓ {fmtTokens(num(usage.completionTokens) ?? 0)} out</span>
             {num(p.latencyMs) !== undefined && <span>{(num(p.latencyMs)! / 1000).toFixed(1)}s</span>}
@@ -137,8 +137,8 @@ function Row({ row }: { row: TraceRow }) {
 
     case "tool_call":
       return (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="font-mono text-xs text-indigo-200">{str(p.name) ?? "tool"}</div>
+        <div className="rounded-xl border border-border bg-card/40 p-4">
+          <div className="font-mono text-xs text-primary">{str(p.name) ?? "tool"}</div>
           <div className="mt-2">
             <Json value={p.input ?? {}} />
           </div>
@@ -156,18 +156,18 @@ function Row({ row }: { row: TraceRow }) {
         >
           <div className="flex items-center gap-2 text-xs">
             <span className={ok ? "text-emerald-300" : "text-red-300"}>{ok ? "✓" : "✗"}</span>
-            <span className="font-mono text-zinc-300">{str(p.name) ?? "tool"}</span>
-            <span className="text-zinc-600">{content.length} chars</span>
+            <span className="font-mono text-slate-300">{str(p.name) ?? "tool"}</span>
+            <span className="text-muted-foreground/70">{content.length} chars</span>
           </div>
           <div className="mt-1.5">
             {content.length > 320 ? (
               <Collapse preview={content.slice(0, 160).replace(/\n/g, " ⏎ ")}>
-                <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-300">
+                <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-[#0b1322] p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-300">
                   {content}
                 </pre>
               </Collapse>
             ) : (
-              <pre className="overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-300">
+              <pre className="overflow-auto rounded-lg border border-border bg-[#0b1322] p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-300">
                 {content}
               </pre>
             )}
@@ -186,7 +186,7 @@ function Row({ row }: { row: TraceRow }) {
 
     case "checkpoint":
       return (
-        <div className="py-0.5 text-xs text-zinc-500">
+        <div className="py-0.5 text-xs text-muted-foreground">
           ◆ checkpoint · {str(p.label) ?? ""} · <span className="font-mono">{(str(p.ref) ?? "").slice(0, 10)}</span>
         </div>
       );
@@ -212,8 +212,8 @@ function Row({ row }: { row: TraceRow }) {
             {ok ? "Finished" : "Stopped"} · {str(p.reason) ?? ""}
             {disposition ? ` · ${disposition}` : ""}
           </div>
-          {str(p.summary) && <div className="mt-2 text-sm whitespace-pre-wrap text-zinc-200">{str(p.summary)}</div>}
-          <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-500">
+          {str(p.summary) && <div className="mt-2 text-sm whitespace-pre-wrap text-slate-200">{str(p.summary)}</div>}
+          <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
             <span>{num(p.steps) ?? "?"} steps</span>
             <span>↑ {fmtTokens(num(usage.promptTokens) ?? 0)}</span>
             <span>↓ {fmtTokens(num(usage.completionTokens) ?? 0)}</span>
@@ -232,8 +232,8 @@ function Row({ row }: { row: TraceRow }) {
 
     default:
       return (
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-          <span className="font-mono text-xs text-zinc-400">{row.type}</span>
+        <div className="rounded-xl border border-border bg-white/[0.02] p-3">
+          <span className="font-mono text-xs text-muted-foreground">{row.type}</span>
           <div className="mt-1.5">
             <Collapse>
               <Json value={row.payload} />
@@ -246,7 +246,7 @@ function Row({ row }: { row: TraceRow }) {
 
 export function TraceView({ trace }: { trace: TraceRow[] }) {
   if (trace.length === 0) {
-    return <p className="text-sm text-zinc-500">No trace events recorded yet.</p>;
+    return <p className="text-sm text-muted-foreground">No trace events recorded yet.</p>;
   }
   return (
     <div className="space-y-2">

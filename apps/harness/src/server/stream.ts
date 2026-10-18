@@ -13,22 +13,31 @@
 import type { Redis } from "ioredis";
 
 export const UPDATES_CHANNEL = "harness:updates";
+/** Live payload channel (step 18): assistant text deltas + activity, unthrottled by DB. */
+export const LIVE_CHANNEL = "harness:live";
 
 export interface StreamHub {
   /** Fan out "thread changed" to every SSE client watching it. */
   notify(threadId: string): void;
+  /** Fan out a raw SSE frame (e.g. a `live` payload) to the thread's clients. */
+  send(threadId: string, line: string): void;
   /** Register an SSE sender. Returns the unregister function. */
   register(threadId: string, send: (line: string) => void): () => void;
 }
 
 export function createStreamHub(): StreamHub {
   const listeners = new Map<string, Set<(line: string) => void>>();
+  const fanout = (threadId: string, line: string) => {
+    const set = listeners.get(threadId);
+    if (!set || set.size === 0) return;
+    for (const send of [...set]) send(line);
+  };
   return {
     notify(threadId) {
-      const set = listeners.get(threadId);
-      if (!set || set.size === 0) return;
-      const line = `event: update\ndata: ${JSON.stringify({ threadId })}\n\n`;
-      for (const send of [...set]) send(line);
+      fanout(threadId, `event: update\ndata: ${JSON.stringify({ threadId })}\n\n`);
+    },
+    send(threadId, line) {
+      fanout(threadId, line);
     },
     register(threadId, send) {
       let set = listeners.get(threadId);
@@ -49,5 +58,14 @@ export function createStreamHub(): StreamHub {
 export function createThreadNotifier(connection: Redis): (threadId: string) => void {
   return (threadId) => {
     void connection.publish(UPDATES_CHANNEL, JSON.stringify({ threadId })).catch(() => undefined);
+  };
+}
+
+/** Worker-side live publisher — compact run projections for the chat stream. */
+export function createLivePublisher(
+  connection: Redis,
+): (threadId: string, payload: Record<string, unknown>) => void {
+  return (threadId, payload) => {
+    void connection.publish(LIVE_CHANNEL, JSON.stringify({ threadId, ...payload })).catch(() => undefined);
   };
 }

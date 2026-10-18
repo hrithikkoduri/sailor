@@ -10,7 +10,7 @@ import { createDb, createPool } from "../db/index.js";
 import { createQueueConnection, createQueues } from "../queue/index.js";
 import { createGitHubApp } from "../github/app.js";
 import { createServerApp } from "./app.js";
-import { createStreamHub, UPDATES_CHANNEL } from "./stream.js";
+import { createStreamHub, LIVE_CHANNEL, UPDATES_CHANNEL } from "./stream.js";
 
 export async function serveCommand(args: string[]): Promise<number> {
   const cfg = loadConfig();
@@ -32,17 +32,20 @@ export async function serveCommand(args: string[]): Promise<number> {
       ? createGitHubApp({ appId: cfg.github.appId, privateKey: cfg.github.privateKey })
       : undefined;
 
-  // Live updates (step 17b): the worker publishes "thread changed" nudges on
-  // Redis; this subscriber relays them to the SSE clients in this process.
+  // Live updates (steps 17b/18): the worker publishes "thread changed" nudges
+  // and live run projections on Redis; this subscriber relays both to the SSE
+  // clients in this process (nudge → refetch; live → chat stream).
   const hub = createStreamHub();
   const updates = createQueueConnection(cfg.redis.url);
-  await updates.subscribe(UPDATES_CHANNEL);
-  updates.on("message", (_channel: string, message: string) => {
+  await Promise.all([updates.subscribe(UPDATES_CHANNEL), updates.subscribe(LIVE_CHANNEL)]);
+  updates.on("message", (channel: string, message: string) => {
     try {
       const parsed = JSON.parse(message) as { threadId?: unknown };
-      if (typeof parsed.threadId === "string") hub.notify(parsed.threadId);
+      if (typeof parsed.threadId !== "string") return;
+      if (channel === LIVE_CHANNEL) hub.send(parsed.threadId, `event: live\ndata: ${message}\n\n`);
+      else hub.notify(parsed.threadId);
     } catch {
-      /* malformed nudge — ignore */
+      /* malformed message — ignore */
     }
   });
 

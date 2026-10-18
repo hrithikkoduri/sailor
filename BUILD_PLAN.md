@@ -293,22 +293,43 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   integration tests incl. a real SSE connection through a live HTTP server); all suites green
   (**94 package + 40 app unit + 64 integration**).
 
-### Step 18 — Chat interface (SSE streaming)
-- **What:** chat with the agent thread from the dashboard. A chat message is just another
-  inbox event (`chat_message`) — same one-turn-at-a-time pipeline as GitHub comments; **while
-  the bot is busy a send interjects** (#28 — human-authored): cancel the active run, the message
-  becomes the next turn. The earlier Enter=queue / double-Enter=interject sketch reconciles here
-  — a "queue instead" affordance can be reviewed with this UI.
-  New `messages` table (author: user|agent, status: streaming|complete) via `drizzle-kit
-  generate`; a reply row is created when the turn starts and updated on each ~100ms batch
-  flush with **cumulative text**; `complete` at turn end. SSE token batches per decision #14.
-  Rendering rules: append-only transcript, only the streaming node mutates, snapshot-replace
-  semantics (idempotent, gap-proof), refetch-on-reconnect.
-- **Files:** `src/db/schema.ts` (+messages), `src/threads/messages.ts`, `src/threads/wakeThread.ts`,
-  `src/server/api.ts` additions, `src/server/dashboard/` chat UI
-- **Done when:** type a message → the reply streams in; **refresh mid-stream** shows the
-  partial text and the stream continues; transcript never fully re-renders (only the
-  streaming node mutates).
+### Step 18 — Chat interface (SSE streaming) ✅
+- **What:** the thread page IS the chat: a **conversation feed** (humans from the events table
+  — GitHub comments/reviews/chat messages; the agent by its final assistant text per run,
+  pulled from the trace; system notes for labels/CI/pushes — protocol noise never rendered),
+  a **composer**, and **token streaming**. A dashboard message is an inbox event
+  (`chat_message`) through the same one-turn pipeline; while a run is busy the server queues
+  it (Enter); pressing Enter again on the now-empty box (or the Interject chip) promotes it:
+  `POST /api/events/:id/interject` cancels the active run and the message becomes the next
+  turn (#28) — the double-Enter sketch, reconciled without new machinery. **No `messages`
+  table** (deviation, on purpose): the record already exists as events + traces, and the
+  streaming row is a live projection, not stored state. **Live channel** (`harness:live`):
+  the executor publishes compact projections — cumulative assistant text at ~10/s (decision
+  #14 semantics), phase moves, tool call/result, finish — serve relays them as `event: live`
+  on the same SSE stream; the client renders a streaming bubble with a caret and reconciles
+  on the next nudge-refetch.
+- **Files:** `src/server/api.ts` (POST messages + events/agentText in GET), `src/server/stream.ts`
+  (LIVE_CHANNEL + send + createLivePublisher), `src/runs/execute.ts` (projectLive), worker/serve
+  wiring, `apps/dashboard` (conversation.tsx, composer.tsx, markdown.tsx)
+- **Done when:** ✅ type a message → it lands in the thread and a turn starts; while the agent
+  works its text streams in token-batch with live phase/tool activity; Enter again interjects;
+  integration tests cover idle/queued/busy/terminal message flows + the enriched GET shape
+  (**65 integration tests**). A "refresh mid-stream" story comes free: state re-derives from
+  the DB, the live bubble rebuilds from the stream.
+
+### Step 18b — UI rebuild on a designed system ✅ (same-day, from review)
+- **What:** the dashboard got a real design system, not vibes: the **ui-ux-pro-max skill**
+  (vendored at `.opencode/skills/`, design system persisted at `design-system/harness/MASTER.md`)
+  chose the direction — *"Code dark + run green"*: slate-OLED surfaces, run-green CTA,
+  JetBrains Mono + IBM Plex Sans, dense dashboard scale, stagger-list motion, explicit
+  anti-pattern list. **Animate UI** (shadcn registry) powers the primitives: animated
+  Sidebar (product-suite chrome), Switch, Tabs, Tooltip, Dropdown, Dialog, Sheet, Progress,
+  animated Copy buttons. New views: threads list (stats + motion stagger + skeletons), thread
+  chat (above), settings (sections + switches), restyled login/onboarding to the same tokens.
+- **Files:** `apps/dashboard/src/index.css` (token layer), `components/app-shell.tsx`,
+  `pages/*`, vendored skill + MASTER.md
+- **Done when:** ✅ typecheck + build green; login → threads → thread chat → trace → settings
+  all live on the new system.
 
 ### Step 19 — Polish + write-up
 - **What:** README with architecture diagram, eval results, and failure-mode write-up.

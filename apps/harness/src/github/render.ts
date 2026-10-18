@@ -45,6 +45,14 @@ export function renderGithubTask(kind: string, payload: Record<string, unknown>)
         `\n\nRespond on the PR — fix or clarify as appropriate.`
       );
     }
+    case "chat_message": {
+      const author = s("author") ?? "the operator";
+      const body = s("body")?.trim() ?? "";
+      return (
+        `Message from ${author} (dashboard chat):\n\n${body.slice(0, 4000)}` +
+        `\n\nRespond in the conversation and continue toward the thread's goal.`
+      );
+    }
     case "push": {
       const count = n("commits") ?? 0;
       const ref = s("ref") ?? "the branch";

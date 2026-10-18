@@ -69,6 +69,12 @@ export interface ExecuteRunDeps {
   githubApp?: GitHubAppService;
   /** Live-update nudge (step 17b): "thread changed — refetch" (server/stream.ts). */
   notify?: (threadId: string) => void;
+  /**
+   * Live projections for the chat stream (step 18): assistant text deltas
+   * (cumulative, ~10/s), phase/tool activity, run finish. Fire-and-forget —
+   * the persisted trace remains the source of truth; this is the live view.
+   */
+  live?: (threadId: string, payload: Record<string, unknown>) => void;
 }
 
 export interface ExecuteRunOutcome {
@@ -150,12 +156,66 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
   const jsonl = new JsonlTrace(path.join(traceDir, `${run.id}.jsonl`));
   const recorder = new TraceRecorder({ jsonl, db, runId: run.id });
   let sinkTail: Promise<void> = Promise.resolve();
+
+  // Live projections for the chat stream (step 18): cumulative assistant text
+  // at ~10/s + activity markers. Fire-and-forget; the trace is the truth.
+  let deltaBuffer = "";
+  let lastDeltaPublish = 0;
+  const live = (payload: Record<string, unknown>) => deps.live?.(thread.id, { runId: run.id, ...payload });
+  const projectLive = (e: AgentEvent): void => {
+    switch (e.type) {
+      case "llm_call_started":
+        deltaBuffer = "";
+        live({ kind: "llm_started", phase: e.phase, step: e.step });
+        break;
+      case "llm_text_delta": {
+        deltaBuffer += e.text;
+        const now = Date.now();
+        if (now - lastDeltaPublish >= 100) {
+          lastDeltaPublish = now;
+          live({ kind: "delta", text: deltaBuffer });
+        }
+        break;
+      }
+      case "llm_call_finished":
+        live({ kind: "assistant_done", text: e.text, tools: e.toolCalls.map((t) => t.name) });
+        break;
+      case "tool_call":
+        live({ kind: "tool_call", name: e.name });
+        break;
+      case "tool_result":
+        live({ kind: "tool_result", name: e.name, ok: e.ok, content: e.content.slice(0, 400) });
+        break;
+      case "phase_started":
+        live({ kind: "phase", phase: e.phase, via: e.via ?? null });
+        break;
+      case "guardrail":
+        live({ kind: "guardrail", guardrail: e.kind, detail: e.detail });
+        break;
+      case "run_finished":
+        live({
+          kind: "run_finished",
+          ok: e.ok,
+          reason: e.reason,
+          disposition: e.disposition ?? null,
+          summary: e.summary ?? null,
+        });
+        break;
+      case "error":
+        live({ kind: "error", message: e.message });
+        break;
+      default:
+        break;
+    }
+  };
+
   const sink = (e: AgentEvent) => {
     sinkTail = sinkTail
       .then(() => recorder.record(e))
       .then(() => {
         // Every recorded step nudges the dashboard watching this thread.
         deps.notify?.(thread.id);
+        projectLive(e);
       })
       .catch(() => undefined);
   };
