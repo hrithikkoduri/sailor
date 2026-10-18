@@ -5,8 +5,8 @@
  *
  * No product stack behind it: no worker, no queue, no webhook, no database.
  * The app imports `@anchor/core` directly — plus exactly one thing from the
- * One import from the product, for the same knobs the product reads: the
- * config loader. The runtime, the agent, and the tools are pure Anchor.
+ * Zero product imports: config comes from this app's own reader, the runtime
+ * is pure Anchor. The app moves with the package to its own repo.
  *
  * Outputs (in `--out`, default `.eval-runs/<timestamp>/`):
  *   predictions.jsonl  official-grader input: instance_id, model_patch
@@ -23,10 +23,10 @@ import {
   type BudgetLimits,
 } from "@anchor/core";
 import { local } from "@anchor/core/sandbox/local";
-import { loadConfig, loadDotEnv } from "../../server/src/config.js";
-import { heyoProvider } from "../../server/src/heyo-provider.js";
+import { heyo } from "@anchor/core/sandbox/heyo";
 import { docker } from "@anchor/core/sandbox/docker";
 import { anchorArm } from "./arms/anchor.js";
+import { evalsConfig, loadDotEnv } from "./config.js";
 import { miniSweArm } from "./arms/mini-swe.js";
 import { loadTasks, type EvalTask } from "./tasks.js";
 import { runEvalSuite, type EvalTaskResult } from "./runner.js";
@@ -89,7 +89,7 @@ if (
 }
 
 loadDotEnv();
-const cfg = loadConfig();
+const cfg = evalsConfig();
 const model = String(args.get("model") ?? cfg.llm.model);
 
 // The model's real catalog entry prices the run and sizes compaction, exactly
@@ -112,7 +112,7 @@ const compaction = catalog?.contextLength
   : undefined;
 const provider =
   providerName === "heyo"
-    ? heyoProvider(cfg)
+    ? heyo(cfg.heyo)
     : providerName === "docker"
       ? docker({ dockerBin: process.env.DOCKER_BIN ?? "docker" })
       : local();

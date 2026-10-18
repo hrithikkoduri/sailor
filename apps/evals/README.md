@@ -4,8 +4,8 @@ Scores **Anchor as a harness** on SWE-bench. This is not a product feature and
 not part of the package: it is a repo-level app that imports `@anchor/core`
 directly — no worker, no queue, no webhook, no database — which makes it the
 framework's second consumer. The system under test is the framework's own
-`codingAgent` plus benchmark context added here; the only product import left
-is the config loader (the same knobs the product reads).
+`codingAgent` plus benchmark context added here; the app has **zero product
+imports** — its own config reader, the package, and nothing else.
 
 ## Layout
 
@@ -121,7 +121,7 @@ node apps/evals/scripts/show-trace.mjs .eval-runs/<run>/artifacts/mini-<task>.js
 - A patch is re-produced or re-graded **only when the tooling lost it** (e.g.
   a failed extraction destroyed a real diff) — that is a bug being repaired,
   not scoring policy.
-- Retries are *not* best-of-N, and best-of-N is not used here at all: no
+- Retries are _not_ best-of-N, and best-of-N is not used here at all: no
   parallel racing, no second attempts for score. (Best-of-N is a deferred
   package feature — `fork()`.)
 - **Timing caveat:** this batch ran both arms (plus setup jobs) on one
