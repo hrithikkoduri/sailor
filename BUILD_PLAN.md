@@ -248,8 +248,18 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   with zero install steps.
 - **Files:** `image/Dockerfile`; `image/build.sh` (docker build → `heyctl artifact push
   harness/sailor-toolchain:latest`). `sailor sandbox smoke --toolchain` proves the booted VM.
-- **Done when:** Heyo smoke boots from our image with zero install steps (the image itself
-  builds and passes the local toolchain check today; the live smoke ride on the push).
+- **Done when:** Heyo smoke boots from our image with zero install steps. ✅ Verified via the
+  git kind (`SMOKE PASSED in 180s`, toolchain probe `TOOLCHAIN-OK`).
+- **Publish note (2026-10-18):** the ext4 rootfs builds locally (docker export → mke2fs,
+  1013 MiB, verified with debugfs) but the namespace artifact store's upload path is broken
+  platform-side: a 1 GiB blob dies with `Broken pipe` mid-stream, and even a 64 MiB probe gets
+  `HTTP 502 — app-lb could not reach its artifact store` (same family as `setRepo` public
+  answering 502 "the artifact store refused this app-lb's credential"). Until Heyo fixes the
+  store, the git kind is the production path; the ext4 push retry is a one-command follow-up.
+- **Secret durability:** `heyo-build-git` currently holds an App installation token (~1h).
+  Before real testing, replace it with a durable fine-grained PAT (repo read) via
+  `heyctl create secret heyo-build-git -n harness --from-stdin git-token`, or make the repo
+  public; the artifact path (once the store heals) removes the secret entirely.
 
 ### Step 17 — Dashboard: API + threads/runs view + trace viewer
 **17a — Accounts + GitHub App + onboarding ✅**
