@@ -176,6 +176,66 @@ base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
   item above). _Trigger:_ first non-GitHub consumer or workspace. _Size:_ M
   each.
 
+## The path we are working — milestone: Anchor runs evals and stands alone
+
+Two goals: (1) **Anchor + Sailor's agent config runs a SWE-bench subset** end to
+end, graded by the official harness, with an A/B against a minimal harness at
+the same model; (2) **the package is tight enough that a stranger installs
+`@anchor/core` and drives it**. Ordered work:
+
+**Phase 0 — quick package wins (help eval runs and daily work)**
+
+- `edit_file` batching: 4 sandbox execs → 2 (`wc+cat` in one; `write+verify`
+  in one) — ~4s back per edit on Heyo, ×~20 edits per run. Needs care: match
+  semantics stay in TS; only the transport merges.
+- Git-credential callback + credential-host generalization (replace the one-
+  shot `githubToken`; the credentials file's `@github.com` is the last
+  forge-ism in clone/push).
+- Export the tool-author helpers (`requireString`, `optionalString`,
+  `requireSandbox`, `formatExec`).
+
+**Phase 1 — the eval runner (a Sailor-side consumer of Anchor; unblocked)**
+
+- Anchor directly — no worker/queue/webhook — with the sailor agent minus
+  GitHub tools; sandbox = the toolchain VM (public repos clone with no
+  credentials; the agent does not need deps to produce a patch).
+- `sailor eval` command: task JSONL (SWE-bench Lite subset) → per-task run →
+  `git diff` patch → `predictions.jsonl` + per-task trace + cost.
+- Grader: official `swebench` harness locally in Docker; parse the report.
+- Baseline arm: mini-swe-agent, same model — "minimal harness A% vs Sailor's
+  agent on Anchor B%".
+- Report: solve rate, $/task, p50/p95 time, failure modes (repro-failed /
+  wrong-fix / timeout / budget / loop / tool-error).
+- Package item the checklist wants: `run_tests` gains `junit_path` →
+  `meta.tests` (FAIL_TO_PASS / PASS_TO_PASS baseline — step 15 pre-eval
+  checklist).
+
+**Phase 2 — provider interface (the publish-fixing slice)**
+
+- Slice 1: `SandboxProvider` + registry + subpath exports + conformance suite;
+  `@heyocomputer/hws` moves behind `@anchor/core/sandbox/heyo` (optional peer)
+  so the root import stops dragging it in.
+
+**Phase 3 — pull the primitives home (Sailor → Anchor)**
+
+- Slice 5: `TraceSink` + `traceSinks` fan-out; move `live-projector.ts` and
+  `chat/projection.ts` next to the event schema.
+- Slice 3: `SandboxStore`-backed `openSandbox` session (sources + callbacks).
+- Slice 6: `runAgent` lifecycle (heartbeat from `lease.ts`, cancel polling,
+  sink fan-out, status mapping, usage/cost).
+- Slice 4: catalog-auto LLM factory; slice 7: `planRevival` + `ThreadBudget` +
+  `latestEvidenceForTree`; slice 2: provider `prepare()`.
+- Sailor ends as: rows, webhooks, GitHub, dashboard, stores.
+
+**Phase 4 — publish**
+
+- Build (tsc) + exports map; README (quickstart, provider contract, eval
+  story); a guard test that `packages/core` never reads `process.env`; first
+  real version tag.
+
+**Not blocking any of the above:** E2B/Daytona adapters, OTel/LangSmith
+adapters, forge adapters, the ext4 artifact publish, `fork()`, janitor TTL.
+
 ## Model providers
 
 - **Native Anthropic / Gemini adapters** — first-class clients (not the
