@@ -30,6 +30,13 @@ export function renderGithubTask(
     }
     case "pull_request_review":
     case "pull_request_review_comment": {
+      if (payload["self"] === true) {
+        return (
+          `No action needed — your own review activity on the PR was echoed back as a webhook.` +
+          `\n\n${(s("body") ?? "").trim().slice(0, 4000)}` +
+          `\n\nAcknowledge briefly in the thread only. Do not comment on GitHub — any GitHub reply would echo back again.`
+        );
+      }
       const author = s("author") ?? "a reviewer";
       const state = s("state");
       const body = s("body")?.trim();
@@ -68,6 +75,16 @@ export function renderGithubTask(
     case "issue_comment": {
       const author = s("author") ?? "a user";
       const body = s("body")?.trim() ?? "";
+      if (payload["self"] === true) {
+        // The agent's own reply, echoed back by GitHub. Replying on GitHub
+        // again would echo again — the ack lives in the thread, which no
+        // webhook watches, so the chain terminates here (decision #28).
+        return (
+          `No action needed — your own comment on the PR was echoed back as a webhook (you posted it with reply_on_github).` +
+          `\n\n${body.slice(0, 4000)}` +
+          `\n\nAcknowledge briefly in the thread only. Do not reply on GitHub — any GitHub reply would echo back again.`
+        );
+      }
       return (
         `New comment from ${author}:\n\n${body.slice(0, 4000)}` +
         `\n\nRespond on the PR — fix or clarify as appropriate.`

@@ -590,6 +590,7 @@ async function handleReview(
     state: event.review?.state,
     body: event.review?.body ?? event.comment?.body ?? "",
     author,
+    self,
     url: event.review?.html_url ?? event.comment?.html_url,
     path: event.comment?.path,
     // The review comment's anchor and the code it sat on — the agent must see
@@ -652,6 +653,7 @@ async function handleComment(
   const payload = {
     body: event.comment?.body ?? "",
     author,
+    self,
     url: event.comment?.html_url,
     prNumber: issueNumber,
   };

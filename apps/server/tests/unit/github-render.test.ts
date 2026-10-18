@@ -39,6 +39,18 @@ describe("renderGithubTask", () => {
     expect(t).toContain("Address this feedback as requested");
   });
 
+  it("self comments are echoes — acknowledge in-thread, never reply on GitHub", () => {
+    const t = renderGithubTask("issue_comment", {
+      author: "sailor-app-dev[bot]",
+      body: "Thanks — the fix is in.",
+      self: true,
+    });
+    expect(t).toContain("No action needed");
+    expect(t).toContain("echoed back");
+    expect(t).toContain("Do not reply on GitHub");
+    expect(t).not.toContain("Respond on the PR");
+  });
+
   it("failed checks name the checks and say to fix + push", () => {
     const t = renderGithubTask("check_run", {
       checks: ["unit", "lint"],
