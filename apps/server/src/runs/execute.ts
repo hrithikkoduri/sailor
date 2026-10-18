@@ -324,6 +324,12 @@ export async function executeRun(
             // grows past the model's working window, so long investigations
             // keep their accumulated findings instead of re-deriving them.
             compaction: { maxEstimatedTokens: 256_000, keepRecentTokens: 64_000 },
+            // Product budget dials (SAILOR_MAX_STEPS / TOKENS / USD). The
+            // package defaults (40 steps, 1.5M tokens) stop long-horizon work
+            // around the 20th call — cumulative tokens grow with every call,
+            // and compaction only bounds the per-call context. Steps and
+            // dollars are the real runaway backstops.
+            budgets: cfg.budget,
             signal: controller.signal,
             onEvent: sink,
           },

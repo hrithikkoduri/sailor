@@ -190,6 +190,11 @@ earlier decisions; no legacy workflow runner is retained.
   findings instead of folding them into a re-read loop, and renders in the
   thread as an expandable handoff — fold counts, the summary carried forward,
   and (debug mode) the folded transcript.
+- **Budget dials:** engine defaults stay conservative package policy; Sailor
+  raises them for long-horizon work (`SAILOR_MAX_STEPS` / `SAILOR_MAX_TOKENS` /
+  `SAILOR_MAX_USD`, defaults 120 / 24M / 10). Cumulative tokens grow with every
+  call no matter how well compaction bounds the per-call context, so steps and
+  dollars are the real dials — the token cap is only a runaway backstop.
 
 ## Streaming and activity follow-up (2026-10-18)
 

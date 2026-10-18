@@ -60,6 +60,17 @@ export interface SailorConfig {
     priceInPerMTok?: number;
     priceOutPerMTok?: number;
   };
+  /**
+   * Run budgets — long-horizon dials, cumulative per run. The engine ships
+   * conservative package defaults; Sailor raises them because a realistic
+   * issue-fix runs 100+ calls, and cumulative token use grows with every call
+   * no matter how well compaction bounds the per-call context.
+   */
+  budget: {
+    maxSteps: number;
+    maxTokens: number;
+    maxUsd: number;
+  };
   /** Postgres — threads, runs, events, traces (full stack from step 2). */
   postgres: { url: string };
   /** Redis — BullMQ queues (runs + babysit timers). */
@@ -184,6 +195,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       model: env.LLM_MODEL || undefined,
       priceInPerMTok: optionalNumber(env.LLM_PRICE_IN_PER_MTOK),
       priceOutPerMTok: optionalNumber(env.LLM_PRICE_OUT_PER_MTOK),
+    },
+    budget: {
+      maxSteps: optionalNumber(env.SAILOR_MAX_STEPS) ?? 120,
+      maxTokens: optionalNumber(env.SAILOR_MAX_TOKENS) ?? 24_000_000,
+      maxUsd: optionalNumber(env.SAILOR_MAX_USD) ?? 10,
     },
     postgres: { url: env.DATABASE_URL ?? "postgres://sailor:sailor@localhost:5432/sailor" },
     redis: { url: env.REDIS_URL ?? "redis://localhost:6379" },

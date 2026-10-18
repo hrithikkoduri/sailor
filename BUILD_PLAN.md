@@ -534,6 +534,14 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   with a short rise-in animation (skipped under reduced motion).
 - The open **reasoning** block tails its own text while the model thinks — the
   same follow-unless-scrolled-up rule as the thread.
+- **Budget dials are product policy.** The engine keeps conservative package
+  defaults (40 steps / 1.5M tokens / $5), and Sailor configures long-horizon
+  limits (default 120 steps / 24M tokens / $10 via `SAILOR_MAX_STEPS`,
+  `SAILOR_MAX_TOKENS`, `SAILOR_MAX_USD`). Token usage is *cumulative* across
+  the run's calls — compaction bounds the per-call context and cannot slow the
+  sum — so the token cap is a runaway backstop while steps and dollars are the
+  real dials. Costs are now real (LLM prices set for `deepseek-v4.1-flash`),
+  which also arms the dollar check.
 
 ### Local debug display + trace failure visibility
 
