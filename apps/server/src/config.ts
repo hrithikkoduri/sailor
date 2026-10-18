@@ -21,6 +21,8 @@ export interface SailorConfig {
     server: string;
     namespace: string;
     image: string;
+    /** How `image` resolves: a prebuilt artifact, or a Dockerfile manifest the host builds. */
+    imageKind: "artifact" | "dockerfile";
     sizeClass: HeyoSizeClass;
     diskSizeGb: number;
   };
@@ -192,6 +194,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       server: env.HEYO_SERVER ?? "https://admin.us5.heyo.work",
       namespace: env.HEYO_NAMESPACE ?? "sailor",
       image: env.HEYO_IMAGE ?? "heyo/bun:latest",
+      // A Dockerfile manifest in the store (pushed by image/build.sh) is built
+      // by the host on first boot; a prebuilt artifact is just pulled.
+      imageKind:
+        env.HEYO_IMAGE_KIND === "dockerfile" ? "dockerfile" : "artifact",
       sizeClass: sizeClass(env.HEYO_SIZE_CLASS),
       diskSizeGb: Number(env.HEYO_DISK_GB ?? "4") || 4,
     },

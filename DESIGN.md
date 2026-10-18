@@ -203,6 +203,11 @@ earlier decisions; no legacy workflow runner is retained.
   VM. Retention/adoption/push are Anchor capabilities, dogfooded through the
   package's own `openSandbox`/`releaseSandbox` lifecycle; the policy is
   Sailor's.
+- **Toolchain image (step 16):** the sandbox stops being `heyo/bun:latest` —
+  `image/Dockerfile` (Ubuntu 24.04 + Python/pip/pytest + Node 22 + build
+  essentials + ripgrep) is built and pushed to the namespace's artifact store
+  (`harness/sailor-toolchain:latest`) by `image/build.sh`. A VM boots able to
+  run real test suites; `sailor sandbox smoke --toolchain` is the check.
 
 ## Streaming and activity follow-up (2026-10-18)
 

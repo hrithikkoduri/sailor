@@ -242,10 +242,14 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - **Done when:** one command produces the full report + per-task traces.
 
 ### Step 16 — Toolchain VM image
-- **What:** custom Heyo image (git, node, python, ripgrep, test runners — maybe docker)
-  built via `heyvm mvm build`, published to the artifact store. Runs boot warm, no apt-get.
-- **Files:** `image/Dockerfile.firecracker`, build script
-- **Done when:** Heyo smoke boots from our image with zero install steps.
+- **What:** a custom Heyo image — Ubuntu 24.04 with git, Python 3.12 (+pip/venv/pytest, the
+  PEP 668 marker dropped so `pip install -r requirements.txt` just works), Node 22
+  (+npm/corepack), ripgrep/fd, jq, and a native build toolchain — so a session boots warm
+  with zero install steps.
+- **Files:** `image/Dockerfile`; `image/build.sh` (docker build → `heyctl artifact push
+  harness/sailor-toolchain:latest`). `sailor sandbox smoke --toolchain` proves the booted VM.
+- **Done when:** Heyo smoke boots from our image with zero install steps (the image itself
+  builds and passes the local toolchain check today; the live smoke ride on the push).
 
 ### Step 17 — Dashboard: API + threads/runs view + trace viewer
 **17a — Accounts + GitHub App + onboarding ✅**

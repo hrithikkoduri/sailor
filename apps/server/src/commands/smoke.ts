@@ -14,6 +14,8 @@ interface SmokeArgs {
   ref: string | undefined;
   local: boolean;
   keep: boolean;
+  /** Prove the VM image's toolchain instead of the default test command. */
+  toolchain: boolean;
 }
 
 const USAGE = `Usage: sailor sandbox smoke [options]
@@ -24,6 +26,8 @@ const USAGE = `Usage: sailor sandbox smoke [options]
                       (default: git log --oneline -1 && ls && echo SMOKE-TESTS-OK)
   --local             run on this machine instead of a microVM (dev only)
   --keep              keep the sandbox for debugging instead of destroying it
+  --toolchain         prove the VM image's toolchain (git/python/node/rg)
+                      instead of the default test command
 `;
 
 function parseArgs(argv: string[]): SmokeArgs | null {
@@ -33,11 +37,13 @@ function parseArgs(argv: string[]): SmokeArgs | null {
     ref: undefined,
     local: false,
     keep: false,
+    toolchain: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--local") args.local = true;
     else if (a === "--keep") args.keep = true;
+    else if (a === "--toolchain") args.toolchain = true;
     else if (a === "--repo") args.repo = argv[++i] ?? "";
     else if (a === "--ref") args.ref = argv[++i];
     else if (a === "--test-cmd") args.testCmd = argv[++i] ?? "";
@@ -47,11 +53,17 @@ function parseArgs(argv: string[]): SmokeArgs | null {
       return null;
     }
   }
+  if (args.toolchain)
+    args.testCmd =
+      "git --version && python3 --version && python3 -m pytest --version " +
+      "&& node --version && npm --version && rg --version | head -1 " +
+      "&& echo TOOLCHAIN-OK";
   if (!args.repo || !args.testCmd) return null;
   return args;
 }
 
-const tail = (text: string, lines = 12) => text.trim().split("\n").slice(-lines).join("\n");
+const tail = (text: string, lines = 12) =>
+  text.trim().split("\n").slice(-lines).join("\n");
 
 export async function smokeCommand(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
@@ -71,6 +83,7 @@ export async function smokeCommand(argv: string[]): Promise<number> {
             server: cfg.heyo.server,
             namespace: cfg.heyo.namespace,
             image: cfg.heyo.image,
+            imageKind: cfg.heyo.imageKind,
             sizeClass: cfg.heyo.sizeClass,
             diskSizeGb: cfg.heyo.diskSizeGb,
           },
@@ -78,13 +91,16 @@ export async function smokeCommand(argv: string[]): Promise<number> {
   );
 
   const timings: Array<{ name: string; ms: number }> = [];
-  const step = async (name: string, fn: () => Promise<string | void>): Promise<string | void> => {
+  const step = async (
+    name: string,
+    fn: () => Promise<string | void>,
+  ): Promise<string | void> => {
     process.stdout.write(`→ ${name}\n`);
     const t0 = Date.now();
     const result = await fn();
     const ms = Date.now() - t0;
     timings.push({ name, ms });
-    process.stdout.write(`  ✓ ${((ms / 1000).toFixed(1))}s\n`);
+    process.stdout.write(`  ✓ ${(ms / 1000).toFixed(1)}s\n`);
     return result;
   };
 
@@ -94,11 +110,14 @@ export async function smokeCommand(argv: string[]): Promise<number> {
 
   const t0 = Date.now();
   try {
-    await step("start sandbox (create → boot → toolchain → clone)", () => sandbox.start());
+    await step("start sandbox (create → boot → toolchain → clone)", () =>
+      sandbox.start(),
+    );
 
     await step("sanity: uname", async () => {
       const r = await sandbox.exec("uname -a", { timeoutSecs: 60 });
-      if (r.exitCode !== 0) throw new Error(`uname failed (${r.exitCode}): ${r.output}`);
+      if (r.exitCode !== 0)
+        throw new Error(`uname failed (${r.exitCode}): ${r.output}`);
       process.stdout.write(`      ${r.stdout.trim()}\n`);
     });
 
@@ -106,9 +125,16 @@ export async function smokeCommand(argv: string[]): Promise<number> {
       const r = await sandbox.exec(args.testCmd, { timeoutSecs: 300 });
       if (r.timedOut) throw new Error(`test command timed out after 300s`);
       if (r.exitCode !== 0) {
-        throw new Error(`test command exited ${r.exitCode}:\n${tail(r.output)}`);
+        throw new Error(
+          `test command exited ${r.exitCode}:\n${tail(r.output)}`,
+        );
       }
-      process.stdout.write(`${tail(r.output).split("\n").map((l) => `      ${l}`).join("\n")}\n`);
+      process.stdout.write(
+        `${tail(r.output)
+          .split("\n")
+          .map((l) => `      ${l}`)
+          .join("\n")}\n`,
+      );
     });
 
     const sha = await step("checkpoint (git commit)", async () => {
@@ -117,18 +143,30 @@ export async function smokeCommand(argv: string[]): Promise<number> {
       return cp.sha;
     });
 
-    await step(args.keep ? "keep sandbox" : "destroy sandbox", () => sandbox.destroy());
+    await step(args.keep ? "keep sandbox" : "destroy sandbox", () =>
+      sandbox.destroy(),
+    );
 
     const total = ((Date.now() - t0) / 1000).toFixed(1);
-    process.stdout.write(`\nSMOKE PASSED in ${total}s (checkpoint ${String(sha).slice(0, 12)})\n`);
+    process.stdout.write(
+      `\nSMOKE PASSED in ${total}s (checkpoint ${String(sha).slice(0, 12)})\n`,
+    );
     if (args.keep) {
-      process.stdout.write(`sandbox kept: ${sandbox.id} — delete later with heyctl or the console\n`);
+      process.stdout.write(
+        `sandbox kept: ${sandbox.id} — delete later with heyctl or the console\n`,
+      );
     }
     return 0;
   } catch (err) {
-    process.stdout.write(`\nSMOKE FAILED after ${((Date.now() - t0) / 1000).toFixed(1)}s\n`);
-    process.stderr.write(`  ${err instanceof Error ? err.message : String(err)}\n`);
-    process.stderr.write(`  timings: ${timings.map((t) => `${t.name}=${(t.ms / 1000).toFixed(1)}s`).join(", ")}\n`);
+    process.stdout.write(
+      `\nSMOKE FAILED after ${((Date.now() - t0) / 1000).toFixed(1)}s\n`,
+    );
+    process.stderr.write(
+      `  ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.stderr.write(
+      `  timings: ${timings.map((t) => `${t.name}=${(t.ms / 1000).toFixed(1)}s`).join(", ")}\n`,
+    );
     if (!args.keep) {
       // Clean up the VM even on failure — failed smoke runs should not bill quietly.
       await sandbox.destroy().catch(() => undefined);

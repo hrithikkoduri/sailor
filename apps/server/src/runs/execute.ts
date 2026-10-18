@@ -159,6 +159,7 @@ function heyoSandboxConfig(
     server: cfg.heyo.server,
     namespace: cfg.heyo.namespace,
     image: cfg.heyo.image,
+    imageKind: cfg.heyo.imageKind,
     sizeClass: cfg.heyo.sizeClass,
     diskSizeGb: cfg.heyo.diskSizeGb,
     githubToken: gitToken,
