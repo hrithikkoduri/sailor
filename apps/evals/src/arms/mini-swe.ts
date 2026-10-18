@@ -10,7 +10,7 @@
  * container so its dependencies cannot disturb the task's environment.
  */
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { shq } from "@anchor/core";
 import type { EvalArm, EvalArmContext } from "../runner.js";
 import type { EvalTask } from "../tasks.js";
@@ -77,8 +77,8 @@ async function captureTrajectory(
   ctx: EvalArmContext,
   task: EvalTask,
   opts: MiniSweArmOptions,
-): Promise<void> {
-  if (!ctx.artifactsDir || ctx.sandbox.backend !== "docker") return;
+): Promise<{ steps?: number }> {
+  if (!ctx.artifactsDir || ctx.sandbox.backend !== "docker") return {};
   await mkdir(ctx.artifactsDir, { recursive: true });
   const dest = `${ctx.artifactsDir}/mini-${task.id}.json`;
   await new Promise<void>((resolve, reject) => {
@@ -92,6 +92,19 @@ async function captureTrajectory(
     );
     child.on("error", reject);
   });
+  // Trajectory info carries mini's own accounting (api_calls, cost).
+  try {
+    const info =
+      (
+        JSON.parse(await readFile(dest, "utf8")) as {
+          info?: { model_stats?: { api_calls?: unknown } };
+        }
+      ).info ?? {};
+    const calls = info.model_stats?.api_calls;
+    return typeof calls === "number" ? { steps: calls } : {};
+  } catch {
+    return {};
+  }
 }
 
 export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
@@ -121,6 +134,7 @@ export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
         );
       }
 
+      let stats: { steps?: number } = {};
       try {
         const run = await ctx.sandbox.exec(
           `/opt/mini-venv/bin/python /tmp/mini-driver.py /tmp/mini-task.md ${shq(opts.model)}`,
@@ -129,6 +143,10 @@ export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
             timeoutSecs: 3600,
             env: {
               MSWEA_GLOBAL_COST_LIMIT: String(opts.costLimitUsd ?? 2),
+              // litellm's price registry does not know openrouter/z-ai/glm-5.3
+              // and its cost tracking throws; ignore_errors keeps runs alive
+              // (cost then comes from the grader-side accounting, not mini).
+              MSWEA_COST_TRACKING: "ignore_errors",
               ...(opts.apiKey ? { OPENROUTER_API_KEY: opts.apiKey } : {}),
             },
           },
@@ -141,12 +159,12 @@ export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
             `mini run exited ${run.exitCode}: ${run.output.trim().slice(-500)}`,
           );
         }
-        return {};
       } finally {
         // mini writes its trajectory INSIDE the container — carry it out
         // before the runner destroys the sandbox (best-effort).
-        await captureTrajectory(ctx, task, opts).catch(() => {});
+        stats = await captureTrajectory(ctx, task, opts).catch(() => ({}));
       }
+      return stats;
     },
   };
 }
