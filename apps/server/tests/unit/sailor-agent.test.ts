@@ -9,6 +9,7 @@ describe("Sailor agent composition", () => {
     expect(sailor.strategy.phases).toBe(codingAgent.strategy.phases);
     expect(sailor.strategy.phases.map((phase) => phase.id)).toEqual([
       "understand",
+      "plan",
       "act",
       "validate",
       "respond",
