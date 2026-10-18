@@ -71,6 +71,26 @@ fi
 # Without /dev/vdb, /workspace is on the rootfs and does not survive a cold boot.
 mkdir -p /workspace
 
+# Package managers default to the small rootfs for caches and installs — that
+# fills it up on real repos. /workspace is the data disk (disk_size_gb) and
+# survives stops: point caches, user installs, and tmp at it.
+mkdir -p /workspace/.cache/pip /workspace/.npm /workspace/.local /workspace/tmp
+{
+    echo "PIP_CACHE_DIR=/workspace/.cache/pip"
+    echo "PYTHONUSERBASE=/workspace/.local"
+    echo "PIP_USER=1"
+    echo "NPM_CONFIG_CACHE=/workspace/.npm"
+    echo "TMPDIR=/workspace/tmp"
+} >> /etc/environment
+cat > /etc/profile.d/workspace-env.sh <<'EOF'
+export PIP_CACHE_DIR=/workspace/.cache/pip
+export PYTHONUSERBASE=/workspace/.local
+export PIP_USER=1
+export NPM_CONFIG_CACHE=/workspace/.npm
+export TMPDIR=/workspace/tmp
+export PATH="$PATH:/workspace/.local/bin"
+EOF
+
 # sshd for `heyvm exec` / `heyvm sh`. Log to a file, never to the serial
 # console, which carries the marker-delimited command protocol.
 mkdir -p /run/sshd

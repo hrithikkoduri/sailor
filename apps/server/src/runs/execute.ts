@@ -197,6 +197,7 @@ function heyoSandboxConfig(
       ? { imageDockerfile: cfg.heyo.imageDockerfile }
       : {}),
     ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
+    ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
     sizeClass: cfg.heyo.sizeClass,
     diskSizeGb: cfg.heyo.diskSizeGb,
     githubToken: gitToken,
