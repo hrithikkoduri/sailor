@@ -103,6 +103,20 @@ node apps/evals/scripts/show-trace.mjs .eval-runs/<run>/artifacts/mini-<task>.js
 # add --full for untruncated text
 ```
 
+## Protocol
+
+- **One attempt per task per arm**; a task that produces **no patch** may be
+  retried once — if the retry yields a real patch, that patch is graded, and
+  the report discloses the attempt count per task. Applied symmetrically to
+  both arms (any empty mini task gets the same treatment).
+- Retries are *not* best-of-N: no parallel racing, just a single follow-up
+  attempt after an empty result. (Best-of-N is a deferred package feature —
+  `fork()`).
+- **Timing caveat:** this batch ran both arms (plus setup jobs) on one
+  machine under emulation. Resolve rate is the primary metric; wall-times are
+  indicative, not clean-room (a strictly serial, quiet-machine run is the
+  protocol for the Verified-scale numbers).
+
 ## Read the numbers with this caveat
 
 DeepSeek V4.1 Flash has SWE-bench Lite memorized for popular instances: the
