@@ -277,6 +277,15 @@ export async function executeRun(
     deps.live?.(thread.id, { runId: run.id, ...payload });
   const projectLive = createLiveProjector(live);
   const events: AgentEvent[] = [];
+  // Live usage: the runs row feeds the trace header, the thread rail and any
+  // other reader, so accrue tokens/dollars as calls finish — the run-end
+  // write stays authoritative and overwrites this.
+  const liveUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    costUsd: 0,
+    steps: 0,
+  };
 
   const sink = (e: AgentEvent) => {
     if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
@@ -284,7 +293,22 @@ export async function executeRun(
     projectLive(e);
     sinkTail = sinkTail
       .then(() => recorder.record(e))
-      .then(() => {
+      .then(async () => {
+        if (e.type === "llm_call_finished") {
+          liveUsage.promptTokens += e.usage.promptTokens;
+          liveUsage.completionTokens += e.usage.completionTokens;
+          liveUsage.costUsd += e.usage.costUsd ?? 0;
+          liveUsage.steps = Math.max(liveUsage.steps, e.step);
+          await db
+            .update(schema.runs)
+            .set({
+              steps: liveUsage.steps,
+              tokensIn: liveUsage.promptTokens,
+              tokensOut: liveUsage.completionTokens,
+              usd: liveUsage.costUsd.toFixed(4),
+            })
+            .where(eq(schema.runs.id, run.id));
+        }
         // Every recorded step nudges the dashboard watching this thread.
         if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
           deps.notify?.(thread.id);
