@@ -17,11 +17,71 @@
  * Budgets live as columns on threads/runs rather than a separate table: a
  * budget is meaningless detached from the thing it caps.
  */
-import { bigint, index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // uuid primary key with a random default — every table uses one
 const uuidPk = () => uuid("id").primaryKey().defaultRandom();
+
+// --- accounts (decision #41) ---------------------------------------------------
+
+export const users = pgTable("users", {
+  id: uuidPk(),
+  /** Sign-in methods: email+password (argon2id hash) and/or GitHub. */
+  email: text("email").unique(), // null for GitHub-only users without a shared email
+  passwordHash: text("password_hash"), // argon2id; null for GitHub-only users
+  githubUserId: bigint("github_user_id", { mode: "number" }).unique(),
+  /** GitHub profile fields — display only (null for email-only users). */
+  login: text("login"),
+  name: text("name"),
+  avatarUrl: text("avatar_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sessions = pgTable("sessions", {
+  id: uuidPk(),
+  /** sha256 of the cookie token — the raw token is NEVER stored. */
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// --- GitHub App installations (decision #42) ------------------------------------
+
+export const installations = pgTable("installations", {
+  id: uuidPk(),
+  /** GitHub's installation id — what webhooks carry and tokens mint for. */
+  installationId: bigint("installation_id", { mode: "number" }).notNull().unique(),
+  accountLogin: text("account_login").notNull(),
+  accountType: text("account_type").notNull(),
+  suspended: boolean("suspended").notNull().default(false),
+  /** The user who linked it (onboarding state param, or the webhook sender). */
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const repositories = pgTable(
+  "repositories",
+  {
+    id: uuidPk(),
+    installationRef: uuid("installation_ref")
+      .notNull()
+      .references(() => installations.id, { onDelete: "cascade" }),
+    /** "owner/name" */
+    fullName: text("full_name").notNull(),
+    /** THE GATE (decision #44): only enabled repos trigger agent runs. */
+    enabled: boolean("enabled").notNull().default(false),
+    defaultBranch: text("default_branch"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("repositories_installation_name_unique").on(t.installationRef, t.fullName)],
+);
 
 export const threads = pgTable(
   "threads",
@@ -38,6 +98,10 @@ export const threads = pgTable(
     baseRef: text("base_ref").notNull().default("main"), // we never push to baseRef
     /** Where the thread came from: "github" (webhook) or "local" (CLI/dev). */
     source: text("source").notNull().default("local"),
+    /** The account that owns the installation this work came through (decision #41). */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** GitHub's installation id — the credential context for this thread's repo. */
+    installationId: bigint("installation_id", { mode: "number" }),
     checkpointSha: text("checkpoint_sha"), // resume/fork point (git commit in the VM)
     summary: text("summary"), // running summary of the work (context compaction)
     /** Verbatim recent conversation — the ThreadStore's storage (decision #17). */
@@ -139,6 +203,11 @@ export const traceEvents = pgTable(
 );
 
 // --- row types (inferred from the table definitions above) -------------------
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Session = typeof sessions.$inferSelect;
+export type Installation = typeof installations.$inferSelect;
+export type Repository = typeof repositories.$inferSelect;
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 export type Run = typeof runs.$inferSelect;

@@ -44,6 +44,21 @@ export interface GithubComment {
   user?: { login?: string; type?: string };
 }
 
+export interface GithubUserProfile {
+  id: number;
+  login: string;
+  type: string;
+  name?: string | null;
+  avatar_url?: string | null;
+  email?: string | null;
+}
+
+export interface GithubInstallationRepo {
+  full_name: string;
+  private: boolean;
+  default_branch: string;
+}
+
 export interface GitHubClient {
   getIssue(repo: string, issueNumber: number): Promise<GithubIssue>;
   createPullRequest(input: {
@@ -62,7 +77,9 @@ export interface GitHubClient {
   /** Post a comment (the blocked → needs-input channel, decision #40). */
   commentOnIssue(repo: string, issueNumber: number, body: string): Promise<void>;
   addLabels(repo: string, issueNumber: number, labels: string[]): Promise<void>;
-  whoami(): Promise<{ login: string; type: string }>;
+  /** The repos this installation can see — onboarding's picker. */
+  listInstallationRepositories(): Promise<GithubInstallationRepo[]>;
+  whoami(): Promise<GithubUserProfile>;
 }
 
 export interface GitHubClientOptions {
@@ -119,6 +136,13 @@ export function createGitHubClient(opts: GitHubClientOptions): GitHubClient {
       request("POST", `/repos/${repo}/issues/${issueNumber}/comments`, { body }),
     addLabels: (repo, issueNumber, labels) =>
       request("POST", `/repos/${repo}/issues/${issueNumber}/labels`, { labels }),
+    listInstallationRepositories: async () => {
+      const res = await request<{ repositories: GithubInstallationRepo[] }>(
+        "GET",
+        "/installation/repositories?per_page=100",
+      );
+      return res.repositories;
+    },
     whoami: () => request("GET", "/user"),
   };
 }

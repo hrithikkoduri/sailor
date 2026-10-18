@@ -26,8 +26,10 @@ describe("loadConfig", () => {
     expect(cfg.llm.baseUrl).toBe("https://openrouter.ai/api/v1");
     expect(cfg.postgres.url).toBe("postgres://harness:harness@localhost:5432/harness");
     expect(cfg.redis.url).toBe("redis://localhost:6379");
-    expect(cfg.github.token).toBeUndefined();
-    expect(cfg.github.webhookSecret).toBeUndefined();
+    expect(cfg.github.appId).toBeUndefined();
+    expect(cfg.github.botLogin).toBeUndefined();
+    expect(cfg.auth.devBypass).toBe(false);
+    expect(cfg.auth.sessionTtlDays).toBe(30);
     expect(cfg.server.port).toBe(8787);
     expect(cfg.server.publicUrl).toBe("http://localhost:5173");
   });
@@ -39,22 +41,25 @@ describe("loadConfig", () => {
       HEYO_DISK_GB: "8",
       DATABASE_URL: "postgres://db:6432/other",
       LLM_MODEL: "some/model",
-      GITHUB_TOKEN: "ghp_x",
+      GITHUB_APP_ID: "12345",
+      GITHUB_APP_SLUG: "harness-dev",
       GITHUB_WEBHOOK_SECRET: "whsec",
-      GITHUB_BOT_LOGIN: "harness-bot",
       HARNESS_PORT: "9999",
       HARNESS_PUBLIC_URL: "https://dash.example",
+      DEV_AUTH_BYPASS: "1",
     });
     expect(cfg.heyo.token).toBe("tok");
     expect(cfg.heyo.sizeClass).toBe("medium");
     expect(cfg.heyo.diskSizeGb).toBe(8);
     expect(cfg.postgres.url).toBe("postgres://db:6432/other");
     expect(cfg.llm.model).toBe("some/model");
-    expect(cfg.github.token).toBe("ghp_x");
+    expect(cfg.github.appId).toBe("12345");
+    expect(cfg.github.botLogin).toBe("harness-dev[bot]");
     expect(cfg.github.webhookSecret).toBe("whsec");
-    expect(cfg.github.botLogin).toBe("harness-bot");
     expect(cfg.server.port).toBe(9999);
     expect(cfg.server.publicUrl).toBe("https://dash.example");
+    expect(cfg.auth.secureCookies).toBe(true); // https public URL
+    expect(cfg.auth.devBypass).toBe(true);
   });
 
   it("rejects invalid size classes loudly", () => {

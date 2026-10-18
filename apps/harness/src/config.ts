@@ -22,13 +22,26 @@ export interface HarnessConfig {
     sizeClass: HeyoSizeClass;
     diskSizeGb: number;
   };
-  /** GitHub access for reading issues and opening PRs (bot account PAT). */
+  /** GitHub App (decision #42) — replaces the PAT entirely. */
   github: {
-    token: string | undefined;
-    /** Webhook HMAC secret (repo/org webhook config); required by `harness serve`. */
+    appId: string | undefined;
+    appSlug: string | undefined;
+    /** PEM (raw, \n-escaped, or base64) — a deployment secret, never in the DB. */
+    privateKey: string | undefined;
+    /** User-to-server OAuth for "Sign in with GitHub" (decision #41). */
+    clientId: string | undefined;
+    clientSecret: string | undefined;
+    /** Webhook HMAC secret — configured ONCE on the App. */
     webhookSecret: string | undefined;
-    /** The bot's GitHub login — lets triage tag self-authored events (decision #28). */
+    /** Derived bot identity: {slug}[bot]. */
     botLogin: string | undefined;
+  };
+  /** Sessions + dev affordances (decision #41). */
+  auth: {
+    sessionTtlDays: number;
+    secureCookies: boolean;
+    /** DEV ONLY: skip auth for UI iteration; never honored in production. */
+    devBypass: boolean;
   };
   /** Webhook server + dashboard links. */
   server: {
@@ -114,6 +127,17 @@ function sizeClass(value: string | undefined): HeyoSizeClass {
   return v;
 }
 
+/** PEM from env: raw, \n-escaped, or base64 of the PEM. */
+function normalizePem(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (raw.includes("BEGIN")) return raw.replace(/\\n/g, "\n");
+  if (/^[A-Za-z0-9+/=\s]+$/.test(raw)) {
+    const decoded = Buffer.from(raw, "base64").toString("utf8");
+    if (decoded.includes("BEGIN")) return decoded;
+  }
+  return raw; // let the crypto layer complain loudly
+}
+
 function optionalNumber(value: string | undefined): number | undefined {
   if (value === undefined || value === "") return undefined;
   const n = Number(value);
@@ -135,9 +159,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig 
       diskSizeGb: Number(env.HEYO_DISK_GB ?? "4") || 4,
     },
     github: {
-      token: env.GITHUB_TOKEN || undefined,
+      appId: env.GITHUB_APP_ID || undefined,
+      appSlug: env.GITHUB_APP_SLUG || undefined,
+      privateKey: normalizePem(env.GITHUB_APP_PRIVATE_KEY),
+      clientId: env.GITHUB_APP_CLIENT_ID || undefined,
+      clientSecret: env.GITHUB_APP_CLIENT_SECRET || undefined,
       webhookSecret: env.GITHUB_WEBHOOK_SECRET || undefined,
-      botLogin: env.GITHUB_BOT_LOGIN || undefined,
+      botLogin: env.GITHUB_APP_SLUG ? `${env.GITHUB_APP_SLUG}[bot]` : undefined,
+    },
+    auth: {
+      sessionTtlDays: optionalNumber(env.SESSION_TTL_DAYS) ?? 30,
+      secureCookies: (env.HARNESS_PUBLIC_URL ?? "http://localhost:5173").startsWith("https"),
+      devBypass: env.DEV_AUTH_BYPASS === "1" && env.NODE_ENV !== "production",
     },
     server: {
       port: Number(env.HARNESS_PORT ?? "8787") || 8787,

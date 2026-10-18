@@ -21,7 +21,7 @@ import {
   type BabysitJobData,
   type RunJobData,
 } from "../queue/index.js";
-import { createGitHubClient } from "../github/client.js";
+import { createGitHubApp } from "../github/app.js";
 import { executeRun } from "../runs/execute.js";
 import { drainInbox } from "../threads/inbox.js";
 import { handleSweep } from "./sweep.js";
@@ -62,8 +62,11 @@ export async function workerCommand(argv: string[]): Promise<number> {
   const pool = createPool(cfg.postgres.url);
   const db = createDb(pool);
 
-  // GitHub access for the babysitter + PR delivery (optional in dev).
-  const github = cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined;
+  // The GitHub App (decision #42): tokens are minted per installation.
+  const githubApp =
+    cfg.github.appId && cfg.github.privateKey
+      ? createGitHubApp({ appId: cfg.github.appId, privateKey: cfg.github.privateKey })
+      : undefined;
 
   const queueConnection = createQueueConnection(cfg.redis.url);
   const queues = createQueues(queueConnection);
@@ -78,7 +81,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
         runId: job.data.runId,
         local,
         heartbeatEveryMs,
-        ...(github ? { github } : {}),
+        ...(githubApp ? { githubApp } : {}),
       });
       const watching =
         outcome.disposition === "watch"
@@ -106,9 +109,9 @@ export async function workerCommand(argv: string[]): Promise<number> {
       // Two kinds of scheduled work share this queue: the stale-run sweep
       // (recovery) and the PR babysitter (step 13).
       if (job.name === "babysit") {
-        if (!github) return; // no token — nothing to inspect
+        if (!githubApp) return; // no App configured — nothing to inspect
         const results = await runBabysitSweep(
-          { db, queues, github, botLogin: cfg.github.botLogin },
+          { db, queues, githubApp, botLogin: cfg.github.botLogin },
           { threadId: job.data.threadId },
         );
         const notable = results.filter((r) => r.action !== "quiet" && r.action !== "busy");
@@ -136,7 +139,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
 
   process.stdout.write(
     `[worker] up — backend: ${local ? "local (dev, no isolation)" : "heyo"}, sweep every ${sweepEveryMs}ms, queue: runs (concurrency 1)` +
-      `${github ? `, babysit every ${Math.round(BABYSIT_REPEAT_MS / 60_000)}min` : " (no GITHUB_TOKEN — babysitter idle)"}\n`,
+      `${githubApp ? `, babysit every ${Math.round(BABYSIT_REPEAT_MS / 60_000)}min` : " (no GitHub App — babysitter idle)"}\n`,
   );
 
   let shuttingDown = false;

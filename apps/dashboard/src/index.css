@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* The mood: near-black, one indigo→violet accent, generous whitespace. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: #0a0a0f;
+  color: #f4f4f5;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(129, 140, 248, 0.35);
+}
+
+/* A soft top glow shared by every page. */
+.bg-aura {
+  background:
+    radial-gradient(60rem 32rem at 50% -12rem, rgba(99, 102, 241, 0.18), transparent 60%),
+    radial-gradient(40rem 24rem at 85% 105%, rgba(168, 85, 247, 0.1), transparent 60%),
+    #0a0a0f;
+}

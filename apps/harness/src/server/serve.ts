@@ -8,7 +8,7 @@ import { serve } from "@hono/node-server";
 import { loadConfig } from "../config.js";
 import { createDb, createPool } from "../db/index.js";
 import { createQueueConnection, createQueues } from "../queue/index.js";
-import { createGitHubClient } from "../github/client.js";
+import { createGitHubApp } from "../github/app.js";
 import { createServerApp } from "./app.js";
 
 export async function serveCommand(args: string[]): Promise<number> {
@@ -24,12 +24,27 @@ export async function serveCommand(args: string[]): Promise<number> {
   const pool = createPool(cfg.postgres.url);
   const db = createDb(pool);
   const queues = createQueues(createQueueConnection(cfg.redis.url));
+
+  // The GitHub App (decision #42) — app id + private key are deployment secrets.
+  const githubApp =
+    cfg.github.appId && cfg.github.privateKey
+      ? createGitHubApp({ appId: cfg.github.appId, privateKey: cfg.github.privateKey })
+      : undefined;
+
   const app = createServerApp({
     db,
     queues,
     webhookSecret: cfg.github.webhookSecret ?? "",
     botLogin: cfg.github.botLogin,
     skipSignatureVerification: skipVerify,
+    ...(githubApp ? { githubApp } : {}),
+    authConfig: cfg.auth,
+    publicUrl: cfg.server.publicUrl,
+    oauth: {
+      ...(cfg.github.appSlug ? { slug: cfg.github.appSlug } : {}),
+      ...(cfg.github.clientId ? { clientId: cfg.github.clientId } : {}),
+      ...(cfg.github.clientSecret ? { clientSecret: cfg.github.clientSecret } : {}),
+    },
   });
 
   const server = serve({ fetch: app.fetch, port: cfg.server.port });
@@ -37,14 +52,14 @@ export async function serveCommand(args: string[]): Promise<number> {
   process.stdout.write(`  webhook  POST http://localhost:${cfg.server.port}/webhooks/github\n`);
   process.stdout.write(`  health   GET  http://localhost:${cfg.server.port}/healthz\n`);
   if (skipVerify) process.stdout.write("  ⚠ signature verification DISABLED (--no-verify)\n");
-  if (cfg.github.token) {
-    const who = await createGitHubClient({ token: cfg.github.token })
-      .whoami()
-      .catch(() => undefined);
-    process.stdout.write(who ? `  github   authenticated as ${who.login} (${who.type})\n` : "  github   token rejected — check GITHUB_TOKEN\n");
+  if (githubApp) {
+    process.stdout.write(
+      `  github   app id ${cfg.github.appId}${cfg.github.appSlug ? ` (${cfg.github.appSlug})` : ""}\n`,
+    );
   } else {
-    process.stdout.write("  github   no GITHUB_TOKEN — PR delivery stays disabled until it is set\n");
+    process.stdout.write("  github   no GitHub App configured — installs/PR delivery idle (set GITHUB_APP_*)\n");
   }
+  if (cfg.auth.devBypass) process.stdout.write("  ⚠ DEV_AUTH_BYPASS — auth disabled (never in production)\n");
 
   const shutdown = async () => {
     process.stdout.write("\nharness serve — shutting down\n");

@@ -11,6 +11,7 @@ import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
 import { runBabysitSweep } from "../../src/worker/babysit.js";
 import { appendEvent } from "../../src/threads/inbox.js";
+import type { GitHubAppService } from "../../src/github/app.js";
 import type { GitHubClient, GithubCheckRun, GithubComment, GithubPullRequestState } from "../../src/github/client.js";
 import { loadConfig } from "../../src/config.js";
 
@@ -33,6 +34,8 @@ describe("runBabysitSweep", () => {
     await pool.end();
   });
 
+let issueSeq = 50;
+
   const newThread = async (tag: string, issue: number, opts: { turnsUsed?: number } = {}) => {
     const repo = `test/babysit-${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const [thread] = await db
@@ -44,6 +47,7 @@ describe("runBabysitSweep", () => {
         headRef: `harness/issue-${issue}`,
         prNumber: issue,
         state: "pr_open",
+        installationId: 700000 + ++issueSeq,
         ...(opts.turnsUsed !== undefined ? { turnsUsed: opts.turnsUsed } : {}),
       })
       .returning();
@@ -76,11 +80,21 @@ describe("runBabysitSweep", () => {
     },
     commentOnIssue: async () => undefined,
     addLabels: async () => undefined,
-    whoami: async () => ({ login: "harness-bot", type: "Bot" }),
+    listInstallationRepositories: async () => [],
+    whoami: async () => ({ id: 1, login: "harness-bot", type: "Bot" }),
+  });
+
+  /** Tokens mint per installation (decision #42) — fake the service. */
+  const fakeApp = (github: GitHubClient): GitHubAppService => ({
+    clientFor: async () => github,
+    tokenFor: async () => "fake-token",
+    getInstallation: async () => {
+      throw new Error("not used");
+    },
   });
 
   const sweep = (github: GitHubClient, threadId: string) =>
-    runBabysitSweep({ db, queues, github, botLogin: "harness-bot" }, { threadId });
+    runBabysitSweep({ db, queues, githubApp: fakeApp(github), botLogin: "harness-bot" }, { threadId });
 
   it("failed checks → a babysit turn is queued with the CI task", async () => {
     const thread = await newThread("ci", 50);

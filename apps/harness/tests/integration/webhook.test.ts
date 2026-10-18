@@ -11,6 +11,7 @@ import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
 import { createServerApp } from "../../src/server/app.js";
 import { loadConfig } from "../../src/config.js";
+import { seedRepo } from "../helpers/github-fixtures.js";
 
 const SECRET = "test-webhook-secret";
 const sign = (body: string) => `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
@@ -22,11 +23,19 @@ describe("webhook door", () => {
   let app: ReturnType<typeof createServerApp>;
   const repoNames: string[] = [];
   const deliveryIds: string[] = [];
+  const installationRowIds: string[] = [];
 
   const nextDelivery = () => {
     const id = randomUUID();
     deliveryIds.push(id);
     return id;
+  };
+
+  /** The repo gate (decision #44): enable the repo so events are processed. */
+  const seed = async (repo: string, opts: { enabled?: boolean } = {}) => {
+    const seeded = await seedRepo(db, repo, opts);
+    installationRowIds.push(seeded.installationRowId);
+    return seeded.installationId;
   };
 
   beforeAll(async () => {
@@ -40,6 +49,9 @@ describe("webhook door", () => {
   afterAll(async () => {
     if (repoNames.length > 0) {
       await db.delete(schema.threads).where(inArray(schema.threads.repo, repoNames));
+    }
+    if (installationRowIds.length > 0) {
+      await db.delete(schema.installations).where(inArray(schema.installations.id, installationRowIds));
     }
     if (deliveryIds.length > 0) {
       await db.delete(schema.webhookDeliveries).where(inArray(schema.webhookDeliveries.deliveryId, deliveryIds));
@@ -66,7 +78,7 @@ describe("webhook door", () => {
     return repo;
   };
 
-  const labeledBody = (repo: string, issue: number) =>
+  const labeledBody = (repo: string, issue: number, installationId: number) =>
     JSON.stringify({
       action: "labeled",
       label: { name: "agent:fix" },
@@ -77,13 +89,15 @@ describe("webhook door", () => {
         html_url: `https://github.com/${repo}/issues/${issue}`,
       },
       repository: { full_name: repo, default_branch: "main" },
+      installation: { id: installationId },
       sender: { login: "octocat", type: "User" },
     });
 
   it("label `agent:fix` → thread + consumed event + queued run", async () => {
     const repo = newRepo("ok");
+    const installationId = await seed(repo);
     const delivery = nextDelivery();
-    const res = await post(labeledBody(repo, 7), { delivery });
+    const res = await post(labeledBody(repo, 7, installationId), { delivery });
 
     expect(res.status).toBe(202);
     const json = (await res.json()) as { threadId: string; runId: string };
@@ -97,6 +111,7 @@ describe("webhook door", () => {
       baseRef: "main",
       headRef: "harness/issue-7",
       state: "queued",
+      installationId,
     });
 
     const [deliveryRow] = await db
@@ -120,10 +135,11 @@ describe("webhook door", () => {
 
   it("relabel while a run is active: the event waits in the inbox (wake refused)", async () => {
     const repo = newRepo("busy");
-    const first = await post(labeledBody(repo, 8), { delivery: nextDelivery() });
+    const installationId = await seed(repo);
+    const first = await post(labeledBody(repo, 8, installationId), { delivery: nextDelivery() });
     expect(first.status).toBe(202);
 
-    const res = await post(labeledBody(repo, 8), { delivery: nextDelivery() });
+    const res = await post(labeledBody(repo, 8, installationId), { delivery: nextDelivery() });
     expect(res.status).toBe(202);
     const json = (await res.json()) as { threadId: string; runId: string | null };
     expect(json.runId).toBeNull();
@@ -136,9 +152,10 @@ describe("webhook door", () => {
 
   it("duplicate deliveries are acknowledged exactly once (dedup ledger)", async () => {
     const repo = newRepo("dup");
+    const installationId = await seed(repo);
     const delivery = nextDelivery();
-    expect((await post(labeledBody(repo, 9), { delivery })).status).toBe(202);
-    const res2 = await post(labeledBody(repo, 9), { delivery });
+    expect((await post(labeledBody(repo, 9, installationId), { delivery })).status).toBe(202);
+    const res2 = await post(labeledBody(repo, 9, installationId), { delivery });
     expect(res2.status).toBe(200);
     expect(((await res2.json()) as { duplicate?: boolean }).duplicate).toBe(true);
 
@@ -150,8 +167,9 @@ describe("webhook door", () => {
 
   it("a bad signature is rejected before anything is recorded", async () => {
     const repo = newRepo("bad");
+    const installationId = await seed(repo);
     const delivery = nextDelivery();
-    const res = await post(labeledBody(repo, 10), { delivery, signature: `sha256=${"0".repeat(64)}` });
+    const res = await post(labeledBody(repo, 10, installationId), { delivery, signature: `sha256=${"0".repeat(64)}` });
     expect(res.status).toBe(401);
     expect(await db.select().from(schema.threads).where(eq(schema.threads.repo, repo))).toHaveLength(0);
     expect(
@@ -172,6 +190,7 @@ describe("webhook door", () => {
 
   it("terminal threads are left alone (wake guard) even when labeled again", async () => {
     const repo = newRepo("dead");
+    const installationId = await seed(repo);
     const [thread] = await db
       .insert(schema.threads)
       .values({
@@ -179,13 +198,40 @@ describe("webhook door", () => {
         issueNumber: 11,
         source: "github",
         headRef: "harness/issue-11",
+        installationId,
         state: "merged",
       })
       .returning();
 
-    const res = await post(labeledBody(repo, 11), { delivery: nextDelivery() });
+    const res = await post(labeledBody(repo, 11, installationId), { delivery: nextDelivery() });
     expect(res.status).toBe(200);
     expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, thread!.id))).toHaveLength(0);
     expect(await db.select().from(schema.events).where(eq(schema.events.threadId, thread!.id))).toHaveLength(0);
+  });
+
+  it("THE REPO GATE: a repo that was never enabled in onboarding is ignored", async () => {
+    const repo = newRepo("gated");
+    const installationId = await seed(repo, { enabled: false }); // installed, NOT selected
+    const res = await post(labeledBody(repo, 12, installationId), { delivery: nextDelivery() });
+
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { reason?: string }).reason).toBe("repo not enabled");
+    expect(await db.select().from(schema.threads).where(eq(schema.threads.repo, repo))).toHaveLength(0);
+  });
+
+  it("repos whose installation we don't know are ignored (App-only mode)", async () => {
+    const repo = newRepo("noinstall");
+    const body = JSON.stringify({
+      action: "labeled",
+      label: { name: "agent:fix" },
+      issue: { number: 13, title: "x", body: null, html_url: "https://example/13" },
+      repository: { full_name: repo, default_branch: "main" },
+      sender: { login: "octocat", type: "User" },
+    });
+    const res = await post(body, { delivery: nextDelivery() });
+
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { reason?: string }).reason).toBe("missing installation");
+    expect(await db.select().from(schema.threads).where(eq(schema.threads.repo, repo))).toHaveLength(0);
   });
 });

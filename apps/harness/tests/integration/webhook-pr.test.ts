@@ -11,6 +11,7 @@ import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
 import { createServerApp } from "../../src/server/app.js";
 import { loadConfig } from "../../src/config.js";
+import { seedRepo } from "../helpers/github-fixtures.js";
 
 const SECRET = "test-webhook-secret";
 const sign = (body: string) => `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
@@ -22,6 +23,7 @@ describe("webhook: PR lifecycle", () => {
   let app: ReturnType<typeof createServerApp>;
   const threadIds: string[] = [];
   const deliveryIds: string[] = [];
+  const installationRowIds: string[] = [];
 
   const nextDelivery = () => {
     const id = randomUUID();
@@ -39,6 +41,9 @@ describe("webhook: PR lifecycle", () => {
 
   afterAll(async () => {
     if (threadIds.length > 0) await db.delete(schema.threads).where(inArray(schema.threads.id, threadIds));
+    if (installationRowIds.length > 0) {
+      await db.delete(schema.installations).where(inArray(schema.installations.id, installationRowIds));
+    }
     if (deliveryIds.length > 0) {
       await db.delete(schema.webhookDeliveries).where(inArray(schema.webhookDeliveries.deliveryId, deliveryIds));
     }
@@ -60,6 +65,8 @@ describe("webhook: PR lifecycle", () => {
 
   const newThread = async (tag: string, issue: number) => {
     const repo = `test/prlife-${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const seeded = await seedRepo(db, repo); // the repo gate needs an enabled repo
+    installationRowIds.push(seeded.installationRowId);
     const [thread] = await db
       .insert(schema.threads)
       .values({
@@ -69,6 +76,7 @@ describe("webhook: PR lifecycle", () => {
         headRef: `harness/issue-${issue}`,
         prNumber: issue,
         state: "pr_open",
+        installationId: seeded.installationId,
       })
       .returning();
     threadIds.push(thread!.id);
@@ -88,6 +96,7 @@ describe("webhook: PR lifecycle", () => {
         pull_requests: [{ number: 40 }],
       },
       repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
       sender: { login: "ci-bot", type: "Bot" },
     });
 
@@ -119,6 +128,7 @@ describe("webhook: PR lifecycle", () => {
       },
       pull_request: { number: 41 },
       repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
       sender: { login: "octocat", type: "User" },
     });
 
@@ -142,6 +152,7 @@ describe("webhook: PR lifecycle", () => {
       after: "sha-42",
       commits: [{ id: "a" }, { id: "b" }],
       repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
       sender: { login: "harness-bot", type: "Bot" },
     });
 
@@ -161,6 +172,7 @@ describe("webhook: PR lifecycle", () => {
       after: "sha-43",
       commits: [{ id: "a" }],
       repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
       sender: { login: "someone-else", type: "User" },
     });
 
@@ -177,6 +189,7 @@ describe("webhook: PR lifecycle", () => {
       comment: { body: "why does X behave this way?", html_url: "https://example/c/1", user: { login: "octocat", type: "User" } },
       issue: { number: 45, pull_request: { url: "https://example/pr/45" } },
       repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
       sender: { login: "octocat", type: "User" },
     });
 
@@ -194,6 +207,7 @@ describe("webhook: PR lifecycle", () => {
       action: "closed",
       pull_request: { number: 44, merged: true, html_url: "https://example/pr/44", head: { ref: "harness/issue-44" } },
       repository: { full_name: thread.repo },
+      installation: { id: thread.installationId! },
       sender: { login: "octocat", type: "User" },
     });
 

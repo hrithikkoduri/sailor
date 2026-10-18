@@ -248,21 +248,29 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
 - **Done when:** Heyo smoke boots from our image with zero install steps.
 
 ### Step 17 — Dashboard: API + threads/runs view + trace viewer
-**17a — Accounts + GitHub App + onboarding (from review — before the UI):**
-- **What:** `users` + `sessions` tables (sign in with GitHub via the SAME App's user OAuth;
-  first login = signup; DB stores only session-token hashes — no passwords). `installations`
-  table; `threads.user_id` + `threads.installation_id`. Onboarding: install the App
-  (`state`-bound; `installation` webhook sender as fallback) → pick a repo → dashboard.
-  **GitHub auth swaps PAT → App (decision #42):** JWT (RS256) → per-installation tokens
-  (~1h, cached), app-level webhooks (one secret; `installation.id` in every payload), bot
-  login derived `{slug}[bot]`, sandbox git credentials = installation token per run,
-  `GitHubAppService.clientFor(installationId)` (test-injectable — fakes unchanged). Local
-  dev: a free dev App pointed at localhost (+ `DEV_AUTH_BYPASS` for UI-only iteration,
-  loud and dev-only). `GITHUB_TOKEN` / `GITHUB_BOT_LOGIN` retire.
-- **Files:** `src/auth/{routes,session}.ts`, `src/github/app.ts` (+ client rework), schema
-  migration (users/sessions/installations + threads FKs), `src/server/*`, onboarding UI
-- **Done when:** fresh login → install → repo picked → dashboard; label an issue (repo with
-  the seeded bug) → PR appears via the App's tokens; all existing tests stay green (fakes).
+**17a — Accounts + GitHub App + onboarding ✅**
+- **What:** `users` + `sessions` + `installations` + `repositories` tables; **both sign-in
+  methods** — email+password (**argon2id** via `@node-rs/argon2`) and GitHub user-to-server
+  OAuth (first login = signup; a GitHub verified email links onto an existing account; DB
+  stores only session-token hashes). Onboarding: install the App (`state`-bound; `installation`
+  webhook sender as fallback) → **select repos (THE GATE, decision #44)** → dashboard.
+  `repositories.enabled` gates **every** webhook except the installation lifecycle: events for
+  unselected repos are recorded in the delivery ledger and ignored. **GitHub auth swaps PAT →
+  App (decision #42):** JWT (RS256) → per-installation tokens (~1h, cached), app-level webhooks
+  (one secret; `installation.id` in every payload), bot login derived `{slug}[bot]`, sandbox git
+  credentials = installation token per run, `GitHubAppService.clientFor(installationId)`
+  (test-injectable). `installation` / `installation_repositories` webhooks keep rows in sync.
+  Local dev: a free dev App pointed at localhost (+ `DEV_AUTH_BYPASS` for UI-only iteration).
+  `GITHUB_TOKEN` / `GITHUB_BOT_LOGIN` retired (doctor now reports the App).
+- **Files:** `src/auth/{routes,onboarding,password,session,users,github-oauth}.ts`,
+  `src/github/{app,installations}.ts`, migration `0008`, `src/server/{app,serve}.ts`,
+  `src/runs/execute.ts` + `src/worker/*` (App tokens), `apps/dashboard/*` (Vite + React +
+  Tailwind v4 login + onboarding UI; dev proxy → :8787).
+- **Done when:** ✅ back end end-to-end: signup/login/logout/me, GitHub callback (faked OAuth
+  with account linking), dev bypass, install → `/setup` → repos synced **disabled** → selection
+  saved, and the gate proven end-to-end (enabled repo → thread+run; disabled → ignored, no
+  rows). **190 tests green** (94 package + 40 app unit + 56 integration); dashboard typechecks
+  + builds; the live GitHub walkthrough waits on the dev App (DESIGN #43).
 
 **17b — the dashboard proper:**
 - **What:** `server/api.ts` (REST over threads, runs, trace_events); static dashboard page:

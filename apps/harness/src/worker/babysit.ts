@@ -17,6 +17,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { Queues } from "../queue/index.js";
 import type { GitHubClient } from "../github/client.js";
+import type { GitHubAppService } from "../github/app.js";
 import { failedCheckNames, prIsConflicted, unansweredComments } from "../github/checks.js";
 import { renderGithubTask } from "../github/render.js";
 import { appendEvent, consumeEvents, pendingEvents } from "../threads/inbox.js";
@@ -27,7 +28,8 @@ import { requestCancel } from "../runs/lease.js";
 export interface BabysitDeps {
   db: Db;
   queues: Queues;
-  github: GitHubClient;
+  /** Tokens are minted per installation (decision #42). */
+  githubApp: GitHubAppService;
   botLogin?: string;
 }
 
@@ -55,7 +57,12 @@ export async function runBabysitSweep(
   for (const thread of open) {
     if (thread.prNumber == null) continue;
     try {
-      results.push(await babysitOne(deps, thread));
+      if (thread.installationId == null) {
+        results.push({ threadId: thread.id, action: "no-installation" });
+        continue;
+      }
+      const github = await deps.githubApp.clientFor(thread.installationId);
+      results.push(await babysitOne({ ...deps, github }, thread));
     } catch (err) {
       results.push({
         threadId: thread.id,
@@ -66,7 +73,10 @@ export async function runBabysitSweep(
   return results;
 }
 
-async function babysitOne(deps: BabysitDeps, thread: ThreadRow): Promise<BabysitResult> {
+async function babysitOne(
+  deps: BabysitDeps & { github: GitHubClient },
+  thread: ThreadRow,
+): Promise<BabysitResult> {
   const { db, github } = deps;
 
   const pr = await github.getPullRequest(thread.repo, thread.prNumber!);

@@ -57,6 +57,13 @@
       "when": 1792280900557,
       "tag": "0007_colorful_tarot",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792286643429,
+      "tag": "0008_tricky_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

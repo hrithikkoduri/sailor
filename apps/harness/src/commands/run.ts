@@ -180,7 +180,6 @@ export async function runCommand(argv: string[]): Promise<number> {
             image: cfg.heyo.image,
             sizeClass: cfg.heyo.sizeClass,
             diskSizeGb: cfg.heyo.diskSizeGb,
-            githubToken: cfg.github.token,
           },
         },
   );

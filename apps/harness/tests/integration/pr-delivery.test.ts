@@ -95,7 +95,8 @@ describe("deliverPullRequest", () => {
       listIssueComments: async () => [],
       commentOnIssue: async () => undefined,
       addLabels: async () => undefined,
-      whoami: async () => ({ login: "harness-bot", type: "Bot" }),
+      listInstallationRepositories: async () => [],
+      whoami: async () => ({ id: 1, login: "harness-bot", type: "Bot" }),
     };
     return { github, created };
   };

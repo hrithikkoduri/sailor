@@ -197,12 +197,24 @@ export async function runDoctor(cfg: HarnessConfig): Promise<CheckResult[]> {
   });
 
   results.push({
-    name: "GITHUB_TOKEN",
-    status: cfg.github.token ? "ok" : "warn",
-    detail: cfg.github.token ? "set" : "not set — issue fetch / PR creation unavailable",
-    hint: cfg.github.token
-      ? undefined
-      : "Needed for GitHub integration (step 12): fine-grained PAT on the bot account.",
+    name: "GITHUB_APP",
+    status: cfg.github.appId && cfg.github.privateKey ? "ok" : "warn",
+    detail:
+      cfg.github.appId && cfg.github.privateKey
+        ? `app id ${cfg.github.appId}${cfg.github.appSlug ? ` (${cfg.github.appSlug})` : ""}`
+        : "not configured — installs / PR delivery unavailable",
+    hint:
+      cfg.github.appId && cfg.github.privateKey
+        ? undefined
+        : "Create a GitHub App (decision #42) and set GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY (+ SLUG / CLIENT_ID / CLIENT_SECRET).",
+    required: false,
+  });
+
+  results.push({
+    name: "GITHUB_WEBHOOK_SECRET",
+    status: cfg.github.webhookSecret ? "ok" : "warn",
+    detail: cfg.github.webhookSecret ? "set" : "not set — `harness serve` refuses to start",
+    hint: cfg.github.webhookSecret ? undefined : "Configure the webhook secret on the GitHub App; put it in .env.",
     required: false,
   });
 

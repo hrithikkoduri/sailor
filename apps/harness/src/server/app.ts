@@ -14,6 +14,7 @@
  * The server only writes Postgres + the queue — the worker executes runs.
  */
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { Queues } from "../queue/index.js";
@@ -21,10 +22,16 @@ import { verifyWebhookSignature } from "../github/signature.js";
 import { AGENT_FIX_LABEL, classifyGithubEvent } from "../github/triage.js";
 import { headRefFor } from "../github/repo.js";
 import { renderGithubTask } from "../github/render.js";
+import type { GitHubAppService } from "../github/app.js";
+import { repoEnabled, upsertInstallation } from "../github/installations.js";
 import { appendEvent, consumeEvents } from "../threads/inbox.js";
 import { canTransition, isTerminal } from "../threads/state.js";
 import { wakeThread } from "../threads/wake.js";
 import { requestCancel } from "../runs/lease.js";
+import { createAuthRoutes, type AuthConfig, type UserFromRequest } from "../auth/routes.js";
+import { createOnboardingRoutes } from "../auth/onboarding.js";
+import { sessionUser, SESSION_COOKIE } from "../auth/session.js";
+import { ensureDevUser } from "../auth/users.js";
 
 export interface ServerDeps {
   db: Db;
@@ -36,6 +43,14 @@ export interface ServerDeps {
   /** Test/dev only (`harness serve --no-verify`): accept unsigned bodies. */
   skipSignatureVerification?: boolean;
   log?: (line: string) => void;
+  /** GitHub App service (decisions #42/#44) — onboarding + repo sync. */
+  githubApp?: GitHubAppService;
+  /** Sessions + dev affordances (decision #41). */
+  authConfig?: AuthConfig;
+  /** Dashboard base URL — browser-facing redirects land here. */
+  publicUrl?: string;
+  /** The App's user-OAuth credentials (Sign in with GitHub). */
+  oauth?: { slug?: string; clientId?: string; clientSecret?: string; fetchFn?: typeof fetch };
 }
 
 type ThreadRow = typeof schema.threads.$inferSelect;
@@ -51,6 +66,7 @@ interface LabeledEvent {
   issue?: { number?: number; title?: string; body?: string | null; html_url?: string };
   repository?: { full_name?: string; default_branch?: string };
   sender?: Sender;
+  installation?: { id?: number };
 }
 
 interface CheckRunEvent {
@@ -127,6 +143,19 @@ export function renderIssueTask(issue: { number?: number; title?: string; body?:
 export function createServerApp(deps: ServerDeps): Hono {
   const app = new Hono();
   const log = deps.log ?? ((line: string) => process.stdout.write(`${line}\n`));
+  const authConfig: AuthConfig = deps.authConfig ?? { sessionTtlDays: 30, secureCookies: false, devBypass: false };
+  const publicUrl = deps.publicUrl ?? "http://localhost:5173";
+
+  // The session resolver: cookie → session → user (or the dev-bypass user).
+  const getUser: UserFromRequest = async (c) => {
+    const user = await sessionUser(deps.db, getCookie(c, SESSION_COOKIE));
+    if (user) return user;
+    if (authConfig.devBypass) return ensureDevUser(deps.db);
+    return undefined;
+  };
+
+  app.route("/", createAuthRoutes({ db: deps.db, config: authConfig, publicUrl, getUser, oauth: deps.oauth, log }));
+  app.route("/", createOnboardingRoutes({ db: deps.db, githubApp: deps.githubApp, publicUrl, getUser, log }));
 
   app.get("/healthz", (c) => c.json({ ok: true, service: "harness" }));
 
@@ -164,6 +193,25 @@ export function createServerApp(deps: ServerDeps): Hono {
     if (eventName === "ping") {
       log(`webhook: ping ok (${deliveryId})`);
       return c.json({ pong: true }, 200);
+    }
+
+    // --- installation lifecycle: manages the gate itself ---------------------
+    if (eventName === "installation" || eventName === "installation_repositories") {
+      return handleInstallationEvent(deps, eventName, payload, log);
+    }
+
+    // --- THE REPO GATE (decision #44) ----------------------------------------
+    // Only repos selected during onboarding may trigger agent runs. Everything
+    // else is recorded in the delivery ledger and ignored — cheap by design.
+    const installationId = (payload as { installation?: { id?: number } }).installation?.id;
+    const repoFullName = (payload as { repository?: { full_name?: string } }).repository?.full_name;
+    if (typeof installationId !== "number" || !repoFullName) {
+      log(`webhook: ${eventName} without installation/repository — ignored (App-only mode)`);
+      return c.json({ ignored: true, reason: "missing installation" }, 202);
+    }
+    if (!(await repoEnabled(deps.db, installationId, repoFullName))) {
+      log(`webhook: ${eventName} for ${repoFullName} — repo not enabled in onboarding, ignored`);
+      return c.json({ ignored: true, reason: "repo not enabled" }, 202);
     }
 
     // --- the door (step 12): labeled agent:fix → thread → run --------------
@@ -482,6 +530,19 @@ async function handleIssueLabeled(
   }
   const defaultBranch = event.repository?.default_branch ?? "main";
 
+  // The credential + ownership context (decision #42/#41): the installation
+  // the issue came through, and the user it was linked to (when known).
+  const installationId = event.installation?.id;
+  const installation =
+    typeof installationId === "number"
+      ? (
+          await deps.db
+            .select()
+            .from(schema.installations)
+            .where(eq(schema.installations.installationId, installationId))
+        )[0]
+      : undefined;
+
   // Find-or-create. The (repo, issue_number) unique index makes this
   // race-safe: two simultaneous labels → both insert, one wins, both select.
   const find = () =>
@@ -499,6 +560,8 @@ async function handleIssueLabeled(
         source: "github",
         baseRef: defaultBranch,
         headRef: headRefFor(issue.number),
+        installationId: installationId ?? null,
+        userId: installation?.userId ?? null,
       })
       .onConflictDoNothing();
     thread = (await find())[0];
@@ -533,4 +596,94 @@ async function handleIssueLabeled(
     }`,
   );
   return Response.json({ threadId: thread.id, runId: run?.id ?? null }, { status: 202 });
+}
+
+// --- installation lifecycle (the gate's own plumbing) -------------------------
+
+interface InstallationEvent {
+  action?: string;
+  installation?: { id?: number; account?: { login?: string; type?: string } };
+  repositories?: Array<{ full_name?: string; default_branch?: string }>;
+  repositories_removed?: Array<{ full_name?: string }>;
+  sender?: Sender;
+}
+
+async function handleInstallationEvent(
+  deps: ServerDeps,
+  eventName: string,
+  payload: Record<string, unknown>,
+  log: (line: string) => void,
+): Promise<Response> {
+  const event = payload as InstallationEvent;
+  const id = event.installation?.id;
+  if (typeof id !== "number") return ignored("no installation id");
+
+  if (eventName === "installation_repositories") {
+    const [row] = await deps.db
+      .select()
+      .from(schema.installations)
+      .where(eq(schema.installations.installationId, id));
+    if (!row) return ignored("unknown installation");
+    for (const repo of event.repositories ?? []) {
+      if (!repo.full_name) continue;
+      await deps.db
+        .insert(schema.repositories)
+        .values({ installationRef: row.id, fullName: repo.full_name, defaultBranch: repo.default_branch ?? null })
+        .onConflictDoNothing();
+    }
+    for (const repo of event.repositories_removed ?? []) {
+      if (!repo.full_name) continue;
+      await deps.db
+        .delete(schema.repositories)
+        .where(
+          and(
+            eq(schema.repositories.installationRef, row.id),
+            eq(schema.repositories.fullName, repo.full_name),
+          ),
+        );
+    }
+    log(
+      `webhook: installation_repositories for ${id} (+${event.repositories?.length ?? 0} / -${event.repositories_removed?.length ?? 0})`,
+    );
+    return Response.json({ ok: true }, { status: 200 });
+  }
+
+  switch (event.action) {
+    case "created": {
+      // Fallback binder (decision #43): the sender is the installer — link the
+      // installation when we already know that user (the state param is primary).
+      const senderLogin = event.sender?.login;
+      let userId: string | undefined;
+      if (senderLogin) {
+        const [user] = await deps.db.select().from(schema.users).where(eq(schema.users.login, senderLogin));
+        userId = user?.id;
+      }
+      await upsertInstallation(deps.db, {
+        installationId: id,
+        accountLogin: event.installation?.account?.login ?? "unknown",
+        accountType: event.installation?.account?.type ?? "User",
+        ...(userId !== undefined ? { userId } : {}),
+      });
+      log(
+        `webhook: installation ${id} created (${event.installation?.account?.login ?? "?"})${userId ? " — linked by sender" : ""}`,
+      );
+      return Response.json({ ok: true }, { status: 200 });
+    }
+    case "deleted": {
+      await deps.db.delete(schema.installations).where(eq(schema.installations.installationId, id));
+      log(`webhook: installation ${id} deleted`);
+      return Response.json({ ok: true }, { status: 200 });
+    }
+    case "suspend":
+    case "unsuspend": {
+      await deps.db
+        .update(schema.installations)
+        .set({ suspended: event.action === "suspend", updatedAt: new Date() })
+        .where(eq(schema.installations.installationId, id));
+      log(`webhook: installation ${id} ${event.action}`);
+      return Response.json({ ok: true }, { status: 200 });
+    }
+    default:
+      return ignored(`installation action ${event.action ?? "?"}`);
+  }
 }

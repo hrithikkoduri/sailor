@@ -29,7 +29,7 @@ import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
 import { ensureThreadState, type ThreadState } from "../threads/state.js";
 import { TraceRecorder } from "../trace/store.js";
-import { createGitHubClient, type GitHubClient } from "../github/client.js";
+import type { GitHubAppService } from "../github/app.js";
 import { deliverPullRequest } from "../github/pr.js";
 import { githubRepoUrl } from "../github/repo.js";
 import { withHeartbeat } from "./lease.js";
@@ -65,7 +65,8 @@ export interface ExecuteRunDeps {
   /** Test seams. */
   llm?: LLMClient;
   sandboxFactory?: (spec: SandboxSpec) => Sandbox;
-  github?: GitHubClient;
+  /** The GitHub App service (decisions #42/#43) — minting tokens for this run. */
+  githubApp?: GitHubAppService;
 }
 
 export interface ExecuteRunOutcome {
@@ -145,6 +146,19 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
   const spec = sandboxSpecForThread(thread, baseDir);
+
+  // Git credentials for the run (decision #42): the FRESH installation token
+  // for this thread's repo — the sandbox layer installs it for clone + push.
+  let gitToken: string | undefined;
+  if (deps.githubApp && thread.installationId != null) {
+    try {
+      gitToken = await deps.githubApp.tokenFor(thread.installationId);
+    } catch (err) {
+      process.stdout.write(
+        `[run ${run.id}] installation token mint failed: ${err instanceof Error ? err.message : String(err)} — continuing without credentials\n`,
+      );
+    }
+  }
   const sandbox =
     deps.sandboxFactory?.(spec) ??
     createSandbox(
@@ -159,11 +173,24 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
               image: cfg.heyo.image,
               sizeClass: cfg.heyo.sizeClass,
               diskSizeGb: cfg.heyo.diskSizeGb,
-              githubToken: cfg.github.token,
+              githubToken: gitToken,
             },
           },
     );
   const llm = deps.llm ?? createLLMClient(cfg.llm);
+
+  /** The installation-scoped client for this thread (decisions #42/#43). */
+  const githubClientForThread = async () => {
+    if (!deps.githubApp || thread.installationId == null) return undefined;
+    try {
+      return await deps.githubApp.clientFor(thread.installationId);
+    } catch (err) {
+      process.stdout.write(
+        `[run ${run.id}] github client failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      return undefined;
+    }
+  };
 
   try {
     await ensureThreadState(db, thread.id, "running");
@@ -240,8 +267,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     // must happen BEFORE the sandbox dies — the work lives there.
     let delivered: { prNumber: number; prUrl: string } | null = null;
     if (status === "succeeded" && thread.source === "github") {
-      const github =
-        deps.github ?? (cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined);
+      const github = await githubClientForThread();
       if (github) {
         try {
           delivered = await deliverPullRequest({
@@ -267,8 +293,7 @@ export async function executeRun(deps: ExecuteRunDeps): Promise<ExecuteRunOutcom
     // A blocked conclusion reaches the humans where the work lives: the
     // question is posted as a comment + a needs-input label (decision #40).
     if (outcome.disposition === "blocked" && thread.source === "github") {
-      const github =
-        deps.github ?? (cfg.github.token ? createGitHubClient({ token: cfg.github.token }) : undefined);
+      const github = await githubClientForThread();
       if (github) {
         const target = thread.prNumber ?? thread.issueNumber;
         try {
