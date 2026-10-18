@@ -18,6 +18,27 @@ describe("renderGithubTask", () => {
     expect(t).toContain("may change the scope");
   });
 
+  it("review comments carry the file:line anchor and the commented hunk", () => {
+    const t = renderGithubTask("pull_request_review_comment", {
+      author: "octocat",
+      state: "commented",
+      prTitle: "Add auth",
+      path: "src/auth.ts",
+      line: 42,
+      side: "RIGHT",
+      diffHunk:
+        "@@ -40,3 +40,4 @@\n const token = read();\n-const ok = token !== null;\n+const ok = validate(token);\n export { ok };",
+      body: "this breaks the token check",
+    });
+    expect(t).toContain("Review feedback from octocat (commented) on");
+    expect(t).toContain("Add auth");
+    expect(t).toContain("At src/auth.ts:42 (RIGHT side)");
+    expect(t).toContain("```diff");
+    expect(t).toContain("+const ok = validate(token);");
+    expect(t).toContain("this breaks the token check");
+    expect(t).toContain("Address this feedback as requested");
+  });
+
   it("failed checks name the checks and say to fix + push", () => {
     const t = renderGithubTask("check_run", {
       checks: ["unit", "lint"],

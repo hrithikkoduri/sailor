@@ -125,8 +125,14 @@ interface ReviewEvent {
     html_url?: string;
     user?: Sender;
     path?: string;
+    line?: number | null;
+    original_line?: number | null;
+    side?: string | null;
+    subject_type?: string;
+    diff_hunk?: string;
+    in_reply_to_id?: number;
   };
-  pull_request?: { number?: number };
+  pull_request?: { number?: number; title?: string; html_url?: string };
   repository?: { full_name?: string };
   sender?: Sender;
 }
@@ -586,7 +592,15 @@ async function handleReview(
     author,
     url: event.review?.html_url ?? event.comment?.html_url,
     path: event.comment?.path,
+    // The review comment's anchor and the code it sat on — the agent must see
+    // the same context the reviewer did, never a bare sentence.
+    line: event.comment?.line ?? event.comment?.original_line ?? undefined,
+    side: event.comment?.side ?? undefined,
+    subjectType: event.comment?.subject_type,
+    diffHunk: event.comment?.diff_hunk,
     prNumber,
+    prTitle: event.pull_request?.title,
+    prUrl: event.pull_request?.html_url,
   };
   const { runId } = await deliverTurn(
     deps,

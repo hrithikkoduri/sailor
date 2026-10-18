@@ -32,13 +32,38 @@ export function renderGithubTask(
     case "pull_request_review_comment": {
       const author = s("author") ?? "a reviewer";
       const state = s("state");
-      const body = s("body")?.trim() || "(no text — see the diff comments)";
+      const body = s("body")?.trim();
       const path = s("path");
-      return (
-        `Review feedback from ${author}${state ? ` (${state})` : ""}${path ? ` on ${path}` : ""}:` +
-        `\n\n${body.slice(0, 4000)}` +
-        `\n\nAddress this feedback as requested. It may change the scope of earlier work. Make a focused correction or reply with a clarification as appropriate; do not assume every comment describes an executable bug.`
-      );
+      const line = n("line");
+      const side = s("side");
+      const prTitle = s("prTitle");
+      const diffHunk = s("diffHunk");
+      const fileLevel = s("subjectType") === "file";
+      // The hunk's tail is the context the reviewer saw around the comment.
+      const snippet = diffHunk
+        ? diffHunk.split("\n").slice(-12).join("\n").slice(0, 1600)
+        : undefined;
+      const anchor = path
+        ? line !== undefined && !fileLevel
+          ? `${path}:${line}`
+          : path
+        : undefined;
+      return [
+        `Review feedback from ${author}${state ? ` (${state})` : ""}${prTitle ? ` on \u201c${prTitle}\u201d` : ""}:`,
+        ...(anchor
+          ? [
+              `At ${anchor}${side ? ` (${side} side)` : ""}${fileLevel ? " (file-level)" : ""}:`,
+            ]
+          : []),
+        ...(snippet ? ["```diff\n" + snippet + "\n```"] : []),
+        ...(body ? [body.slice(0, 4000)] : []),
+        ...(!body && !snippet
+          ? [
+              "(No comment text was delivered with the event — check the pull request.)",
+            ]
+          : []),
+        `Address this feedback as requested. It may change the scope of earlier work. Make a focused correction or reply with a clarification as appropriate; do not assume every comment describes an executable bug.`,
+      ].join("\n\n");
     }
     case "issue_comment": {
       const author = s("author") ?? "a user";
