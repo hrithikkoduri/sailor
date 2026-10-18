@@ -17,20 +17,34 @@ import {
   JsonlTrace,
   createLLMClient,
   createSandbox,
+  openSandbox,
+  releaseSandbox,
   runAgent,
   type AgentEvent,
+  type CreateSandboxOptions,
+  type HeyoSandboxConfig,
   type LLMClient,
   type Sandbox,
+  type SandboxHandle,
   type SandboxSpec,
 } from "@anchor/core";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
-import { ensureThreadState, type ThreadState } from "../threads/state.js";
+import {
+  ensureThreadState,
+  isTerminal,
+  type ThreadState,
+} from "../threads/state.js";
 import { TraceRecorder } from "../trace/store.js";
 import type { GitHubAppService } from "../github/app.js";
 import type { DeliveredPullRequest } from "../github/pr.js";
-import { githubRepoUrl } from "../github/repo.js";
+import {
+  assertSafeCheckpointRef,
+  checkpointRefFor,
+  githubRepoUrl,
+  headRefFor,
+} from "../github/repo.js";
 import { withHeartbeat } from "./lease.js";
 import { createLiveProjector } from "./live-projector.js";
 import { createSailorAgent } from "../agents/sailor.js";
@@ -103,21 +117,42 @@ const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
 export function sandboxSpecForThread(
   thread: Pick<
     typeof schema.threads.$inferSelect,
-    "source" | "repo" | "headRef" | "prNumber"
+    "source" | "repo" | "headRef" | "prNumber" | "checkpointRef"
   >,
   baseDir: string,
 ): SandboxSpec {
   if (thread.source === "github") {
+    // Clone precedence: the off-machine checkpoint branch carries the LATEST
+    // workspace (it is force-pushed every turn), then the PR branch, then the
+    // default branch.
+    const ref =
+      thread.checkpointRef ??
+      (thread.prNumber != null && thread.headRef ? thread.headRef : undefined);
     return {
       repoUrl: githubRepoUrl(thread.repo),
-      ...(thread.prNumber != null && thread.headRef
-        ? { ref: thread.headRef }
-        : {}),
+      ...(ref ? { ref } : {}),
     };
   }
   return isUrl(thread.repo)
     ? { repoUrl: thread.repo }
     : { localPath: path.resolve(baseDir, thread.repo) };
+}
+
+/** The heyo connection config for this product's sandboxes — credentials live
+ * here and only here; the package owns what to do with them. */
+function heyoSandboxConfig(
+  cfg: ReturnType<typeof loadConfig>,
+  gitToken?: string,
+): HeyoSandboxConfig {
+  return {
+    token: cfg.heyo.token ?? "",
+    server: cfg.heyo.server,
+    namespace: cfg.heyo.namespace,
+    image: cfg.heyo.image,
+    sizeClass: cfg.heyo.sizeClass,
+    diskSizeGb: cfg.heyo.diskSizeGb,
+    githubToken: gitToken,
+  };
 }
 
 export async function executeRun(
@@ -210,7 +245,25 @@ export async function executeRun(
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
-  const spec = sandboxSpecForThread(thread, baseDir);
+  // Retain the sandbox while the thread is alive: the next run (interjection,
+  // sweep resume, follow-up) adopts it and finds the workspace — branch,
+  // edits, and all — exactly as left. Terminal threads are torn down instead.
+  const retain = thread.source === "github" && !isTerminal(thread.state);
+  const spec: SandboxSpec = {
+    ...sandboxSpecForThread(thread, baseDir),
+    retain,
+  };
+
+  // Off-machine checkpoints (B): the side branch the push webhook ignores. It
+  // is recorded only after a push actually succeeded, so a fresh clone never
+  // chases a branch that does not exist.
+  let checkpointPushRef: string | undefined;
+  if (thread.source === "github") {
+    checkpointPushRef =
+      thread.checkpointRef ??
+      checkpointRefFor(thread.headRef ?? headRefFor(thread.issueNumber));
+    assertSafeCheckpointRef(checkpointPushRef);
+  }
 
   // Git credentials for the run (decision #42): the FRESH installation token
   // for this thread's repo — the sandbox layer installs it for clone + push.
@@ -224,24 +277,11 @@ export async function executeRun(
       );
     }
   }
-  const sandbox =
-    deps.sandboxFactory?.(spec) ??
-    createSandbox(
-      spec,
-      deps.local
-        ? { local: true }
-        : {
-            heyo: {
-              token: cfg.heyo.token ?? "",
-              server: cfg.heyo.server,
-              namespace: cfg.heyo.namespace,
-              image: cfg.heyo.image,
-              sizeClass: cfg.heyo.sizeClass,
-              diskSizeGb: cfg.heyo.diskSizeGb,
-              githubToken: gitToken,
-            },
-          },
-    );
+  const sandboxOptions: CreateSandboxOptions = deps.local
+    ? { local: true }
+    : { heyo: heyoSandboxConfig(cfg, gitToken) };
+  const make = (s: SandboxSpec): Sandbox =>
+    deps.sandboxFactory?.(s) ?? createSandbox(s, sandboxOptions);
   const llm = deps.llm ?? createLLMClient(cfg.llm);
 
   /** The installation-scoped client for this thread (decisions #42/#43). */
@@ -258,9 +298,61 @@ export async function executeRun(
   };
 
   let delivered: DeliveredPullRequest | null = null;
+  let opened: Sandbox | undefined;
   try {
     await ensureThreadState(db, thread.id, "running");
-    await sandbox.start();
+    const sandbox = await openSandbox({
+      ...sandboxOptions,
+      create: make,
+      spec,
+      ...(thread.sandboxId
+        ? {
+            adopt: {
+              id: thread.sandboxId,
+              backend: thread.sandboxBackend === "local" ? "local" : "heyo",
+            } satisfies SandboxHandle,
+          }
+        : {}),
+      ...(thread.checkpointRef
+        ? {
+            fallbackSpec: {
+              ...sandboxSpecForThread(
+                { ...thread, checkpointRef: null },
+                baseDir,
+              ),
+              retain,
+            },
+          }
+        : {}),
+      onRetainedGone: async (handle) => {
+        process.stdout.write(
+          `[run ${run.id}] retained sandbox ${handle.id} unavailable — re-cloning\n`,
+        );
+        await db
+          .update(schema.threads)
+          .set({ sandboxId: null, sandboxBackend: null, updatedAt: new Date() })
+          .where(eq(schema.threads.id, thread.id));
+      },
+      onRefUnusable: async (ref) => {
+        process.stdout.write(
+          `[run ${run.id}] checkpoint branch ${ref} unusable — cloning the base branch\n`,
+        );
+        await db
+          .update(schema.threads)
+          .set({ checkpointRef: null, updatedAt: new Date() })
+          .where(eq(schema.threads.id, thread.id));
+      },
+    });
+    opened = sandbox;
+    // Record which sandbox this thread now owns — the next run adopts it.
+    await db
+      .update(schema.threads)
+      .set({
+        sandboxId: sandbox.id,
+        sandboxBackend: sandbox.backend,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.threads.id, thread.id));
     const initial =
       thread.source === "github"
         ? await sandbox.exec("git rev-parse --verify HEAD", { timeoutSecs: 60 })
@@ -323,13 +415,17 @@ export async function executeRun(
             // Big context, big memory: fold only when the conversation truly
             // grows past the model's working window, so long investigations
             // keep their accumulated findings instead of re-deriving them.
-            compaction: { maxEstimatedTokens: 256_000, keepRecentTokens: 64_000 },
+            compaction: {
+              maxEstimatedTokens: 256_000,
+              keepRecentTokens: 64_000,
+            },
             // Product budget dials (SAILOR_MAX_STEPS / TOKENS / USD). The
             // package defaults (40 steps, 1.5M tokens) stop long-horizon work
             // around the 20th call — cumulative tokens grow with every call,
             // and compaction only bounds the per-call context. Steps and
             // dollars are the real runaway backstops.
             budgets: cfg.budget,
+            checkpointPushRef,
             signal: controller.signal,
             onEvent: sink,
           },
@@ -369,6 +465,18 @@ export async function executeRun(
       await db
         .update(schema.threads)
         .set({ checkpointSha: outcome.checkpointRef, updatedAt: new Date() })
+        .where(eq(schema.threads.id, thread.id));
+    }
+
+    // B: the first successful checkpoint push makes the side branch the
+    // thread's resume source for any future fresh clone.
+    if (
+      checkpointPushRef &&
+      events.some((event) => event.type === "checkpoint" && event.pushedTo)
+    ) {
+      await db
+        .update(schema.threads)
+        .set({ checkpointRef: checkpointPushRef, updatedAt: new Date() })
         .where(eq(schema.threads.id, thread.id));
     }
 
@@ -420,12 +528,15 @@ export async function executeRun(
       .select({ keep: schema.runs.keepSandbox })
       .from(schema.runs)
       .where(eq(schema.runs.id, run.id));
-    if (fresh?.keep) {
-      process.stdout.write(
-        `[run ${run.id}] sandbox kept for debugging: ${sandbox.backend}/${sandbox.id}\n`,
-      );
-    } else {
-      await sandbox.destroy();
+    if (opened) {
+      if (fresh?.keep) {
+        process.stdout.write(
+          `[run ${run.id}] sandbox kept for debugging: ${opened.backend}/${opened.id}\n`,
+        );
+      } else {
+        // destroy() retains when the spec says so — the thread continues.
+        await opened.destroy();
+      }
     }
     deps.notify?.(thread.id);
     return {
@@ -447,7 +558,7 @@ export async function executeRun(
       .set({ status: "failed", finishedAt: new Date(), error: message })
       .where(eq(schema.runs.id, run.id));
     await ensureThreadState(db, thread.id, "queued").catch(() => undefined);
-    await sandbox.destroy().catch(() => undefined);
+    await opened?.destroy().catch(() => undefined);
     return {
       runId: run.id,
       threadId: thread.id,
@@ -458,4 +569,31 @@ export async function executeRun(
     clearInterval(cancelWatch);
     activeControllers.delete(run.id);
   }
+}
+
+/**
+ * Tear down a thread's retained sandbox (A) — terminal threads release their
+ * VM so nothing keeps paying for a finished issue. Best-effort: the thread
+ * row's sandbox pointers are cleared regardless.
+ */
+export async function releaseThreadSandbox(
+  db: Db,
+  thread: Pick<
+    typeof schema.threads.$inferSelect,
+    "id" | "sandboxId" | "sandboxBackend"
+  >,
+): Promise<void> {
+  if (!thread.sandboxId) return;
+  const cfg = loadConfig();
+  await releaseSandbox(
+    {
+      id: thread.sandboxId,
+      backend: thread.sandboxBackend === "local" ? "local" : "heyo",
+    },
+    { heyo: heyoSandboxConfig(cfg) },
+  );
+  await db
+    .update(schema.threads)
+    .set({ sandboxId: null, sandboxBackend: null, updatedAt: new Date() })
+    .where(eq(schema.threads.id, thread.id));
 }

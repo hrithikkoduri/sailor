@@ -77,7 +77,14 @@ export interface SailorConfig {
   redis: { url: string };
 }
 
-const SIZE_CLASSES: HeyoSizeClass[] = ["micro", "mini", "small", "medium", "large", "xlarge"];
+const SIZE_CLASSES: HeyoSizeClass[] = [
+  "micro",
+  "mini",
+  "small",
+  "medium",
+  "large",
+  "xlarge",
+];
 
 /**
  * Parse `.env` file contents: `KEY=value` lines, `#` comments, optional quotes.
@@ -88,7 +95,9 @@ export function parseEnvFile(text: string): Record<string, string> {
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) continue;
-    const withoutExport = line.startsWith("export ") ? line.slice("export ".length) : line;
+    const withoutExport = line.startsWith("export ")
+      ? line.slice("export ".length)
+      : line;
     const eq = withoutExport.indexOf("=");
     if (eq <= 0) continue;
     const key = withoutExport.slice(0, eq).trim();
@@ -105,7 +114,10 @@ export function parseEnvFile(text: string): Record<string, string> {
 }
 
 /** Find the nearest .env: cwd first, then parents (monorepo-friendly). */
-export function findDotEnv(startDir: string, maxLevels = 5): string | undefined {
+export function findDotEnv(
+  startDir: string,
+  maxLevels = 5,
+): string | undefined {
   let dir = path.resolve(startDir);
   for (let i = 0; i <= maxLevels; i++) {
     const candidate = path.join(dir, ".env");
@@ -118,7 +130,10 @@ export function findDotEnv(startDir: string, maxLevels = 5): string | undefined 
 }
 
 /** Fill `target` from a .env file without overwriting anything already set. */
-export function loadDotEnv(explicit?: string, target: NodeJS.ProcessEnv = process.env): void {
+export function loadDotEnv(
+  explicit?: string,
+  target: NodeJS.ProcessEnv = process.env,
+): void {
   const file = explicit ?? findDotEnv(process.cwd());
   if (!file) return; // no .env anywhere up the tree is fine — env vars may be set
   let text: string;
@@ -135,7 +150,9 @@ export function loadDotEnv(explicit?: string, target: NodeJS.ProcessEnv = proces
 function sizeClass(value: string | undefined): HeyoSizeClass {
   const v = (value ?? "small") as HeyoSizeClass;
   if (!SIZE_CLASSES.includes(v)) {
-    throw new Error(`HEYO_SIZE_CLASS must be one of ${SIZE_CLASSES.join(", ")} — got "${value}"`);
+    throw new Error(
+      `HEYO_SIZE_CLASS must be one of ${SIZE_CLASSES.join(", ")} — got "${value}"`,
+    );
   }
   return v;
 }
@@ -146,7 +163,10 @@ function normalizePem(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const value = raw.trim();
   if (value.includes("BEGIN")) return value.replace(/\\n/g, "\n");
-  const decoded = Buffer.from(value.replace(/[^A-Za-z0-9+/=]/g, ""), "base64").toString("utf8");
+  const decoded = Buffer.from(
+    value.replace(/[^A-Za-z0-9+/=]/g, ""),
+    "base64",
+  ).toString("utf8");
   return decoded.includes("BEGIN") ? decoded : raw; // let the crypto layer complain loudly
 }
 
@@ -162,7 +182,9 @@ function optionalNumber(value: string | undefined): number | undefined {
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
   return {
-    publication: { requirePassingTests: env.SAILOR_REQUIRE_PASSING_TESTS === "1" },
+    publication: {
+      requirePassingTests: env.SAILOR_REQUIRE_PASSING_TESTS === "1",
+    },
     heyo: {
       token: env.HEYO_TOKEN || undefined,
       server: env.HEYO_SERVER ?? "https://admin.us5.heyo.work",
@@ -182,7 +204,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
     },
     auth: {
       sessionTtlDays: optionalNumber(env.SESSION_TTL_DAYS) ?? 30,
-      secureCookies: (env.SAILOR_PUBLIC_URL ?? "http://localhost:5173").startsWith("https"),
+      secureCookies: (
+        env.SAILOR_PUBLIC_URL ?? "http://localhost:5173"
+      ).startsWith("https"),
       devBypass: env.DEV_AUTH_BYPASS === "1" && env.NODE_ENV !== "production",
     },
     server: {
@@ -197,11 +221,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       priceOutPerMTok: optionalNumber(env.LLM_PRICE_OUT_PER_MTOK),
     },
     budget: {
-      maxSteps: optionalNumber(env.SAILOR_MAX_STEPS) ?? 120,
-      maxTokens: optionalNumber(env.SAILOR_MAX_TOKENS) ?? 24_000_000,
-      maxUsd: optionalNumber(env.SAILOR_MAX_USD) ?? 10,
+      // Long-horizon defaults: a realistic issue-fix runs 100+ calls; an
+      // overnight run can take several hundred. Steps and dollars are the
+      // real dials (deepseek-flash costs ~$0.04/M in, ~$0.14/M out).
+      maxSteps: optionalNumber(env.SAILOR_MAX_STEPS) ?? 300,
+      maxTokens: optionalNumber(env.SAILOR_MAX_TOKENS) ?? 150_000_000,
+      maxUsd: optionalNumber(env.SAILOR_MAX_USD) ?? 25,
     },
-    postgres: { url: env.DATABASE_URL ?? "postgres://sailor:sailor@localhost:5432/sailor" },
+    postgres: {
+      url: env.DATABASE_URL ?? "postgres://sailor:sailor@localhost:5432/sailor",
+    },
     redis: { url: env.REDIS_URL ?? "redis://localhost:6379" },
   };
 }

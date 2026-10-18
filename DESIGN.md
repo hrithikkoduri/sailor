@@ -192,9 +192,17 @@ earlier decisions; no legacy workflow runner is retained.
   and (debug mode) the folded transcript.
 - **Budget dials:** engine defaults stay conservative package policy; Sailor
   raises them for long-horizon work (`SAILOR_MAX_STEPS` / `SAILOR_MAX_TOKENS` /
-  `SAILOR_MAX_USD`, defaults 120 / 24M / 10). Cumulative tokens grow with every
-  call no matter how well compaction bounds the per-call context, so steps and
-  dollars are the real dials — the token cap is only a runaway backstop.
+  `SAILOR_MAX_USD`, defaults 300 / 150M / 25; overnight 1200 / 400M / 50).
+  Cumulative tokens grow with every call no matter how well compaction bounds
+  the per-call context, so steps and dollars are the real dials — the token cap
+  is only a runaway backstop.
+- **Sandbox continuity (A + B):** live GitHub threads retain their sandbox and
+  the next run adopts it (same workspace, edits intact); turn-boundary
+  checkpoints are force-pushed to a `*-checkpoint` side branch the push webhook
+  ignores, so a destroyed VM never loses the work. Terminal threads release the
+  VM. Retention/adoption/push are Anchor capabilities, dogfooded through the
+  package's own `openSandbox`/`releaseSandbox` lifecycle; the policy is
+  Sailor's.
 
 ## Streaming and activity follow-up (2026-10-18)
 

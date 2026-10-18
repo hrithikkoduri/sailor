@@ -78,6 +78,13 @@
       "when": 1792310182416,
       "tag": "0010_boring_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792332432696,
+      "tag": "0011_opposite_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

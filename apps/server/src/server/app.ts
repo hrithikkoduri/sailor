@@ -28,7 +28,12 @@ import { appendEvent, consumeEvents } from "../threads/inbox.js";
 import { canTransition, isTerminal } from "../threads/state.js";
 import { wakeThread } from "../threads/wake.js";
 import { requestCancel } from "../runs/lease.js";
-import { createAuthRoutes, type AuthConfig, type UserFromRequest } from "../auth/routes.js";
+import { releaseThreadSandbox } from "../runs/execute.js";
+import {
+  createAuthRoutes,
+  type AuthConfig,
+  type UserFromRequest,
+} from "../auth/routes.js";
 import { createOnboardingRoutes } from "../auth/onboarding.js";
 import { createApiRoutes } from "./api.js";
 import { createStreamHub, type StreamHub } from "./stream.js";
@@ -52,7 +57,12 @@ export interface ServerDeps {
   /** Dashboard base URL — browser-facing redirects land here. */
   publicUrl?: string;
   /** The App's user-OAuth credentials (Sign in with GitHub). */
-  oauth?: { slug?: string; clientId?: string; clientSecret?: string; fetchFn?: typeof fetch };
+  oauth?: {
+    slug?: string;
+    clientId?: string;
+    clientSecret?: string;
+    fetchFn?: typeof fetch;
+  };
   /** Live-update fanout (step 17b): SSE clients get "thread changed" nudges. */
   hub?: StreamHub;
 }
@@ -67,7 +77,12 @@ interface Sender {
 interface LabeledEvent {
   action?: string;
   label?: { name?: string };
-  issue?: { number?: number; title?: string; body?: string | null; html_url?: string };
+  issue?: {
+    number?: number;
+    title?: string;
+    body?: string | null;
+    html_url?: string;
+  };
   repository?: { full_name?: string; default_branch?: string };
   sender?: Sender;
   installation?: { id?: number };
@@ -99,8 +114,18 @@ interface StatusEvent {
 
 interface ReviewEvent {
   action?: string;
-  review?: { state?: string; body?: string | null; html_url?: string; user?: Sender };
-  comment?: { body?: string | null; html_url?: string; user?: Sender; path?: string };
+  review?: {
+    state?: string;
+    body?: string | null;
+    html_url?: string;
+    user?: Sender;
+  };
+  comment?: {
+    body?: string | null;
+    html_url?: string;
+    user?: Sender;
+    path?: string;
+  };
   pull_request?: { number?: number };
   repository?: { full_name?: string };
   sender?: Sender;
@@ -136,8 +161,15 @@ interface PullRequestEvent {
 }
 
 /** The instruction a labeled issue turns into. */
-export function renderIssueTask(issue: { number?: number; title?: string; body?: string | null; html_url?: string }): string {
-  const parts = [`Fix GitHub issue #${issue.number}: ${issue.title ?? "(untitled)"}`];
+export function renderIssueTask(issue: {
+  number?: number;
+  title?: string;
+  body?: string | null;
+  html_url?: string;
+}): string {
+  const parts = [
+    `Fix GitHub issue #${issue.number}: ${issue.title ?? "(untitled)"}`,
+  ];
   if (issue.html_url) parts.push(`\n${issue.html_url}`);
   const body = issue.body?.trim();
   if (body) parts.push(`\n${body.slice(0, 4000)}`);
@@ -147,7 +179,11 @@ export function renderIssueTask(issue: { number?: number; title?: string; body?:
 export function createServerApp(deps: ServerDeps): Hono {
   const app = new Hono();
   const log = deps.log ?? ((line: string) => process.stdout.write(`${line}\n`));
-  const authConfig: AuthConfig = deps.authConfig ?? { sessionTtlDays: 30, secureCookies: false, devBypass: false };
+  const authConfig: AuthConfig = deps.authConfig ?? {
+    sessionTtlDays: 30,
+    secureCookies: false,
+    devBypass: false,
+  };
   const publicUrl = deps.publicUrl ?? "http://localhost:5173";
 
   // The session resolver: cookie → session → user (or the dev-bypass user).
@@ -158,13 +194,35 @@ export function createServerApp(deps: ServerDeps): Hono {
     return undefined;
   };
 
-  app.route("/", createAuthRoutes({ db: deps.db, config: authConfig, publicUrl, getUser, oauth: deps.oauth, log }));
-  app.route("/", createOnboardingRoutes({ db: deps.db, githubApp: deps.githubApp, publicUrl, getUser, log }));
+  app.route(
+    "/",
+    createAuthRoutes({
+      db: deps.db,
+      config: authConfig,
+      publicUrl,
+      getUser,
+      oauth: deps.oauth,
+      log,
+    }),
+  );
+  app.route(
+    "/",
+    createOnboardingRoutes({
+      db: deps.db,
+      githubApp: deps.githubApp,
+      publicUrl,
+      getUser,
+      log,
+    }),
+  );
 
   // The dashboard surface (step 17b): REST + SSE behind the same session auth.
   const hub = deps.hub ?? createStreamHub();
   deps.hub = hub;
-  app.route("/", createApiRoutes({ db: deps.db, queues: deps.queues, getUser, hub, log }));
+  app.route(
+    "/",
+    createApiRoutes({ db: deps.db, queues: deps.queues, getUser, hub, log }),
+  );
 
   app.get("/healthz", (c) => c.json({ ok: true, service: "sailor" }));
 
@@ -175,12 +233,17 @@ export function createServerApp(deps: ServerDeps): Hono {
 
     if (
       !deps.skipSignatureVerification &&
-      !verifyWebhookSignature(deps.webhookSecret, rawBody, c.req.header("x-hub-signature-256"))
+      !verifyWebhookSignature(
+        deps.webhookSecret,
+        rawBody,
+        c.req.header("x-hub-signature-256"),
+      )
     ) {
       log(`webhook: REJECTED bad signature (event=${eventName || "?"})`);
       return c.json({ error: "invalid signature" }, 401);
     }
-    if (!deliveryId) return c.json({ error: "missing X-GitHub-Delivery header" }, 400);
+    if (!deliveryId)
+      return c.json({ error: "missing X-GitHub-Delivery header" }, 400);
 
     const inserted = await deps.db
       .insert(schema.webhookDeliveries)
@@ -188,7 +251,9 @@ export function createServerApp(deps: ServerDeps): Hono {
       .onConflictDoNothing()
       .returning();
     if (inserted.length === 0) {
-      log(`webhook: duplicate delivery ${deliveryId} (${eventName}) — acknowledged`);
+      log(
+        `webhook: duplicate delivery ${deliveryId} (${eventName}) — acknowledged`,
+      );
       return c.json({ duplicate: true }, 200);
     }
 
@@ -205,26 +270,38 @@ export function createServerApp(deps: ServerDeps): Hono {
     }
 
     // --- installation lifecycle: manages the gate itself ---------------------
-    if (eventName === "installation" || eventName === "installation_repositories") {
+    if (
+      eventName === "installation" ||
+      eventName === "installation_repositories"
+    ) {
       return handleInstallationEvent(deps, eventName, payload, log);
     }
 
     // --- THE REPO GATE (decision #44) ----------------------------------------
     // Only repos selected during onboarding may trigger agent runs. Everything
     // else is recorded in the delivery ledger and ignored — cheap by design.
-    const installationId = (payload as { installation?: { id?: number } }).installation?.id;
-    const repoFullName = (payload as { repository?: { full_name?: string } }).repository?.full_name;
+    const installationId = (payload as { installation?: { id?: number } })
+      .installation?.id;
+    const repoFullName = (payload as { repository?: { full_name?: string } })
+      .repository?.full_name;
     if (typeof installationId !== "number" || !repoFullName) {
-      log(`webhook: ${eventName} without installation/repository — ignored (App-only mode)`);
+      log(
+        `webhook: ${eventName} without installation/repository — ignored (App-only mode)`,
+      );
       return c.json({ ignored: true, reason: "missing installation" }, 202);
     }
     if (!(await repoEnabled(deps.db, installationId, repoFullName))) {
-      log(`webhook: ${eventName} for ${repoFullName} — repo not enabled in onboarding, ignored`);
+      log(
+        `webhook: ${eventName} for ${repoFullName} — repo not enabled in onboarding, ignored`,
+      );
       return c.json({ ignored: true, reason: "repo not enabled" }, 202);
     }
 
     // --- the door (step 12): labeled agent:fix → thread → run --------------
-    if (eventName === "issues" && (payload as LabeledEvent).action === "labeled") {
+    if (
+      eventName === "issues" &&
+      (payload as LabeledEvent).action === "labeled"
+    ) {
       const event = payload as LabeledEvent;
       if (event.label?.name === AGENT_FIX_LABEL) {
         return handleIssueLabeled(deps, event, deliveryId, log);
@@ -232,17 +309,40 @@ export function createServerApp(deps: ServerDeps): Hono {
     }
 
     // --- step 13: the PR lifecycle ------------------------------------------
-    if (eventName === "check_run") return handleCheckRun(deps, payload as CheckRunEvent, deliveryId, log);
-    if (eventName === "status") return handleStatus(deps, payload as StatusEvent, deliveryId, log);
-    if (eventName === "pull_request_review" || eventName === "pull_request_review_comment")
-      return handleReview(deps, eventName, payload as ReviewEvent, deliveryId, log);
-    if (eventName === "issue_comment") return handleComment(deps, payload as IssueCommentEvent, deliveryId, log);
-    if (eventName === "push") return handlePush(deps, payload as PushEvent, deliveryId, log);
-    if (eventName === "pull_request") return handlePullRequest(deps, payload as PullRequestEvent, deliveryId, log);
+    if (eventName === "check_run")
+      return handleCheckRun(deps, payload as CheckRunEvent, deliveryId, log);
+    if (eventName === "status")
+      return handleStatus(deps, payload as StatusEvent, deliveryId, log);
+    if (
+      eventName === "pull_request_review" ||
+      eventName === "pull_request_review_comment"
+    )
+      return handleReview(
+        deps,
+        eventName,
+        payload as ReviewEvent,
+        deliveryId,
+        log,
+      );
+    if (eventName === "issue_comment")
+      return handleComment(deps, payload as IssueCommentEvent, deliveryId, log);
+    if (eventName === "push")
+      return handlePush(deps, payload as PushEvent, deliveryId, log);
+    if (eventName === "pull_request")
+      return handlePullRequest(
+        deps,
+        payload as PullRequestEvent,
+        deliveryId,
+        log,
+      );
 
     // Everything else: recorded + triaged (decision #28), no handler yet.
-    const decision = classifyGithubEvent(eventName, payload, { botLogin: deps.botLogin });
-    log(`webhook: ${eventName} → ${decision.action} (${decision.reason}) — no handler`);
+    const decision = classifyGithubEvent(eventName, payload, {
+      botLogin: deps.botLogin,
+    });
+    log(
+      `webhook: ${eventName} → ${decision.action} (${decision.reason}) — no handler`,
+    );
     return c.json({ ignored: true, triage: decision }, 202);
   });
 
@@ -251,27 +351,48 @@ export function createServerApp(deps: ServerDeps): Hono {
 
 // --- thread lookup helpers ---------------------------------------------------
 
-async function findThreadByPr(deps: ServerDeps, repo: string, prNumber: number): Promise<ThreadRow | undefined> {
+async function findThreadByPr(
+  deps: ServerDeps,
+  repo: string,
+  prNumber: number,
+): Promise<ThreadRow | undefined> {
   const [thread] = await deps.db
     .select()
     .from(schema.threads)
-    .where(and(eq(schema.threads.repo, repo), eq(schema.threads.prNumber, prNumber)));
+    .where(
+      and(eq(schema.threads.repo, repo), eq(schema.threads.prNumber, prNumber)),
+    );
   return thread;
 }
 
-async function findThreadByHeadRef(deps: ServerDeps, repo: string, headRef: string): Promise<ThreadRow | undefined> {
+async function findThreadByHeadRef(
+  deps: ServerDeps,
+  repo: string,
+  headRef: string,
+): Promise<ThreadRow | undefined> {
   const [thread] = await deps.db
     .select()
     .from(schema.threads)
-    .where(and(eq(schema.threads.repo, repo), eq(schema.threads.headRef, headRef)));
+    .where(
+      and(eq(schema.threads.repo, repo), eq(schema.threads.headRef, headRef)),
+    );
   return thread;
 }
 
-async function findThreadByIssue(deps: ServerDeps, repo: string, issueNumber: number): Promise<ThreadRow | undefined> {
+async function findThreadByIssue(
+  deps: ServerDeps,
+  repo: string,
+  issueNumber: number,
+): Promise<ThreadRow | undefined> {
   const [thread] = await deps.db
     .select()
     .from(schema.threads)
-    .where(and(eq(schema.threads.repo, repo), eq(schema.threads.issueNumber, issueNumber)));
+    .where(
+      and(
+        eq(schema.threads.repo, repo),
+        eq(schema.threads.issueNumber, issueNumber),
+      ),
+    );
   return thread;
 }
 
@@ -279,7 +400,12 @@ async function activeRun(deps: ServerDeps, threadId: string) {
   const [run] = await deps.db
     .select({ id: schema.runs.id, status: schema.runs.status })
     .from(schema.runs)
-    .where(and(eq(schema.runs.threadId, threadId), inArray(schema.runs.status, ["queued", "running"])))
+    .where(
+      and(
+        eq(schema.runs.threadId, threadId),
+        inArray(schema.runs.status, ["queued", "running"]),
+      ),
+    )
     .orderBy(desc(schema.runs.createdAt))
     .limit(1);
   return run;
@@ -332,7 +458,13 @@ function ignored(reason: string): Response {
 
 // --- step 13 handlers ---------------------------------------------------------
 
-const FAILING_CONCLUSIONS = ["failure", "timed_out", "cancelled", "action_required", "startup_failure"];
+const FAILING_CONCLUSIONS = [
+  "failure",
+  "timed_out",
+  "cancelled",
+  "action_required",
+  "startup_failure",
+];
 
 async function handleCheckRun(
   deps: ServerDeps,
@@ -340,12 +472,18 @@ async function handleCheckRun(
   deliveryId: string,
   log: (line: string) => void,
 ): Promise<Response> {
-  if (event.action !== "completed") return ignored(`action ${event.action ?? "?"}`);
+  if (event.action !== "completed")
+    return ignored(`action ${event.action ?? "?"}`);
   const conclusion = event.check_run?.conclusion;
-  if (!conclusion || !FAILING_CONCLUSIONS.includes(conclusion)) return ignored(`conclusion ${conclusion ?? "none"}`);
+  if (!conclusion || !FAILING_CONCLUSIONS.includes(conclusion))
+    return ignored(`conclusion ${conclusion ?? "none"}`);
 
   const repo = event.repository?.full_name;
-  if (!repo) return Response.json({ error: "missing repository.full_name" }, { status: 400 });
+  if (!repo)
+    return Response.json(
+      { error: "missing repository.full_name" },
+      { status: 400 },
+    );
   const prNumber = event.check_run?.pull_requests?.[0]?.number;
   const headRef = event.check_run?.check_suite?.head_branch;
   const thread = prNumber
@@ -364,10 +502,18 @@ async function handleCheckRun(
   const { runId } = await deliverTurn(
     deps,
     thread,
-    { deliveryId, kind: "check_run", payload, trigger: "babysit_ci", cancelActive: false },
+    {
+      deliveryId,
+      kind: "check_run",
+      payload,
+      trigger: "babysit_ci",
+      cancelActive: false,
+    },
     log,
   );
-  log(`webhook: check_run ${conclusion} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`);
+  log(
+    `webhook: check_run ${conclusion} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`,
+  );
   return Response.json({ threadId: thread.id, runId }, { status: 202 });
 }
 
@@ -377,7 +523,8 @@ async function handleStatus(
   deliveryId: string,
   log: (line: string) => void,
 ): Promise<Response> {
-  if (event.state !== "failure" && event.state !== "error") return ignored(`state ${event.state ?? "?"}`);
+  if (event.state !== "failure" && event.state !== "error")
+    return ignored(`state ${event.state ?? "?"}`);
   const repo = event.repository?.full_name;
   const headRef = event.branches?.[0]?.name;
   if (!repo || !headRef) return ignored("no branch on this status");
@@ -385,14 +532,26 @@ async function handleStatus(
   if (!thread) return ignored("no thread for this status");
   if (isTerminal(thread.state)) return ignored(`thread is ${thread.state}`);
 
-  const payload = { checks: [event.context ?? "status"], url: event.target_url, sha: event.commit?.sha };
+  const payload = {
+    checks: [event.context ?? "status"],
+    url: event.target_url,
+    sha: event.commit?.sha,
+  };
   const { runId } = await deliverTurn(
     deps,
     thread,
-    { deliveryId, kind: "status", payload, trigger: "babysit_ci", cancelActive: false },
+    {
+      deliveryId,
+      kind: "status",
+      payload,
+      trigger: "babysit_ci",
+      cancelActive: false,
+    },
     log,
   );
-  log(`webhook: status ${event.state} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`);
+  log(
+    `webhook: status ${event.state} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`,
+  );
   return Response.json({ threadId: thread.id, runId }, { status: 202 });
 }
 
@@ -403,12 +562,18 @@ async function handleReview(
   deliveryId: string,
   log: (line: string) => void,
 ): Promise<Response> {
-  if (eventName === "pull_request_review" && event.action !== "submitted") return ignored(`action ${event.action ?? "?"}`);
-  if (eventName === "pull_request_review_comment" && event.action !== "created") return ignored(`action ${event.action ?? "?"}`);
+  if (eventName === "pull_request_review" && event.action !== "submitted")
+    return ignored(`action ${event.action ?? "?"}`);
+  if (eventName === "pull_request_review_comment" && event.action !== "created")
+    return ignored(`action ${event.action ?? "?"}`);
 
   const repo = event.repository?.full_name;
   const prNumber = event.pull_request?.number;
-  if (!repo || typeof prNumber !== "number") return Response.json({ error: "missing repository or pull_request.number" }, { status: 400 });
+  if (!repo || typeof prNumber !== "number")
+    return Response.json(
+      { error: "missing repository or pull_request.number" },
+      { status: 400 },
+    );
   const thread = await findThreadByPr(deps, repo, prNumber);
   if (!thread) return ignored("no thread for this PR");
   if (isTerminal(thread.state)) return ignored(`thread is ${thread.state}`);
@@ -428,14 +593,19 @@ async function handleReview(
     thread,
     {
       deliveryId,
-      kind: eventName === "pull_request_review" ? "pull_request_review" : "pull_request_review_comment",
+      kind:
+        eventName === "pull_request_review"
+          ? "pull_request_review"
+          : "pull_request_review_comment",
       payload,
       trigger: "review",
       cancelActive: !self, // reviews interject — ANY author (decision #28)
     },
     log,
   );
-  log(`webhook: ${eventName} by ${author ?? "?"} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked (interject)"}`);
+  log(
+    `webhook: ${eventName} by ${author ?? "?"} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked (interject)"}`,
+  );
   return Response.json({ threadId: thread.id, runId }, { status: 202 });
 }
 
@@ -445,27 +615,47 @@ async function handleComment(
   deliveryId: string,
   log: (line: string) => void,
 ): Promise<Response> {
-  if (event.action !== "created") return ignored(`action ${event.action ?? "?"}`);
+  if (event.action !== "created")
+    return ignored(`action ${event.action ?? "?"}`);
   const repo = event.repository?.full_name;
   const issueNumber = event.issue?.number;
-  if (!repo || typeof issueNumber !== "number") return Response.json({ error: "missing repository or issue.number" }, { status: 400 });
+  if (!repo || typeof issueNumber !== "number")
+    return Response.json(
+      { error: "missing repository or issue.number" },
+      { status: 400 },
+    );
 
   const isPr = event.issue?.pull_request !== undefined;
-  const thread = isPr ? await findThreadByPr(deps, repo, issueNumber) : await findThreadByIssue(deps, repo, issueNumber);
+  const thread = isPr
+    ? await findThreadByPr(deps, repo, issueNumber)
+    : await findThreadByIssue(deps, repo, issueNumber);
   if (!thread) return ignored("no thread for this comment");
   if (isTerminal(thread.state)) return ignored(`thread is ${thread.state}`);
 
   const author = event.comment?.user?.login;
   const self = deps.botLogin !== undefined && author === deps.botLogin;
   const human = event.comment?.user?.type === "User";
-  const payload = { body: event.comment?.body ?? "", author, url: event.comment?.html_url, prNumber: issueNumber };
+  const payload = {
+    body: event.comment?.body ?? "",
+    author,
+    url: event.comment?.html_url,
+    prNumber: issueNumber,
+  };
   const { runId } = await deliverTurn(
     deps,
     thread,
-    { deliveryId, kind: "issue_comment", payload, trigger: "babysit_comment", cancelActive: !self && human },
+    {
+      deliveryId,
+      kind: "issue_comment",
+      payload,
+      trigger: "babysit_comment",
+      cancelActive: !self && human,
+    },
     log,
   );
-  log(`webhook: issue_comment by ${author ?? "?"} (${human ? "human" : "bot"}) → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`);
+  log(
+    `webhook: issue_comment by ${author ?? "?"} (${human ? "human" : "bot"}) → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`,
+  );
   return Response.json({ threadId: thread.id, runId }, { status: 202 });
 }
 
@@ -476,7 +666,8 @@ async function handlePush(
   log: (line: string) => void,
 ): Promise<Response> {
   const repo = event.repository?.full_name;
-  if (!repo || !event.ref?.startsWith("refs/heads/") || event.deleted === true) return ignored("not a branch push");
+  if (!repo || !event.ref?.startsWith("refs/heads/") || event.deleted === true)
+    return ignored("not a branch push");
   if (deps.botLogin === undefined || event.sender?.login !== deps.botLogin) {
     return ignored("not our push");
   }
@@ -485,14 +676,26 @@ async function handlePush(
   if (!thread) return ignored("no thread for this branch");
   if (isTerminal(thread.state)) return ignored(`thread is ${thread.state}`);
 
-  const payload = { ref: headRef, commits: Array.isArray(event.commits) ? event.commits.length : 0, headSha: event.after };
+  const payload = {
+    ref: headRef,
+    commits: Array.isArray(event.commits) ? event.commits.length : 0,
+    headSha: event.after,
+  };
   const { runId } = await deliverTurn(
     deps,
     thread,
-    { deliveryId, kind: "push", payload, trigger: "inbox", cancelActive: false },
+    {
+      deliveryId,
+      kind: "push",
+      payload,
+      trigger: "inbox",
+      cancelActive: false,
+    },
     log,
   );
-  log(`webhook: our push (${payload.commits} commit(s)) on ${headRef} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`);
+  log(
+    `webhook: our push (${payload.commits} commit(s)) on ${headRef} → thread ${thread.id} ${runId ? `→ run ${runId}` : "→ parked"}`,
+  );
   return Response.json({ threadId: thread.id, runId }, { status: 202 });
 }
 
@@ -504,15 +707,24 @@ async function handlePullRequest(
 ): Promise<Response> {
   const repo = event.repository?.full_name;
   const pr = event.pull_request;
-  if (!repo || typeof pr?.number !== "number") return Response.json({ error: "missing repository or pull_request.number" }, { status: 400 });
-  if (event.action !== "closed") return ignored(`action ${event.action ?? "?"}`);
+  if (!repo || typeof pr?.number !== "number")
+    return Response.json(
+      { error: "missing repository or pull_request.number" },
+      { status: 400 },
+    );
+  if (event.action !== "closed")
+    return ignored(`action ${event.action ?? "?"}`);
 
   const thread = await findThreadByPr(deps, repo, pr.number);
   if (!thread) return ignored("no thread for this PR");
   if (isTerminal(thread.state)) return ignored(`thread is ${thread.state}`);
 
   const to = pr.merged ? "merged" : "closed";
-  const target = canTransition(thread.state, to) ? to : canTransition(thread.state, "closed") ? "closed" : undefined;
+  const target = canTransition(thread.state, to)
+    ? to
+    : canTransition(thread.state, "closed")
+      ? "closed"
+      : undefined;
   if (!target) return ignored(`no ${to} transition from ${thread.state}`);
 
   const active = await activeRun(deps, thread.id);
@@ -522,6 +734,8 @@ async function handlePullRequest(
     .set({ state: target, updatedAt: new Date() })
     .where(eq(schema.threads.id, thread.id));
   deps.hub?.notify(thread.id);
+  // The issue is finished — release the retained sandbox (A). Best-effort.
+  await releaseThreadSandbox(deps.db, thread).catch(() => undefined);
   log(`webhook: PR #${pr.number} ${target} → thread ${thread.id}`);
   return Response.json({ threadId: thread.id, state: target }, { status: 200 });
 }
@@ -537,7 +751,10 @@ async function handleIssueLabeled(
   const repo = event.repository?.full_name;
   const issue = event.issue;
   if (!repo || typeof issue?.number !== "number") {
-    return Response.json({ error: "payload missing repository.full_name or issue.number" }, { status: 400 });
+    return Response.json(
+      { error: "payload missing repository.full_name or issue.number" },
+      { status: 400 },
+    );
   }
   const defaultBranch = event.repository?.default_branch ?? "main";
 
@@ -560,7 +777,12 @@ async function handleIssueLabeled(
     deps.db
       .select()
       .from(schema.threads)
-      .where(and(eq(schema.threads.repo, repo), eq(schema.threads.issueNumber, issue.number!)));
+      .where(
+        and(
+          eq(schema.threads.repo, repo),
+          eq(schema.threads.issueNumber, issue.number!),
+        ),
+      );
   let thread = (await find())[0];
   if (!thread) {
     await deps.db
@@ -577,11 +799,17 @@ async function handleIssueLabeled(
       .onConflictDoNothing();
     thread = (await find())[0];
   }
-  if (!thread) throw new Error(`thread for ${repo}#${issue.number} vanished mid-insert`);
+  if (!thread)
+    throw new Error(`thread for ${repo}#${issue.number} vanished mid-insert`);
 
   if (isTerminal(thread.state)) {
-    log(`webhook: ${repo}#${issue.number} labeled but thread is ${thread.state} — ignored`);
-    return Response.json({ ignored: true, reason: `thread is ${thread.state}` }, { status: 200 });
+    log(
+      `webhook: ${repo}#${issue.number} labeled but thread is ${thread.state} — ignored`,
+    );
+    return Response.json(
+      { ignored: true, reason: `thread is ${thread.state}` },
+      { status: 200 },
+    );
   }
 
   const evt = await appendEvent(deps.db, {
@@ -598,7 +826,10 @@ async function handleIssueLabeled(
     },
   });
 
-  const run = await wakeThread(deps, thread.id, { trigger: "label", task: renderIssueTask(issue) });
+  const run = await wakeThread(deps, thread.id, {
+    trigger: "label",
+    task: renderIssueTask(issue),
+  });
   if (run) await consumeEvents(deps.db, [evt.id]); // this wake IS the turn that handles the event
   deps.hub?.notify(thread.id);
 
@@ -607,7 +838,10 @@ async function handleIssueLabeled(
       run ? `→ run ${run.id} queued` : "→ queued behind the active run"
     }`,
   );
-  return Response.json({ threadId: thread.id, runId: run?.id ?? null }, { status: 202 });
+  return Response.json(
+    { threadId: thread.id, runId: run?.id ?? null },
+    { status: 202 },
+  );
 }
 
 // --- installation lifecycle (the gate's own plumbing) -------------------------
@@ -640,7 +874,11 @@ async function handleInstallationEvent(
       if (!repo.full_name) continue;
       await deps.db
         .insert(schema.repositories)
-        .values({ installationRef: row.id, fullName: repo.full_name, defaultBranch: repo.default_branch ?? null })
+        .values({
+          installationRef: row.id,
+          fullName: repo.full_name,
+          defaultBranch: repo.default_branch ?? null,
+        })
         .onConflictDoNothing();
     }
     for (const repo of event.repositories_removed ?? []) {
@@ -667,7 +905,10 @@ async function handleInstallationEvent(
       const senderLogin = event.sender?.login;
       let userId: string | undefined;
       if (senderLogin) {
-        const [user] = await deps.db.select().from(schema.users).where(eq(schema.users.login, senderLogin));
+        const [user] = await deps.db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.login, senderLogin));
         userId = user?.id;
       }
       await upsertInstallation(deps.db, {
@@ -682,7 +923,9 @@ async function handleInstallationEvent(
       return Response.json({ ok: true }, { status: 200 });
     }
     case "deleted": {
-      await deps.db.delete(schema.installations).where(eq(schema.installations.installationId, id));
+      await deps.db
+        .delete(schema.installations)
+        .where(eq(schema.installations.installationId, id));
       log(`webhook: installation ${id} deleted`);
       return Response.json({ ok: true }, { status: 200 });
     }

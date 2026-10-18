@@ -17,7 +17,20 @@
  * Budgets live as columns on threads/runs rather than a separate table: a
  * budget is meaningless detached from the thing it caps.
  */
-import { bigint, boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // uuid primary key with a random default — every table uses one
@@ -35,8 +48,12 @@ export const users = pgTable("users", {
   login: text("login"),
   name: text("name"),
   avatarUrl: text("avatar_url"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export const sessions = pgTable("sessions", {
@@ -47,7 +64,9 @@ export const sessions = pgTable("sessions", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 // --- GitHub App installations (decision #42) ------------------------------------
@@ -55,14 +74,20 @@ export const sessions = pgTable("sessions", {
 export const installations = pgTable("installations", {
   id: uuidPk(),
   /** GitHub's installation id — what webhooks carry and tokens mint for. */
-  installationId: bigint("installation_id", { mode: "number" }).notNull().unique(),
+  installationId: bigint("installation_id", { mode: "number" })
+    .notNull()
+    .unique(),
   accountLogin: text("account_login").notNull(),
   accountType: text("account_type").notNull(),
   suspended: boolean("suspended").notNull().default(false),
   /** The user who linked it (onboarding state param, or the webhook sender). */
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export const repositories = pgTable(
@@ -77,10 +102,19 @@ export const repositories = pgTable(
     /** THE GATE (decision #44): only enabled repos trigger agent runs. */
     enabled: boolean("enabled").notNull().default(false),
     defaultBranch: text("default_branch"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
-  (t) => [unique("repositories_installation_name_unique").on(t.installationRef, t.fullName)],
+  (t) => [
+    unique("repositories_installation_name_unique").on(
+      t.installationRef,
+      t.fullName,
+    ),
+  ],
 );
 
 export const threads = pgTable(
@@ -99,23 +133,40 @@ export const threads = pgTable(
     /** Where the thread came from: "github" (webhook) or "local" (CLI/dev). */
     source: text("source").notNull().default("local"),
     /** The account that owns the installation this work came through (decision #41). */
-    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     /** GitHub's installation id — the credential context for this thread's repo. */
     installationId: bigint("installation_id", { mode: "number" }),
     checkpointSha: text("checkpoint_sha"), // resume/fork point (git commit in the VM)
+    /** The retained sandbox this thread owns (A) — Heyo deployment id or local dir id. */
+    sandboxId: text("sandbox_id"),
+    sandboxBackend: text("sandbox_backend"), // "heyo" | "local"
+    /** Off-machine checkpoint branch (B), e.g. sailor/issue-20-checkpoint. */
+    checkpointRef: text("checkpoint_ref"),
     summary: text("summary"), // running summary of the work (context compaction)
     /** Verbatim recent conversation — the ThreadStore's storage (decision #17). */
-    messages: jsonb("messages").notNull().default(sql`'[]'::jsonb`),
+    messages: jsonb("messages")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** Standing watch intent from a finish(disposition: "watch") — the babysitter reads it (step 13). */
     watch: jsonb("watch"),
     /** The phase the thread is currently in — resume starts here. */
     phase: text("phase"),
     budgetMaxTurns: integer("budget_max_turns").notNull().default(20),
-    budgetMaxUsd: numeric("budget_max_usd", { precision: 10, scale: 4 }).notNull().default("10.0"),
+    budgetMaxUsd: numeric("budget_max_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("10.0"),
     turnsUsed: integer("turns_used").notNull().default(0),
-    usdSpent: numeric("usd_spent", { precision: 10, scale: 4 }).notNull().default("0"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    usdSpent: numeric("usd_spent", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [unique("threads_repo_issue_unique").on(t.repo, t.issueNumber)], // business dedup: one thread per issue
 );
@@ -152,7 +203,9 @@ export const runs = pgTable(
     /** Dashboard "keep sandbox" switch (17b): skip destruction at run end (debugging). */
     keepSandbox: boolean("keep_sandbox").notNull().default(false),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     index("runs_thread_idx").on(t.threadId, t.createdAt),
@@ -171,21 +224,32 @@ export const runs = pgTable(
 export const webhookDeliveries = pgTable("webhook_deliveries", {
   deliveryId: text("delivery_id").primaryKey(), // X-GitHub-Delivery (unique per delivery)
   eventKind: text("event_kind").notNull(), // X-GitHub-Event
-  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  receivedAt: timestamp("received_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export const events = pgTable(
   "events",
   {
-    id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
-    threadId: uuid("thread_id").references(() => threads.id, { onDelete: "set null" }),
+    id: bigint("id", { mode: "bigint" })
+      .primaryKey()
+      .generatedAlwaysAsIdentity(),
+    threadId: uuid("thread_id").references(() => threads.id, {
+      onDelete: "set null",
+    }),
     // Webhook deliveries carry a GUID; internal events (chat, sweeper) don't.
-    deliveryId: text("delivery_id").references(() => webhookDeliveries.deliveryId, { onDelete: "cascade" }),
+    deliveryId: text("delivery_id").references(
+      () => webhookDeliveries.deliveryId,
+      { onDelete: "cascade" },
+    ),
     kind: text("kind").notNull(), // issue_labeled | issue_comment | pr_review | check_run | ...
     payload: jsonb("payload").notNull(),
     // pending | consumed | skipped — coalescing picks up all pending at once
     status: text("status").notNull().default("pending"),
-    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (t) => [index("events_inbox_idx").on(t.threadId, t.status, t.receivedAt)],
@@ -194,7 +258,9 @@ export const events = pgTable(
 export const traceEvents = pgTable(
   "trace_events",
   {
-    id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint("id", { mode: "bigint" })
+      .primaryKey()
+      .generatedAlwaysAsIdentity(),
     runId: uuid("run_id")
       .notNull()
       .references(() => runs.id, { onDelete: "cascade" }),
@@ -203,7 +269,10 @@ export const traceEvents = pgTable(
     type: text("type").notNull(), // llm_call | tool_call | tool_result | phase | budget | error | ...
     payload: jsonb("payload").notNull(),
   },
-  (t) => [unique("trace_events_run_seq_unique").on(t.runId, t.seq), index("trace_events_run_idx").on(t.runId, t.seq)],
+  (t) => [
+    unique("trace_events_run_seq_unique").on(t.runId, t.seq),
+    index("trace_events_run_idx").on(t.runId, t.seq),
+  ],
 );
 
 // --- row types (inferred from the table definitions above) -------------------

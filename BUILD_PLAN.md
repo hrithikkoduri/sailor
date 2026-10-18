@@ -536,12 +536,33 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   same follow-unless-scrolled-up rule as the thread.
 - **Budget dials are product policy.** The engine keeps conservative package
   defaults (40 steps / 1.5M tokens / $5), and Sailor configures long-horizon
-  limits (default 120 steps / 24M tokens / $10 via `SAILOR_MAX_STEPS`,
-  `SAILOR_MAX_TOKENS`, `SAILOR_MAX_USD`). Token usage is *cumulative* across
-  the run's calls — compaction bounds the per-call context and cannot slow the
-  sum — so the token cap is a runaway backstop while steps and dollars are the
-  real dials. Costs are now real (LLM prices set for `deepseek-v4.1-flash`),
-  which also arms the dollar check.
+  limits (default 300 steps / 150M tokens / $25 via `SAILOR_MAX_STEPS`,
+  `SAILOR_MAX_TOKENS`, `SAILOR_MAX_USD`; an overnight profile of 1200 / 400M /
+  $50 is documented in `.env.example`). Token usage is *cumulative* across the
+  run's calls — compaction bounds the per-call context and cannot slow the sum
+  — so the token cap is a runaway backstop while steps and dollars are the real
+  dials. Costs are real (LLM prices set for `deepseek-v4.1-flash`), which also
+  arms the dollar check.
+
+### Sandbox continuity (A + B): the workspace survives the run
+
+- **A — retain + adopt.** While a GitHub thread is alive, its run's sandbox is
+  retained (Heyo: scale-to-zero with the disk kept; local: the directory stays)
+  and the id recorded on the thread. The next run — interjection, sweep resume,
+  follow-up turn — ADOPTS the same sandbox: branch, edits, and uncommitted work
+  exactly as left. Adoption failure falls back to a fresh clone and clears the
+  stale pointer. Terminal threads (merged/closed) release the VM.
+- **B — off-machine checkpoints.** Turn-boundary checkpoints are force-pushed to
+  a side branch (`sailor/issue-<n>-checkpoint`) that the push webhook ignores by
+  design (it matches headRef exactly), so no acknowledgment-run storm. A fresh
+  clone prefers that branch over the PR branch — it carries the latest workspace
+  — and the thread records it after the first successful push. Push failures are
+  reported on the checkpoint event, never fatal to the run.
+- Package/product split: retention, adoption, and checkpoint push are `Sandbox`
+  interface capabilities in Anchor, and the lifecycle is dogfooded through the
+  package's `openSandbox` (adopt → verify → fall back) and `releaseSandbox`
+  (destroy by handle); Sailor supplies policy only — which threads retain, when
+  to release, and the branch naming.
 
 ### Local debug display + trace failure visibility
 
