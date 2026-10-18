@@ -22,6 +22,7 @@ import {
   openSandbox,
   releaseSandbox,
   runAgent,
+  upsertHeyoSecret,
   type AgentEvent,
   type BudgetLimits,
   type CompactionConfig,
@@ -45,7 +46,6 @@ import {
 import { TraceRecorder } from "../trace/store.js";
 import type { GitHubAppService } from "../github/app.js";
 import type { DeliveredPullRequest } from "../github/pr.js";
-import { refreshBuildSecret } from "../heyo/build-secret.js";
 import {
   assertSafeCheckpointRef,
   checkpointRefFor,
@@ -328,7 +328,8 @@ export async function executeRun(
   // Git-kind image builds run on Heyo's host and read their credential from
   // the namespace secret store; installation tokens live an hour, so refresh
   // the stored value on the way in (the same fresh token also clones the
-  // workspace). Best-effort — an older secret beats a failed run.
+  // workspace). The upsert mechanic lives in @anchor/core; when/whether is
+  // Sailor policy. Best-effort — an older secret beats a failed run.
   if (
     !deps.local &&
     cfg.heyo.imageKind === "git" &&
@@ -339,7 +340,7 @@ export async function executeRun(
     cfg.heyo.token
   ) {
     try {
-      await refreshBuildSecret({
+      await upsertHeyoSecret({
         server: cfg.heyo.server,
         token: cfg.heyo.token,
         namespace: cfg.heyo.namespace,

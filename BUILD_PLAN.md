@@ -257,11 +257,12 @@ precedes the eval since SWE-bench repos are Python (pytest etc.); the eval keeps
   answering 502 "the artifact store refused this app-lb's credential"). Until Heyo fixes the
   store, the git kind is the production path; the ext4 push retry is a one-command follow-up.
 - **Secret durability (now automatic):** the worker mints a fresh installation token at the
-  start of every run and upserts it into `heyo-build-git` (`refreshBuildSecret`, hooked in
-  `executeRun`; `HEYO_BUILD_SECRET_REFRESH=0` disables). Host-side builds therefore always see
-  a valid credential — no manual refresh; the same token also clones the workspace. A PAT in
-  the secret is unnecessary while the App is configured; the artifact path (once the store
-  heals) removes the secret entirely.
+  start of every run and upserts it into `heyo-build-git` — the upsert *mechanic* is
+  `upsertHeyoSecret` in `@anchor/core` (Heyo admin machinery, SDK-backed), while Sailor decides
+  when/whether (`executeRun`; `HEYO_BUILD_SECRET_REFRESH=0` disables). Host-side builds
+  therefore always see a valid credential — no manual refresh; the same token also clones the
+  workspace. A PAT in the secret is unnecessary while the App is configured; the artifact path
+  (once the store heals) removes the secret entirely.
 
 ### Step 17 — Dashboard: API + threads/runs view + trace viewer
 **17a — Accounts + GitHub App + onboarding ✅**
