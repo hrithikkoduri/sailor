@@ -156,9 +156,10 @@
   }
 }
 
-/* The helm turns only while work is happening. */
+/* The helm is steered while work is happening — a hand turns it, it does not
+   spin: 140° clockwise, a beat, then 180° back the other way and home. */
 .helm-spin {
-  animation: helm-spin 3s linear infinite;
+  animation: helm-steer 4.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
   transform-origin: center;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -166,9 +167,21 @@
     animation: none !important;
   }
 }
-@keyframes helm-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes helm-steer {
+  0% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(140deg);
+  }
+  52% {
+    transform: rotate(140deg);
+  }
+  88% {
+    transform: rotate(-40deg);
+  }
+  100% {
+    transform: rotate(0deg);
   }
 }
 

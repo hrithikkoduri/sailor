@@ -368,7 +368,7 @@ test("stream: missed start, reasoning, tool verbs between replies, completion an
   const response = page.getByRole("article", { name: "Agent response" });
   await expect(response).toHaveAttribute("aria-busy", "true");
   const busyMark = response.locator(".helm-spin").first();
-  await expect(busyMark).toHaveCSS("animation-name", "helm-spin");
+  await expect(busyMark).toHaveCSS("animation-name", "helm-steer");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(busyMark).toHaveCSS("animation-name", "none");
   await page.emulateMedia({ reducedMotion: "no-preference" });
