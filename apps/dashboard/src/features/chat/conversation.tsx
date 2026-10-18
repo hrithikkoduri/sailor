@@ -19,6 +19,8 @@ import {
   SystemNote,
 } from "@/features/chat/components/message";
 import { mergeConversation, type LiveState } from "@/features/chat/live";
+import { presentationFor } from "@/features/chat/presentation";
+import { useDebugMode } from "@/features/debug/debug-provider";
 import { payloadNum, payloadStr } from "@/utils/events";
 import { cn } from "@/utils/cn";
 
@@ -32,47 +34,80 @@ type FeedItem =
       label: string;
     }
   | { kind: "agent"; id: string; at: string; run: ThreadRun }
-  | { kind: "note"; id: string; at: string; text: string; count?: number };
+  | {
+      kind: "note";
+      id: string;
+      at: string;
+      text: string;
+      count?: number;
+      /** Expandable body (review/comment text). */
+      details?: string;
+      /** Expandable diff excerpt (review comments). */
+      snippet?: string;
+      /** Strictly hidden outside debug mode (⌘⇧D). */
+      hidden?: boolean;
+    };
 
 const str = payloadStr;
 
 function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
   const p = e.payload;
   const at = e.receivedAt;
+  const presentation = presentationFor(e.kind);
+  const hidden = presentation.hidden === true;
+
+  // Only messages written in OUR chat are user bubbles by default; every
+  // external event arrives as a system receipt (presentation.ts chooses).
+  if (presentation.role === "user") {
+    return {
+      kind: "human",
+      id: `e${e.id}`,
+      at,
+      author: str(p, "author") ?? "you",
+      body: str(p, "body") ?? "",
+      label: e.kind === "chat_message" ? "dashboard" : "comment",
+    };
+  }
+
   switch (e.kind) {
-    case "chat_message":
+    case "pull_request_review":
+    case "pull_request_review_comment": {
+      const author = str(p, "author") ?? "reviewer";
+      const state = str(p, "state");
+      const path = str(p, "path");
+      const line = payloadNum(p, "line");
+      const anchor = path
+        ? line !== undefined
+          ? `${path}:${line}`
+          : path
+        : undefined;
       return {
-        kind: "human",
+        kind: "note",
         id: `e${e.id}`,
         at,
-        author: str(p, "author") ?? "you",
-        body: str(p, "body") ?? "",
-        label: "dashboard",
+        hidden,
+        text:
+          `GitHub review${state ? ` · ${state.replace(/_/g, " ")}` : ""}` +
+          ` · ${author}${anchor ? ` · ${anchor}` : ""}`,
+        details: str(p, "body")?.trim() || undefined,
+        snippet: str(p, "diffHunk")?.split("\n").slice(-10).join("\n"),
       };
+    }
     case "issue_comment":
       return {
-        kind: "human",
+        kind: "note",
         id: `e${e.id}`,
         at,
-        author: str(p, "author") ?? "someone",
-        body: str(p, "body") ?? "",
-        label: "comment",
-      };
-    case "pull_request_review":
-    case "pull_request_review_comment":
-      return {
-        kind: "human",
-        id: `e${e.id}`,
-        at,
-        author: str(p, "author") ?? "reviewer",
-        body: str(p, "body") || "(see the diff comments)",
-        label: "review",
+        hidden,
+        text: `GitHub comment · ${str(p, "author") ?? "someone"}`,
+        details: str(p, "body")?.trim() || undefined,
       };
     case "issue_labeled":
       return {
         kind: "note",
         id: `e${e.id}`,
         at,
+        hidden,
         text: `labeled agent:fix${str(p, "title") ? ` · ${str(p, "title")}` : ""}`,
       };
     case "check_run":
@@ -80,7 +115,13 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
       const checks = Array.isArray(p.checks)
         ? (p.checks as string[]).join(", ")
         : "a check";
-      return { kind: "note", id: `e${e.id}`, at, text: `CI: ${checks} failed` };
+      return {
+        kind: "note",
+        id: `e${e.id}`,
+        at,
+        hidden,
+        text: `CI: ${checks} failed`,
+      };
     }
     case "push": {
       const commits = payloadNum(p, "commits");
@@ -88,6 +129,7 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
         kind: "note",
         id: `e${e.id}`,
         at,
+        hidden,
         text: `agent pushed${commits ? ` ${commits} commit${commits === 1 ? "" : "s"}` : ""} to ${str(p, "ref") ?? "the branch"}`,
       };
     }
@@ -96,6 +138,7 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
         kind: "note",
         id: `e${e.id}`,
         at,
+        hidden,
         text: `PR branch conflicts with ${str(p, "base") ?? "base"}`,
       };
     case "budget_exhausted":
@@ -103,6 +146,7 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
         kind: "note",
         id: `e${e.id}`,
         at,
+        hidden,
         text: str(p, "note") ?? "run ended out of budget",
       };
     default:
@@ -110,16 +154,19 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
         kind: "note",
         id: `e${e.id}`,
         at,
+        hidden,
         text: e.kind.replace(/_/g, " "),
       };
   }
 }
 
-function buildFeed(detail: ThreadDetail): FeedItem[] {
+function buildFeed(detail: ThreadDetail, debug: boolean): FeedItem[] {
   const feed: FeedItem[] = [];
   for (const e of detail.events) {
     const item = eventToFeedItem(e);
-    if (item) feed.push(item);
+    // "hidden" kinds exist only in debug mode — strictly invisible otherwise.
+    if (item && (!(item.kind === "note" && item.hidden) || debug))
+      feed.push(item);
   }
   for (const run of detail.runs) {
     if (
@@ -174,7 +221,8 @@ export function Conversation({
   landedEventId?: string | null;
   onOpenRun: (runId: string) => void;
 }) {
-  const items = useMemo(() => buildFeed(detail), [detail]);
+  const { enabled: debug } = useDebugMode();
+  const items = useMemo(() => buildFeed(detail, debug), [detail, debug]);
   const streaming = live && !live.finished;
   const scroller = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -242,6 +290,9 @@ export function Conversation({
                   text={item.text}
                   count={item.count}
                   at={item.at}
+                  details={item.details}
+                  snippet={item.snippet}
+                  hidden={item.hidden}
                 />
               );
             }

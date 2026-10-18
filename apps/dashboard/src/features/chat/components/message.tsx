@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { CheckCheck, Workflow } from "lucide-react";
 import { Helm } from "@/elements/brand";
 import { Markdown } from "@/elements/markdown";
@@ -107,21 +108,67 @@ export function SystemNote({
   text,
   count,
   at,
+  details,
+  snippet,
+  hidden,
 }: {
   text: string;
   count?: number;
   at: string;
+  /** Expandable body (review/comment text). */
+  details?: string;
+  /** Expandable diff excerpt (review comments). */
+  snippet?: string;
+  /** Debug-only entry — tagged so it is clear why it is here. */
+  hidden?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const expandable = Boolean(details || snippet);
+  const label = `${text}${count && count > 1 ? ` · ${count} updates` : ""}`;
   return (
-    <div className="flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
-      <CheckCheck className="mt-0.5 size-3 shrink-0" />
-      <span>
-        {text}
-        {count && count > 1 ? ` · ${count} updates` : ""}
-      </span>
-      <time className="ml-auto shrink-0" dateTime={at}>
-        {timeAgo(at)}
-      </time>
+    <div className="text-[11px] leading-relaxed text-muted-foreground">
+      <div className="flex items-start gap-2">
+        <CheckCheck className="mt-0.5 size-3 shrink-0" />
+        {expandable ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="min-w-0 text-left transition-colors hover:text-foreground"
+          >
+            <span className="underline decoration-border underline-offset-2">
+              {label}
+            </span>
+            {hidden && (
+              <span className="ml-1.5 rounded bg-muted px-1 py-px align-middle text-[9px] tracking-wide uppercase">
+                hidden
+              </span>
+            )}
+          </button>
+        ) : (
+          <span>
+            {label}
+            {hidden && (
+              <span className="ml-1.5 rounded bg-muted px-1 py-px align-middle text-[9px] tracking-wide uppercase">
+                hidden
+              </span>
+            )}
+          </span>
+        )}
+        <time className="ml-auto shrink-0" dateTime={at}>
+          {timeAgo(at)}
+        </time>
+      </div>
+      {open && expandable && (
+        <div className="mt-2 ml-5 space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
+          {snippet && (
+            <pre className="overflow-x-auto font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
+              {snippet}
+            </pre>
+          )}
+          {details && <Markdown text={details} className="text-[12px]" />}
+        </div>
+      )}
     </div>
   );
 }

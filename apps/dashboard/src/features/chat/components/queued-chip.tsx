@@ -1,6 +1,7 @@
 import { HoverCard } from "radix-ui";
-import { Loader2, MessageSquare, X, Zap } from "lucide-react";
+import { Loader2, X, Zap } from "lucide-react";
 import { Button } from "@/elements/button";
+import { cn } from "@/utils/cn";
 import { timeAgo } from "@/utils/format";
 
 export interface QueuedMessage {
@@ -35,10 +36,24 @@ export function QueuedChip({
       <HoverCard.Trigger asChild>
         <div
           data-testid="queued-chip"
-          className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card/60 py-1 pl-3 pr-1.5 text-[11px]"
+          className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card/60 py-1 pr-1.5 pl-2 text-[11px]"
         >
+          {/* The batch as a physical stack — hover fans it out below. */}
+          <span aria-hidden className="flex shrink-0 items-center">
+            {messages.slice(-3).map((message, i, arr) => (
+              <span
+                key={message.id}
+                className={cn(
+                  "h-4 w-3.5 rounded-[4px] border border-border bg-card shadow-sm",
+                  i > 0 && "-ml-2",
+                )}
+                style={{
+                  transform: `rotate(${(i - (arr.length - 1) / 2) * 9}deg)`,
+                }}
+              />
+            ))}
+          </span>
           <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-            <MessageSquare aria-hidden className="size-3 shrink-0" />
             <span className="truncate">
               {messages.length > 1
                 ? `${messages.length} messages queued`
