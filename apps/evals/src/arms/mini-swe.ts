@@ -22,17 +22,32 @@ export interface MiniSweArmOptions {
   costLimitUsd?: number;
 }
 
-/** The python driver: run one task in the current directory, print the result. */
-const DRIVER = `import json, sys
-from minisweagent.agents.default import DefaultAgent
-from minisweagent.models.litellm_model import LitellmModel
+/** The python driver: run one task in the current directory, print the result.
+ * Mirrors mini's own swebench runner: its battle-tested templates come from
+ * the packaged swebench.yaml; mode yolo + confirm_exit false = non-interactive. */
+const DRIVER = `import sys
+from minisweagent.agents import get_agent
+from minisweagent.config import builtin_config_dir, get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment
+from minisweagent.models import get_model
+from minisweagent.utils.serialize import recursive_merge
 
 task = open(sys.argv[1], encoding="utf-8").read()
-model = sys.argv[2]
-agent = DefaultAgent(LitellmModel(model_name=model), LocalEnvironment())
-result = agent.run(task)
-print("MINI_RESULT " + json.dumps(result, default=str)[:2000])
+config = recursive_merge(
+    get_config_from_spec(str(builtin_config_dir / "benchmarks" / "swebench.yaml")),
+    {
+        "agent": {"mode": "yolo", "confirm_exit": False},
+        "model": {"model_name": sys.argv[2]},
+    },
+)
+agent = get_agent(
+    get_model(config=config.get("model", {})),
+    LocalEnvironment(),
+    config.get("agent", {}),
+    default_type="default",
+)
+agent.run(task)
+print("MINI_DONE")
 `;
 
 export function miniSweArm(opts: MiniSweArmOptions): EvalArm {
