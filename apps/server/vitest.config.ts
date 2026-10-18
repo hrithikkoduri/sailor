@@ -5,9 +5,27 @@ import { defineConfig } from "vitest/config";
 // paths entry) so vitest needs no build step for @anchor/core.
 export default defineConfig({
   resolve: {
-    alias: {
-      "@anchor/core": fileURLToPath(new URL("../../packages/core/src/index.ts", import.meta.url)),
-    },
+    alias: [
+      {
+        // Exact match only — a string alias would prefix-capture subpaths.
+        find: /^@anchor\/core$/,
+        replacement: fileURLToPath(
+          new URL("../../packages/core/src/index.ts", import.meta.url),
+        ),
+      },
+      {
+        find: /^@anchor\/core\/sandbox\/heyo$/,
+        replacement: fileURLToPath(
+          new URL("../../packages/core/src/sandbox/heyo.ts", import.meta.url),
+        ),
+      },
+      {
+        find: /^@anchor\/core\/sandbox\/local$/,
+        replacement: fileURLToPath(
+          new URL("../../packages/core/src/sandbox/local.ts", import.meta.url),
+        ),
+      },
+    ],
   },
   test: {
     // App tests share the database and the queues; parallel files would race

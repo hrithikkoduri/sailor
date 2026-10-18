@@ -22,7 +22,6 @@ import {
   openSandbox,
   releaseSandbox,
   runAgent,
-  upsertHeyoSecret,
   type AgentEvent,
   type BudgetLimits,
   type CompactionConfig,
@@ -35,6 +34,7 @@ import {
   type SandboxHandle,
   type SandboxSpec,
 } from "@anchor/core";
+import { upsertHeyoSecret } from "@anchor/core/sandbox/heyo";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";

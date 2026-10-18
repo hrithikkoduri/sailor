@@ -13,7 +13,8 @@ import os from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
-import { LocalSandbox, type Sandbox, type SandboxSpec } from "@anchor/core";
+import { type Sandbox, type SandboxSpec } from "@anchor/core";
+import { LocalSandbox } from "@anchor/core/sandbox/local";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { executeRun, releaseThreadSandbox } from "../../src/runs/execute.js";
@@ -153,7 +154,10 @@ describe("sandbox continuity (retain/adopt + checkpoint push)", () => {
     expect(adopted.id).toBe(made[0]!.id); // adopted, not re-cloned
     // The workspace directory is retained; read it from the host path (the
     // instance itself is marked destroyed at run end, but the disk stays).
-    const note = await readFile(path.join(adopted.workspace, "note.txt"), "utf8");
+    const note = await readFile(
+      path.join(adopted.workspace, "note.txt"),
+      "utf8",
+    );
     expect(note).toContain("run one was here");
 
     const [thread] = await db
