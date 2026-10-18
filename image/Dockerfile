@@ -1,17 +1,19 @@
 # The sandbox toolchain image (step 16) — what every Agent-run VM boots with.
 #
-# A generic agent working environment: git, Python 3 (+pip/venv/pytest),
-# Node 22 (+npm/corepack), ripgrep, jq, and a native build toolchain so
-# `pip install -r requirements.txt` and `npm install` work without an
-# apt-get storm on every boot. Built and published with image/build.sh.
-FROM ubuntu:24.04
+# Base: the Heyo hub image. It ships the guest plumbing every managed VM needs
+# (sshd for the port-22 readiness check, socat for vsock log streaming) — a
+# bare ubuntu boots the kernel but never becomes healthy. On top: git,
+# Python 3 (+pip/venv/pytest), Node 22 (+npm/corepack), ripgrep, jq, and a
+# native build toolchain, so `pip install -r requirements.txt` and
+# `npm install` work without an apt-get storm on every boot.
+FROM heyo/ubuntu:latest
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget git openssh-client \
+      ca-certificates curl wget git openssh-client socat \
       build-essential pkg-config cmake \
       python3 python3-pip python3-venv python3-dev \
       jq unzip zip less procps openssl tar \
