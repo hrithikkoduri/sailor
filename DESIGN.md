@@ -338,6 +338,18 @@ shape survives a real run). Runs all tasks end-to-end → solve rate, $/task,
 p50/p95 time, failure-mode breakdown (repro-failed / wrong-fix / timeout /
 budget / loop / tool-error). Full JSONL trace per task.
 
+**Contamination is real and must be reported (2026-10-18).** The first smoke
+task (`psf__requests-1963`) produced the **verbatim gold patch** — same
+comment, same lines — plus the hidden gold test reproduced character-for-
+character from the problem statement alone. DeepSeek V4.1 Flash has SWE-bench
+Lite memorized for popular instances, so absolute solve rates on old Lite
+tasks measure recall as much as harness capability. The A/B against
+mini-swe-agent stays meaningful (same instances, same model), and the report
+must: (1) flag exact/near gold-patch matches computed at grading time,
+(2) weight SWE-bench-Verified and less-ancient instances, (3) lean on the
+seeded-bug track (repos we control, commits after the model's cutoff) for the
+claims that need to be contamination-free.
+
 ## Secrets
 
 - **Local dev:** `.env` file (gitignored). Real env vars override `.env`; `.env` overrides built-in defaults.

@@ -205,6 +205,11 @@ the same model; (2) **the package is tight enough that a stranger installs
   agent on Anchor B%".
 - Report: solve rate, $/task, p50/p95 time, failure modes (repro-failed /
   wrong-fix / timeout / budget / loop / tool-error).
+- Contamination controls (the 2026-10-18 smoke produced the verbatim gold
+  patch — the model has Lite memorized): flag exact/near gold matches at
+  grading time; add SWE-bench-Verified as a second subset; keep the
+  seeded-bug track (repos we control, post-cutoff commits) as the
+  contamination-free complement.
 - Package item the checklist wants: `run_tests` gains `junit_path` →
   `meta.tests` (FAIL_TO_PASS / PASS_TO_PASS baseline — step 15 pre-eval
   checklist).
