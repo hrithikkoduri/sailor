@@ -1,11 +1,12 @@
 /**
  * The harness benchmark CLI.
  *
- *   npm run eval -w apps/evals -- --tasks data/swebench-lite-10.jsonl --provider heyo
+ *   npm run eval -w apps/evals -- --tasks data/swebench-lite-10.jsonl --provider docker --model z-ai/glm-5.3
  *
  * No product stack behind it: no worker, no queue, no webhook, no database.
  * The app imports `@anchor/core` directly — plus exactly one thing from the
- * product, the `sailor` arm's agent configuration.
+ * One import from the product, for the same knobs the product reads: the
+ * config loader. The runtime, the agent, and the tools are pure Anchor.
  *
  * Outputs (in `--out`, default `.eval-runs/<timestamp>/`):
  *   predictions.jsonl  official-grader input: instance_id, model_patch
@@ -24,13 +25,15 @@ import {
 import { local } from "@anchor/core/sandbox/local";
 import { loadConfig, loadDotEnv } from "../../server/src/config.js";
 import { heyoProvider } from "../../server/src/heyo-provider.js";
-import { sailorArm } from "./arms/sailor.js";
+import { docker } from "@anchor/core/sandbox/docker";
+import { anchorArm } from "./arms/anchor.js";
 import { loadTasks, type EvalTask } from "./tasks.js";
 import { runEvalSuite, type EvalTaskResult } from "./runner.js";
 
 const USAGE = `usage: eval --tasks <file.jsonl> [options]
-  --provider local|heyo   sandbox backend (default local; heyo = real runs)
-  --arm <name>            system under test (default sailor)
+  --provider local|heyo|docker  sandbox backend (default local; docker = the
+                          benchmark environment from task images; heyo = VMs)
+  --arm <name>            system under test (default anchor)
   --limit <n>             run only the first n tasks
   --task <instance_id>    run a single task
   --model <id>            model override (default: configured LLM)
@@ -68,16 +71,20 @@ if (args.has("help") || !args.has("tasks")) {
 }
 
 const tasksFile = String(args.get("tasks"));
-const armName = String(args.get("arm") ?? "sailor");
-if (armName !== "sailor") {
+const armName = String(args.get("arm") ?? "anchor");
+if (armName !== "anchor") {
   say(
-    `unknown arm "${armName}" — only "sailor" ships so far (mini-swe-agent is next)`,
+    `unknown arm "${armName}" — only "anchor" ships so far (mini-swe-agent is next)`,
   );
   process.exit(1);
 }
 const providerName = String(args.get("provider") ?? "local");
-if (providerName !== "local" && providerName !== "heyo") {
-  say(`unknown provider "${providerName}" — local or heyo`);
+if (
+  providerName !== "local" &&
+  providerName !== "heyo" &&
+  providerName !== "docker"
+) {
+  say(`unknown provider "${providerName}" — local, heyo, or docker`);
   process.exit(1);
 }
 
@@ -103,7 +110,12 @@ const llm = createLLMClient({
 const compaction = catalog?.contextLength
   ? compactionForContextWindow(catalog.contextLength)
   : undefined;
-const provider = providerName === "heyo" ? heyoProvider(cfg) : local();
+const provider =
+  providerName === "heyo"
+    ? heyoProvider(cfg)
+    : providerName === "docker"
+      ? docker({ dockerBin: process.env.DOCKER_BIN ?? "docker" })
+      : local();
 
 const budgets: Partial<BudgetLimits> = {};
 if (args.has("max-steps")) budgets.maxSteps = Number(args.get("max-steps"));
@@ -173,7 +185,7 @@ let finished = 0;
 
 const results = await runEvalSuite({
   tasks,
-  arm: sailorArm(),
+  arm: anchorArm(),
   provider,
   llm,
   ...(Object.keys(budgets).length > 0 ? { budgets } : {}),

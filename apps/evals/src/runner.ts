@@ -100,11 +100,21 @@ export async function runEvalSuite(
   for (const task of options.tasks) {
     const started = Date.now();
     options.log?.(`→ ${task.id}`);
-    const sandbox = options.provider.create({
-      repoUrl: task.repoUrl,
-      ref: task.baseRef,
-      gitIdentity: { name: "anchor-eval", email: "eval@anchor.local" },
-    });
+    const sandbox = options.provider.create(
+      task.image
+        ? {
+            image: task.image,
+            ...(task.workspacePath
+              ? { workspacePath: task.workspacePath }
+              : {}),
+            gitIdentity: { name: "anchor-eval", email: "eval@anchor.local" },
+          }
+        : {
+            repoUrl: task.repoUrl,
+            ref: task.baseRef,
+            gitIdentity: { name: "anchor-eval", email: "eval@anchor.local" },
+          },
+    );
 
     let result: EvalTaskResult;
     try {

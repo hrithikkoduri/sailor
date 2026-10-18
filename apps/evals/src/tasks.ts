@@ -20,6 +20,14 @@ export interface EvalTask {
   failToPass?: string[];
   /** Tests that must not regress (reporting only). */
   passToPass?: string[];
+  /**
+   * A pre-built image whose workspace ALREADY exists with the repo checked
+   * out and dependencies installed (SWE-bench task images). When present, the
+   * runner boots this image instead of cloning `repoUrl`.
+   */
+  image?: string;
+  /** Where the pre-existing workspace lives inside the image. */
+  workspacePath?: string;
 }
 
 function listFrom(value: unknown): string[] | undefined {
@@ -45,6 +53,7 @@ export function taskFromRow(row: Record<string, unknown>): EvalTask {
   }
   const failToPass = listFrom(row.FAIL_TO_PASS);
   const passToPass = listFrom(row.PASS_TO_PASS);
+  const image = row.image ? String(row.image) : undefined;
   return {
     id,
     repoUrl: /^https?:\/\//.test(repo)
@@ -54,6 +63,8 @@ export function taskFromRow(row: Record<string, unknown>): EvalTask {
     problem,
     ...(failToPass ? { failToPass } : {}),
     ...(passToPass ? { passToPass } : {}),
+    // SWE-bench task images carry the repo at /testbed, fully provisioned.
+    ...(image ? { image, workspacePath: "/testbed" } : {}),
   };
 }
 

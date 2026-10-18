@@ -41,6 +41,7 @@ const KEEP = [
   "problem_statement",
   "FAIL_TO_PASS",
   "PASS_TO_PASS",
+  "image",
 ];
 
 async function fetchRows(from, count) {
