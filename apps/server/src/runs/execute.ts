@@ -259,9 +259,8 @@ export async function executeRun(
           jobId: e.jobId,
           command: e.command,
           sandboxId: opened?.id,
-          // The bash tool gives an unset deadline the max lifetime; an
-          // explicit deadline is at most the same cap.
-          timeoutSecs: 3600,
+          // The bash tool's hard lifetime; 3600 is the tool's cap.
+          timeoutSecs: e.timeoutSecs ?? 3600,
         });
       }
       // Every recorded step nudges the dashboard watching this thread.
