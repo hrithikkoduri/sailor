@@ -756,6 +756,64 @@ Two boundaries are deliberate:
 Decided, not built — it is gated on Anchor's delegation landing, and tracked as
 "Agent teams in the pipeline" in `ROADMAP.md`.
 
+## Decision #70 — Issue fixes are aggressive on scope and evidence, not on effort
+
+The same defect produced two different fixes one day apart. WebRover #20 (PRs
+#24/#25) got the complete one: guard `annotate_page`, retry the capture, add
+`after_annotate_router` to fall back instead of looping, and guard the sibling
+`context.pages[-1]` after closing a tab. WebRover #27 (PR #28) got a two-line
+truthiness guard on `dom_elements[0]` — correct, and done in 53 seconds of
+agent work (the other 207s of that run were sandbox boot). It left the second
+`IndexError` of the same class unfixed, and its own closing report said so
+honestly, but only in the dashboard.
+
+The cause is not a regression. Anchor's coding profile now carries a deliberate
+scope rule — *"Fix the reported failure first: hardening beyond it … is proposed
+as a follow-up in your response unless it is required to make the reported
+failure stop"* — plus the same rule in the `plan` phase. That profile replaced a
+more aggressive persona written for the SWE-bench arms, where the grader scores
+a patch against a gold diff and aggression pays. Sailor's grader is a human
+maintainer reading a PR on a live repository, so that aggression was
+mis-aimed here; the answer is not to bring it back.
+
+**Decision.** Sailor tightens what "the reported failure" *means* for issue
+work, and raises the bar for calling a fix verified. Both ship as supplemental
+prompt sections (`apps/server/src/agents/prompts.ts`) that interpret the
+package's rules rather than overriding them:
+
+- **Scope = the defect, not the line.** If the reported error is raised in one
+  function, the fix covers that function's siblings and callers that share the
+  cause. A crash is fixed when the reported path cannot raise it anywhere it is
+  reachable. Proportionality still binds: the same defect's sites, never a
+  broader refactor.
+- **A declined follow-up must reach the maintainer.** Anchor's rule assumes the
+  deferred hardening is "proposed in your response", but Sailor's publication
+  rule says the chat response is not a posted comment — so the proposal was
+  dying in the dashboard. Declined follow-ups go on the issue via
+  `reply_on_github`.
+- **Verified means re-runnable evidence.** With no suite, the smallest
+  executable check beats an AST parse: feed the reporter's failing input into
+  the changed path, report the exact command and output, remove the scratch
+  file. When nothing can run, say precisely what and why. Anchor's prohibitions
+  on manufactured tests and scaffolding still stand — this raises the floor, it
+  does not add process.
+
+**Why not war mode.** Aggression tuned to a gold-patch grader exports the wrong
+things to issue work: over-wide diffs, tests manufactured to look thorough
+(which the package's verification philosophy explicitly forbids), token burn,
+and loops — WebRover #19 spent 10,982 trace events across four runs learning
+that. Quality here is bought by scope and evidence, which are cheap, not by
+verbosity or repetition, which are not.
+
+**Implementation note and follow-up.** Sailor can only *append*: Anchor exports
+`buildCodingPrompt` and `CodingPromptOptions` but not the default section
+strings, and its `exports` map blocks deep imports. Interpreting the rule in a
+new section was therefore cheaper and safer than copying the package's text
+into Sailor, where it would silently drift. The cleaner seam — export the
+default components so products can compose them — is tracked in `ROADMAP.md`.
+
+Effective on the next worker restart; no package release needed.
+
 ## Open questions
 
 - Which SWE-bench Lite subset (30–50 tasks) and how to handle per-instance setup images

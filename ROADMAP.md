@@ -99,3 +99,10 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
 - **Milestone “Anchor runs evals and stands alone”** — done. The benchmark
   harness lives at `anchor-ai-sdk/evals` with the results artifacts
   (`comparison.md`, `verdicts.jsonl`); rounds resume there.
+- **Issue-fix quality and evidence (2026-10-19)** — the prompt now reads "the
+  reported failure" as the defect wherever it occurs (siblings and callers that
+  share the cause), requires declined follow-ups to be posted on the issue
+  rather than only in chat, and raises verification to re-runnable evidence
+  when a repo has no suite. Decision #70. Follow-up, Anchor-side: export the
+  prompt components so products can append instead of interpreting from
+  outside.
