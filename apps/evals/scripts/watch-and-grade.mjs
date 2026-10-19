@@ -79,7 +79,9 @@ function completedIds(runDir) {
 function gradeOne(runKey, instance, prediction) {
   const predFile = path.join(gradingRoot, `watch-pred-${runKey}-${instance}.jsonl`);
   writeFileSync(predFile, `${JSON.stringify(prediction)}\n`);
-  const runId = `watch-${runKey}-${instance}`;
+  // Unique per attempt: two graders (or a re-grade) must never share container
+  // names — a collision silently corrupts verdicts (observed 2026-10-18).
+  const runId = `watch-${runKey}-${instance}-${Date.now()}`;
   log(`grading ${runKey} :: ${instance}`);
   const result = spawnSync(
     python,

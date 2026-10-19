@@ -11,6 +11,8 @@
  * `status: "failed"` (and a best-effort patch — partial work is still worth
  * recording). The suite always finishes.
  */
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type {
   AgentEvent,
   BudgetLimits,
@@ -92,13 +94,13 @@ async function extractPatch(
   headRef: string,
 ): Promise<string> {
   const diff = await sandbox.exec(
-    `git add -A && git diff --cached --binary ${headRef}`,
+    `git add -A && git diff --cached --binary ${headRef} -- . ':(exclude).anchor'`,
     { timeoutSecs: 120 },
   );
   if (diff.exitCode !== 0) {
     // A degraded repo may not resolve the ref — report the worktree as-is.
     const fallback = await sandbox.exec(
-      `git add -A && git diff --cached --binary`,
+      `git add -A && git diff --cached --binary -- . ':(exclude).anchor'`,
       { timeoutSecs: 120 },
     );
     // BOTH failing means the sandbox is broken (paused? gone?) — a TOOLING
@@ -113,6 +115,26 @@ async function extractPatch(
     return fallback.stdout;
   }
   return diff.stdout;
+}
+
+/**
+ * Carry the agent's notes file out of the sandbox at task end — the same
+ * artifact seam mini's trajectories use — so every run leaves a per-task
+ * reasoning trail next to the official verdict. Best-effort by design.
+ */
+async function captureNotes(
+  sandbox: Sandbox,
+  taskId: string,
+  artifactsDir?: string,
+): Promise<void> {
+  if (!artifactsDir) return;
+  const notes = await sandbox.exec("cat .anchor/notes.md", { timeoutSecs: 30 });
+  if (notes.exitCode !== 0 || !notes.stdout.trim()) return;
+  await mkdir(artifactsDir, { recursive: true });
+  await writeFile(
+    path.join(artifactsDir, `anchor-${taskId}.notes.md`),
+    notes.stdout,
+  );
 }
 
 export async function runEvalSuite(
@@ -188,6 +210,11 @@ export async function runEvalSuite(
         wallMs: Date.now() - started,
       };
     } finally {
+      // Carry the agent's own notes out for the record (best-effort), then
+      // release the sandbox.
+      await captureNotes(sandbox, task.id, options.artifactsDir).catch(
+        () => undefined,
+      );
       await sandbox.destroy().catch(() => {});
     }
 

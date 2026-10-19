@@ -48,6 +48,7 @@ const BENCHMARK_DISCIPLINE = [
   "- Keep issuing commands, reading their results, and iterating. Do not end the run with a mid-work status report while anything the report describes remains unimplemented or unverified.",
   "- Workflow: (1) locate the relevant code and tests; (2) reproduce the reported behavior with a command; (3) make the minimal source change; (4) run the relevant test FILES and your repro; (5) check edge cases and reproduce any exact outputs or formats the report shows, byte for byte.",
   "- Do not modify test files or leave scratch files; keep the final diff to source changes that fix the reported behavior.",
+  "- Keep your working-notes file (.anchor/notes.md) current and reconcile it before finishing — every unverified requirement written on it is unfinished work.",
 ].join("\n");
 
 export function anchorArm(): EvalArm {
