@@ -8,6 +8,37 @@
 
 **One-line pitch:** label a GitHub issue `agent:fix`, get a PR with the fix, passing tests, and a link to the full agent trace — all inside an isolated Firecracker microVM.
 
+## How this log is classified
+
+- **Architectural** — the system's shape: engine, sandbox contract, durability,
+  data flows, protocols, security boundaries.
+- **Cosmetic** — naming, presentation, UI/UX, docs, branding.
+- **Misc** — process, tooling, packaging, and odds and ends.
+
+The topic sections and the confirmed-decisions table below are architectural by
+default (foundations: stack, sandbox, tools, threads, durability); the numbered
+entries are classified here:
+
+| # | decision | class |
+| --- | --- | --- |
+| 1–23 | confirmed decisions (table below) — foundations | Architectural |
+| #51 | agent-led execution, phases as approach | Architectural |
+| #52 | SDK naming: say the noun, verb first | Cosmetic |
+| #53 | the provider seam: capabilities as promises | Architectural |
+| #54 | `llmFromCatalog` | Architectural |
+| #55 | TraceSink + TraceFanout | Architectural |
+| #56 | the run loop owns its lifecycle | Architectural |
+| #57 | the genericity guard names products | Misc |
+| #58 | revival policy + publication evidence | Architectural |
+| #59 | session store + provider `prepare()` | Architectural |
+| #60 | the legacy options bridge is gone | Architectural |
+| #61 | provider folders, stubs, sandbox README | Cosmetic |
+| #62 | naming locked, registry-verified | Cosmetic |
+| #63 | the public tool/engine surface | Architectural |
+| #64 | `finish()` carries a consumer-shaped handoff | Architectural |
+| #65 | `anchor-ai-sdk` everywhere + publish guard | Misc |
+| #66 | extracted: the package's own repo | Misc |
+
 ## Vocabulary (kept consistent everywhere)
 
 - **Agent** — the LLM-driven worker that decides and acts.
