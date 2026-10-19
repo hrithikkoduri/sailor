@@ -111,7 +111,7 @@ Then pick a way in:
 - [`ROADMAP.md`](ROADMAP.md) — deferred work, each item with its trigger and size.
 - [Anchor](https://github.com/hrithikkoduri/anchor-ai-sdk) — the runtime, its
   [decision log](https://github.com/hrithikkoduri/anchor-ai-sdk/blob/main/DECISIONS.md),
-  and the [evaluation results](https://github.com/hrithikkoduri/anchor-ai-sdk/tree/main/evals/results)
+  and the [evaluation results](https://github.com/hrithikkoduri/anchor-ai-sdk/tree/main/evals/benchmarks/swe-bench/results)
   (equal resolution vs mini-swe-agent on SWE-bench Lite at ~⅓ the cost).
 
 ## Status
