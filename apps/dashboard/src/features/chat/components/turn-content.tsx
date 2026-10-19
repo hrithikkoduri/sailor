@@ -31,8 +31,10 @@ export function TurnContent({
 }) {
   const blocks: Block[] = [];
   for (const part of parts) {
-    // Older traces (and older servers) created a reasoning part for
-    // `reasoning_tokens: 0` with no text — it is noise, not a block.
+    // Empty reasoning (0 tokens) and empty text are not content: providers
+    // emit both on tool-only turns. Rendering them as "Thinking" blocks also
+    // made the activity panel stop being last, so it collapsed and reopened
+    // every step — the visible flicker.
     if (
       part.kind === "reasoning" &&
       part.complete &&
@@ -40,14 +42,7 @@ export function TurnContent({
       !((part.reasoningTokens ?? 0) > 0)
     )
       continue;
-    if (
-      part.kind === "text" &&
-      !part.text &&
-      parts.some(
-        (other) => other.kind === "reasoning" && other.step === part.step,
-      )
-    )
-      continue;
+    if (part.kind === "text" && !part.text) continue;
     if (part.kind === "tool") {
       const last = blocks.at(-1);
       if (last?.kind === "activity") last.calls.push(part);
@@ -61,13 +56,24 @@ export function TurnContent({
     } else if (
       part.kind === "reasoning" ||
       part.kind === "compaction" ||
-      part.text ||
-      (!part.complete && running)
+      part.text
     )
       blocks.push({ kind: "part", part });
   }
   const last = blocks.at(-1);
+  // The activity stays open for as long as the run is live and no visible
+  // text has started after it — a new step's empty thinking frame never
+  // closes it.
   if (last?.kind === "activity") last.active = running;
+  // While the run is live and nothing is visibly streaming, show the tail
+  // "Thinking" line. The activity panel carries its own spinner, so it does
+  // not need this below it.
+  const streamingText =
+    last?.kind === "part" &&
+    last.part.kind === "text" &&
+    !!last.part.text &&
+    !last.part.complete;
+  const thinking = running && last?.kind !== "activity" && !streamingText;
   return (
     <div className="space-y-4">
       {blocks.map((block) =>
@@ -79,20 +85,19 @@ export function TurnContent({
           <Compaction key={block.part.id} part={block.part} />
         ) : (
           <div key={block.part.id}>
-            {block.part.text ? (
-              <Markdown text={block.part.text} />
-            ) : (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Helm size={16} className="helm-spin" />
-                Thinking
-                <span className="streaming-caret" />
-              </p>
-            )}
-            {block.part.text && !block.part.complete && running && (
+            <Markdown text={block.part.text ?? ""} />
+            {!block.part.complete && running && (
               <span className="streaming-caret" />
             )}
           </div>
         ),
+      )}
+      {thinking && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Helm size={16} className="helm-spin" />
+          Thinking
+          <span className="streaming-caret" />
+        </p>
       )}
     </div>
   );
