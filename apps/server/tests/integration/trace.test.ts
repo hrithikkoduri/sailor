@@ -6,8 +6,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asc, eq } from "drizzle-orm";
 import type { Pool } from "pg";
-import type { AgentEvent } from "@anchor/core";
-import { TraceFanout } from "@anchor/core";
+import type { AgentEvent } from "anchor-ai-sdk";
+import { TraceFanout } from "anchor-ai-sdk";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { TraceRecorder } from "../../src/trace/store.js";

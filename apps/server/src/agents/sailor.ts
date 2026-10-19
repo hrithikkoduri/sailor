@@ -1,4 +1,4 @@
-import { codingAgent, type Agent, type Tool } from "@anchor/core";
+import { codingAgent, type Agent, type Tool } from "anchor-ai-sdk";
 import { buildSailorPrompt } from "./prompts.js";
 
 /** Sailor is the reusable coding agent configured for this product. Same

@@ -510,6 +510,32 @@ owns the old vocabulary as `SAILOR_HANDOFF` (`agents/sailor-handoff.ts`) plus
 A handoff without a configured schema is a tool error. Core 190 (+2), server
 54; the engine contains no occurrence of the old words.
 
+## Decision #65 — `anchor-ai-sdk` everywhere, and publishing has a guardrail
+
+Pre-split, per review. The staging name `@anchor/core` is gone: the package is
+`anchor-ai-sdk` across the monorepo (package.jsons, imports, tsconfig paths,
+vitest aliases), so the post-split Sailor switchover is a dependency-source
+swap with **zero import churn**. package.json gains `homepage`
+(anchor-sdk.dev), `keywords`, and the repo URL
+(`github.com/hrithikkoduri/anchor-ai-sdk` — npm name, repo name, one word).
+
+Two scripts ship with the package:
+
+- `scripts/prepare-publish.mjs` flips `main`/`types`/`exports` to `dist` —
+  run in the extracted repo's first commit, or in a temp publish copy
+  (`scripts/publish-claim.sh` does exactly that for the 0.0.1 name claim).
+- `scripts/verify-dist-exports.mjs`, wired into `prepublishOnly`: publishing
+  with src-flavored entry points now **fails loudly** instead of shipping a
+  package whose every import breaks.
+
+Also: snapshot failures stop being silent — the engine emits a
+`snapshot_failed` advisory (a non-git sandbox otherwise re-attempts the git
+snapshot on every run and hides a real failure from traces). And the
+extraction script now uses `git filter-repo` over **all three historical
+path eras** — root `src/{llm,sandbox,tools}`, `packages/agent` (31 commits),
+`packages/core` — because subtree split would have dropped the story's first
+acts.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;

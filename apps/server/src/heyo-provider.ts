@@ -6,8 +6,8 @@
  * Anchor owns the mechanics. A future backend joins as another branch here
  * and nothing else in Sailor changes.
  */
-import type { SandboxProvider } from "@anchor/core";
-import { heyo } from "@anchor/core/sandbox/heyo";
+import type { SandboxProvider } from "anchor-ai-sdk";
+import { heyo } from "anchor-ai-sdk/sandbox/heyo";
 import { loadConfig } from "./config.js";
 
 export function heyoProvider(

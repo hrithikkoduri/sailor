@@ -8,7 +8,7 @@
  * boots its own sandbox and destroys it — ~a minute each, hence the gate.
  */
 import { describe } from "vitest";
-import { runSandboxConformance } from "@anchor/core/testing";
+import { runSandboxConformance } from "anchor-ai-sdk/testing";
 import { loadConfig, loadDotEnv } from "../../src/config.js";
 import { heyoProvider } from "../../src/heyo-provider.js";
 

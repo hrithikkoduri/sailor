@@ -4,7 +4,7 @@
  *   npm run eval -w apps/evals -- --tasks data/swebench-lite-10.jsonl --provider docker --model z-ai/glm-5.3
  *
  * No product stack behind it: no worker, no queue, no webhook, no database.
- * The app imports `@anchor/core` directly — plus exactly one thing from the
+ * The app imports `anchor-ai-sdk` directly — plus exactly one thing from the
  * Zero product imports: config comes from this app's own reader, the runtime
  * is pure Anchor. The app moves with the package to its own repo.
  *
@@ -16,10 +16,10 @@
  */
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { llmFromCatalog, type BudgetLimits } from "@anchor/core";
-import { local } from "@anchor/core/sandbox/local";
-import { heyo } from "@anchor/core/sandbox/heyo";
-import { docker } from "@anchor/core/sandbox/docker";
+import { llmFromCatalog, type BudgetLimits } from "anchor-ai-sdk";
+import { local } from "anchor-ai-sdk/sandbox/local";
+import { heyo } from "anchor-ai-sdk/sandbox/heyo";
+import { docker } from "anchor-ai-sdk/sandbox/docker";
 import { anchorArm } from "./arms/anchor.js";
 import { evalsConfig, loadDotEnv } from "./config.js";
 import { miniSweArm } from "./arms/mini-swe.js";

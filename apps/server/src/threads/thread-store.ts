@@ -8,7 +8,7 @@
  * package's ThreadStore contract requires.
  */
 import { eq } from "drizzle-orm";
-import type { StoredThread, ThreadStore } from "@anchor/core";
+import type { StoredThread, ThreadStore } from "anchor-ai-sdk";
 import { schema, type Db } from "../db/index.js";
 
 export class PostgresThreadStore implements ThreadStore {

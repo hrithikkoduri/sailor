@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "@anchor/core": ["../../packages/core/src/index.ts"]
+      "anchor-ai-sdk": ["../../packages/core/src/index.ts"]
     }
   },
   "include": ["src", "tests", "drizzle.config.ts", "vitest.config.ts"]

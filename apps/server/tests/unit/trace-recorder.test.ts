@@ -4,7 +4,7 @@
  * payload arrives already redacted; `afterRecord` runs after the row lands.
  */
 import { describe, expect, it } from "vitest";
-import { redactEvent } from "@anchor/core";
+import { redactEvent } from "anchor-ai-sdk";
 import { TraceRecorder } from "../../src/trace/store.js";
 import type { Db } from "../../src/db/index.js";
 

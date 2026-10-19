@@ -14,16 +14,16 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../config.js";
-import { JsonlTrace, TraceFanout } from "@anchor/core";
+import { JsonlTrace, TraceFanout } from "anchor-ai-sdk";
 import {
   createCodingAgent,
   createLLMClient,
   runAgent,
   type AgentEvent,
   type Sandbox,
-} from "@anchor/core";
+} from "anchor-ai-sdk";
 import { heyoProvider } from "../heyo-provider.js";
-import { local } from "@anchor/core/sandbox/local";
+import { local } from "anchor-ai-sdk/sandbox/local";
 
 const USAGE = `Usage: sailor run <repo> <issue> [options]
 

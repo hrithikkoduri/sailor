@@ -4,7 +4,7 @@ import {
   type AgentEvent,
   type Sandbox,
   type Tool,
-} from "@anchor/core";
+} from "anchor-ai-sdk";
 import { eq } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { Thread } from "../db/schema.js";

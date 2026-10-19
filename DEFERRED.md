@@ -189,18 +189,23 @@ things that ride the split: `LICENSE`, the build config, `DECISIONS.md`, and
 `.github/workflows/ci.yml` (nested outside the monorepo's root, so it becomes
 the new repo's CI from day one). Remaining steps, in order:
 
-1. **Claim the names first** (irreversible): npm `anchor-ai-sdk` (register or
-   publish a 0.0.1 stub), GitHub `anchor-sdk`, domain `anchor-sdk.dev`.
-2. **Run the split** → first commit in the new repo flips `main`/`types`/
-   `exports` to `dist`, adds `"prepare": "npm run build"` (github: installs),
-   and sets version 0.1.0.
+1. **Claim the names first** (irreversible): `scripts/publish-claim.sh`
+   prepares the 0.0.1 publish in a temp copy (dist-flipped, built, dry-run);
+   then `npm publish` from that copy (2FA). Reserve GitHub
+   `hrithikkoduri/anchor-ai-sdk` and the domain `anchor-sdk.dev` the same day.
+2. **Run the split** (`scripts/extract-anchor.sh` — filter-repo over all
+   three path eras: root `src/{llm,sandbox,tools}`, `packages/agent`,
+   `packages/core`; subtree split would drop the first acts) → first commit
+   in the new repo: `node scripts/prepare-publish.mjs` + `"prepare": "npm run
+build"` + version 0.1.0. The prepublishOnly guard refuses a src-flavored
+   publish.
 3. **Push** → CI runs on the carried workflow (typecheck, unit + local
    conformance, docker conformance; live Heyo stays manual/secret-gated).
 4. **Publish** `anchor-ai-sdk@0.1.0`.
 5. **Switch Sailor over in ONE change**: dependency (github:…#v0.1.0 or npm
-   release), `@anchor/core` → `anchor-ai-sdk` (find/replace), tsconfig paths
-   - vitest aliases, delete `packages/core`; move `apps/evals` with the
-     package.
+   release) — imports are already `anchor-ai-sdk` (renamed pre-split), so
+   this is the dependency source, tsconfig paths + vitest aliases, delete
+   `packages/core`, and moving `apps/evals` into the package repo.
 6. **Product page**: README (positioning, quickstart, provider table with
    capabilities + conformance status, eval-results link) + `examples/` (one
    standalone local-sandbox run; one non-coding agent).

@@ -7,8 +7,8 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { HeyoSandboxConfig } from "@anchor/core";
-import type { HeyoSizeClass } from "@anchor/core/sandbox/heyo";
+import type { HeyoSandboxConfig } from "anchor-ai-sdk";
+import type { HeyoSizeClass } from "anchor-ai-sdk/sandbox/heyo";
 
 const SIZE_CLASSES: readonly HeyoSizeClass[] = [
   "micro",

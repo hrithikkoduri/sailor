@@ -30,8 +30,8 @@ import {
   type Sandbox,
   type SandboxProvider,
   type SandboxSpec,
-} from "@anchor/core";
-import { local } from "@anchor/core/sandbox/local";
+} from "anchor-ai-sdk";
+import { local } from "anchor-ai-sdk/sandbox/local";
 import { heyoProvider } from "../heyo-provider.js";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
@@ -311,7 +311,7 @@ export async function executeRun(
   }
 
   // Provider catalog → live prices → compaction derived from the model's real
-  // window: one call in @anchor/core, shared with the eval so the precedence
+  // window: one call in anchor-ai-sdk, shared with the eval so the precedence
   // rules cannot drift apart (2026-10-18: hand-rolled catalog→prices wiring
   // mispriced a whole eval round). Explicit cfg prices win when set — operator
   // intent — and injected LLMs (tests) stay offline with the static fallbacks.

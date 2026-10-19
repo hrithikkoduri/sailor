@@ -2,7 +2,7 @@
   "name": "sailor",
   "version": "0.1.0",
   "private": true,
-  "description": "Sailor — label a GitHub issue and get a fix PR with tests and a full trace, running in an isolated Firecracker microVM. Built on Anchor (@anchor/core).",
+  "description": "Sailor — label a GitHub issue and get a fix PR with tests and a full trace, running in an isolated Firecracker microVM. Built on Anchor (anchor-ai-sdk).",
   "type": "module",
   "workspaces": [
     "packages/*",

@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
-import type { LLMClient } from "@anchor/core";
+import type { LLMClient } from "anchor-ai-sdk";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { executeRun } from "../../src/runs/execute.js";

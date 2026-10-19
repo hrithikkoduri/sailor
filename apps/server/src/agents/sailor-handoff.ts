@@ -7,7 +7,7 @@
  * product reads its own fields out of it — how the run concluded, what a
  * follow-up wake should watch for, and where a resumed run starts.
  */
-import type { EngineOptions } from "@anchor/core";
+import type { EngineOptions } from "anchor-ai-sdk";
 
 export type SailorDisposition = "done" | "watch" | "blocked";
 

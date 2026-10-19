@@ -2,7 +2,7 @@
  * A scripted LLM for tests — responses come from a queue, requests recorded.
  * App-side tests use it to drive executeRun/the worker without network.
  */
-import type { LLMClient, LLMRequest, LLMResponse } from "@anchor/core";
+import type { LLMClient, LLMRequest, LLMResponse } from "anchor-ai-sdk";
 
 export type Scripted = {
   text?: string;

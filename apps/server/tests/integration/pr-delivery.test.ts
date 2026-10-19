@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { and, eq } from "drizzle-orm";
 import type { Pool } from "pg";
-import { LocalSandbox } from "@anchor/core/sandbox/local";
+import { LocalSandbox } from "anchor-ai-sdk/sandbox/local";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { deliverPullRequest, traceUrl } from "../../src/github/pr.js";

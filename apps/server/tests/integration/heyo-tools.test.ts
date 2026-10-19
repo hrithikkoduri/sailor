@@ -9,9 +9,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig, loadDotEnv } from "../../src/config.js";
-import { toolByName } from "@anchor/core";
-import { HeyoSandbox } from "@anchor/core/sandbox/heyo";
-import type { Tool, ToolContext } from "@anchor/core";
+import { toolByName } from "anchor-ai-sdk";
+import { HeyoSandbox } from "anchor-ai-sdk/sandbox/heyo";
+import type { Tool, ToolContext } from "anchor-ai-sdk";
 
 const live = process.env.RUN_LIVE_HEYO_TESTS === "1";
 if (live) loadDotEnv();

@@ -2,19 +2,19 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 // Resolve the workspace package to its source (same target as the tsconfig
-// paths entry) so vitest needs no build step for @anchor/core.
+// paths entry) so vitest needs no build step for anchor-ai-sdk.
 export default defineConfig({
   resolve: {
     alias: [
       {
         // Exact match only — a string alias would prefix-capture subpaths.
-        find: /^@anchor\/core$/,
+        find: /^anchor-ai-sdk$/,
         replacement: fileURLToPath(
           new URL("../../packages/core/src/index.ts", import.meta.url),
         ),
       },
       {
-        find: /^@anchor\/core\/sandbox\/heyo$/,
+        find: /^anchor-ai-sdk\/sandbox\/heyo$/,
         replacement: fileURLToPath(
           new URL(
             "../../packages/core/src/sandbox/heyo/index.ts",
@@ -23,7 +23,7 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@anchor\/core\/sandbox\/local$/,
+        find: /^anchor-ai-sdk\/sandbox\/local$/,
         replacement: fileURLToPath(
           new URL(
             "../../packages/core/src/sandbox/local/index.ts",

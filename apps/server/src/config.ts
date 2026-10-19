@@ -10,7 +10,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { HeyoSizeClass } from "@anchor/core/sandbox/heyo";
+import type { HeyoSizeClass } from "anchor-ai-sdk/sandbox/heyo";
 
 export interface SailorConfig {
   /** Optional delivery policy; never a conversational completion gate. */

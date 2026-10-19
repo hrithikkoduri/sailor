@@ -21,7 +21,7 @@
  * interface now; this file just uses it.)
  */
 import { eq } from "drizzle-orm";
-import { shq, type Sandbox } from "@anchor/core";
+import { shq, type Sandbox } from "anchor-ai-sdk";
 import { schema, type Db } from "../db/index.js";
 import type { Thread } from "../db/schema.js";
 import { ensureThreadState } from "../threads/state.js";

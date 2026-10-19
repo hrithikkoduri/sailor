@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { Pool } from "pg";
 import { Redis } from "ioredis";
-import { probeHeyo } from "@anchor/core/sandbox/heyo";
+import { probeHeyo } from "anchor-ai-sdk/sandbox/heyo";
 import type { SailorConfig } from "./config.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";

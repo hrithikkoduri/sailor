@@ -1,7 +1,7 @@
 # @anchor/evals — the harness benchmark
 
 Scores **Anchor as a harness** on SWE-bench. This is not a product feature and
-not part of the package: it is a repo-level app that imports `@anchor/core`
+not part of the package: it is a repo-level app that imports `anchor-ai-sdk`
 directly — no worker, no queue, no webhook, no database — which makes it the
 framework's second consumer. The system under test is the framework's own
 `codingAgent` plus benchmark context added here; the app has **zero product

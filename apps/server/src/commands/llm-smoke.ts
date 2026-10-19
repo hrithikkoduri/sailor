@@ -7,7 +7,7 @@
  * Exit code 0 means the client works end-to-end against the configured model.
  */
 import { loadConfig } from "../config.js";
-import { createLLMClient } from "@anchor/core";
+import { createLLMClient } from "anchor-ai-sdk";
 
 export async function llmSmokeCommand(): Promise<number> {
   const cfg = loadConfig();

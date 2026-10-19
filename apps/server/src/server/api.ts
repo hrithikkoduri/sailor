@@ -25,7 +25,7 @@ import {
   notInArray,
   or,
 } from "drizzle-orm";
-import { projectConversation } from "@anchor/core";
+import { projectConversation } from "anchor-ai-sdk";
 import { schema, type Db } from "../db/index.js";
 import type { User } from "../db/schema.js";
 import type { Queues } from "../queue/index.js";

@@ -1,6 +1,6 @@
 /**
  * The `anchor` arm — the framework's own coding agent, composed from
- * `@anchor/core` primitives and nothing else.
+ * `anchor-ai-sdk` primitives and nothing else.
  *
  * This is the system under test: codingAgent's strategy and tools (the same
  * plan → act → verify loop Sailor runs on threads), with the benchmark
@@ -13,7 +13,7 @@ import {
   codingAgent,
   runAgent,
   type Agent,
-} from "@anchor/core";
+} from "anchor-ai-sdk";
 import type { EvalArm, EvalArmContext } from "../runner.js";
 import type { EvalTask } from "../tasks.js";
 

@@ -1,6 +1,6 @@
 # @sailor/dashboard
 
-The Sailor product UI — consumer #1 of `@anchor/core`. React 19 + Vite 8 +
+The Sailor product UI — consumer #1 of `anchor-ai-sdk`. React 19 + Vite 8 +
 Tailwind v4, with **Animate UI** (shadcn registry) primitives and a design
 system sourced from the **ui-ux-pro-max** skill (constitution:
 `../../design-system/sailor/MASTER.md` — porcelain / graphite).

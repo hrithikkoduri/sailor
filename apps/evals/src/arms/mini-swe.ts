@@ -11,7 +11,7 @@
  */
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
-import { shq } from "@anchor/core";
+import { shq } from "anchor-ai-sdk";
 import type { EvalArm, EvalArmContext } from "../runner.js";
 import type { EvalTask } from "../tasks.js";
 

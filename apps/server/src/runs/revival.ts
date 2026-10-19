@@ -16,7 +16,7 @@
  * idempotence.
  */
 import { eq } from "drizzle-orm";
-import { planRevival, ThreadBudget, type RevivalRequest } from "@anchor/core";
+import { planRevival, ThreadBudget, type RevivalRequest } from "anchor-ai-sdk";
 import { schema, type Db } from "../db/index.js";
 import { isUniqueViolation } from "../db/errors.js";
 import { appendEvent } from "../threads/inbox.js";

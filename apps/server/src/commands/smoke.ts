@@ -6,8 +6,8 @@
  * Every step is timed and printed; exit code 0 means the whole loop works.
  */
 import { loadConfig } from "../config.js";
-import { type Sandbox } from "@anchor/core";
-import { local } from "@anchor/core/sandbox/local";
+import { type Sandbox } from "anchor-ai-sdk";
+import { local } from "anchor-ai-sdk/sandbox/local";
 import { heyoProvider } from "../heyo-provider.js";
 
 interface SmokeArgs {

@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPool } from "../src/db/index.js";
 import { loadConfig, loadDotEnv } from "../src/config.js";
-import type { LLMMessage } from "@anchor/core";
+import type { LLMMessage } from "anchor-ai-sdk";
 
 const oldPhaseDirectives = [
   "PHASE: reproduce — produce a failing test (or a failing existing test run) that demonstrates the bug",

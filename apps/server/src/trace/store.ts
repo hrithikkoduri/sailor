@@ -12,7 +12,7 @@
  * bookkeeping (live usage, runs row, dashboard nudge) rides the same order,
  * so a refresh triggered by a nudge always sees the row it would read.
  */
-import type { TraceSink, TracedEvent } from "@anchor/core";
+import type { TraceSink, TracedEvent } from "anchor-ai-sdk";
 import { schema, type Db } from "../db/index.js";
 
 export class TraceRecorder implements TraceSink {

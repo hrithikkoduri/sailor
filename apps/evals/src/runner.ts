@@ -21,7 +21,7 @@ import type {
   LLMUsage,
   Sandbox,
   SandboxProvider,
-} from "@anchor/core";
+} from "anchor-ai-sdk";
 import type { EvalTask } from "./tasks.js";
 
 export interface ArmOutcome {

@@ -7,7 +7,7 @@
  * the package never learns about Postgres.
  */
 import { eq } from "drizzle-orm";
-import type { SandboxStore } from "@anchor/core";
+import type { SandboxStore } from "anchor-ai-sdk";
 import { schema, type Db } from "../db/index.js";
 
 export function postgresSandboxStore(
