@@ -1,6 +1,13 @@
+/**
+ * Conversation and live projections — moved here from the product so they
+ * version with the event schema they read. The live frames and the replayed
+ * parts quote the same `seq` (the fanout's), which is what lets a
+ * reconnecting dashboard splice them together.
+ */
 import { describe, expect, it } from "vitest";
-import { projectConversation } from "../../src/chat/projection.js";
-import { createLiveProjector } from "../../src/runs/live-projector.js";
+import { projectConversation } from "../../src/trace/conversation.js";
+import { createLiveProjector } from "../../src/trace/live-projector.js";
+import { TraceFanout } from "../../src/trace/sink.js";
 
 const event = (
   seq: number,
@@ -190,33 +197,39 @@ describe("conversation projection", () => {
 });
 
 describe("live projection", () => {
-  it("forwards the phase list and phase moves for the composer trail", () => {
+  it("forwards the phase list and phase moves for the composer trail", async () => {
     const frames: Record<string, unknown>[] = [];
-    const emit = createLiveProjector((frame) => frames.push(frame));
-    emit({
+    const fanout = new TraceFanout([
+      createLiveProjector((frame) => frames.push(frame)),
+    ]);
+    fanout.record({
       type: "run_started",
       task: "t",
       phases: ["understand", "act", "validate", "respond"],
     });
+    await fanout.flush();
     expect(frames.at(-1)).toMatchObject({
       kind: "started",
       phases: ["understand", "act", "validate", "respond"],
     });
-    emit({ type: "phase_started", phase: "act" });
+    fanout.record({ type: "phase_started", phase: "act" });
+    await fanout.flush();
     expect(frames.at(-1)).toMatchObject({ kind: "phase", phase: "act" });
   });
-  it("redacts token-shaped values before live debug input/output reaches the browser", () => {
+  it("redacts token-shaped values before live debug input/output reaches the browser", async () => {
     const frames: Record<string, unknown>[] = [];
-    const emit = createLiveProjector((frame) => frames.push(frame));
+    const fanout = new TraceFanout([
+      createLiveProjector((frame) => frames.push(frame)),
+    ]);
     const token = `ghs_${"a".repeat(30)}`;
-    emit({
+    fanout.record({
       type: "tool_call",
       phase: "act",
       step: 1,
       name: "bash",
       input: { command: `echo ${token}` },
     });
-    emit({
+    fanout.record({
       type: "tool_result",
       phase: "act",
       step: 1,
@@ -225,26 +238,31 @@ describe("live projection", () => {
       content: token,
       contentChars: token.length,
     });
+    await fanout.flush();
     expect(JSON.stringify(frames)).not.toContain(token);
     expect(JSON.stringify(frames)).toContain("REDACTED");
   });
-  it("publishes step-scoped cumulative text immediately and flushes the final short chunk", () => {
+  it("publishes step-scoped cumulative text immediately and flushes the final short chunk", async () => {
     const frames: Record<string, unknown>[] = [];
     let clock = 1000;
-    const emit = createLiveProjector(
-      (frame) => frames.push(frame),
-      () => clock,
-    );
-    emit({ type: "llm_call_started", step: 1, phase: "respond" });
-    emit({ type: "llm_text_delta", text: "Hello " });
+    const fanout = new TraceFanout([
+      createLiveProjector(
+        (frame) => frames.push(frame),
+        () => clock,
+      ),
+    ]);
+    fanout.record({ type: "llm_call_started", step: 1, phase: "respond" });
+    fanout.record({ type: "llm_text_delta", text: "Hello " });
+    await fanout.flush();
     clock += 10;
-    emit({ type: "llm_text_delta", text: "world" });
+    fanout.record({ type: "llm_text_delta", text: "world" });
+    await fanout.flush();
     expect(frames.at(-1)).toMatchObject({
       kind: "delta",
       text: "Hello ",
       step: 1,
     });
-    emit({
+    fanout.record({
       type: "llm_call_finished",
       step: 1,
       phase: "respond",
@@ -255,18 +273,22 @@ describe("live projection", () => {
       usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
       latencyMs: 20,
     });
+    await fanout.flush();
     expect(frames.at(-1)).toMatchObject({
       kind: "assistant_done",
       text: "Hello world",
       step: 1,
+      // The wire sequence IS the journal sequence (the fanout's).
       sequence: 3,
     });
   });
-  it("publishes compaction as a live frame carrying the summary", () => {
+  it("publishes compaction as a live frame carrying the summary", async () => {
     const frames: Record<string, unknown>[] = [];
-    const emit = createLiveProjector((frame) => frames.push(frame));
-    emit({ type: "llm_call_started", step: 4, phase: "act" });
-    emit({
+    const fanout = new TraceFanout([
+      createLiveProjector((frame) => frames.push(frame)),
+    ]);
+    fanout.record({ type: "llm_call_started", step: 4, phase: "act" });
+    fanout.record({
       type: "compacted",
       removedMessages: 21,
       keptMessages: 16,
@@ -275,6 +297,7 @@ describe("live projection", () => {
       folding: "assistant → bash(ls)",
       usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
     });
+    await fanout.flush();
     expect(frames.at(-1)).toMatchObject({
       kind: "compacted",
       step: 4,

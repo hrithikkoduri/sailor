@@ -1,4 +1,11 @@
-import { toolVerb } from "@anchor/core";
+/**
+ * projectConversation — rebuild the ordered chat transcript from the journal
+ * (trace_events rows or any `{ seq, type, payload }` stream). Lives next to
+ * the event schema: it versions with it, and the replay path it produces
+ * quotes the SAME sequence numbers the live projector publishes, so refresh
+ * and reconnect splice perfectly (see live-projector.ts).
+ */
+import { toolVerb } from "../tools/activity.js";
 
 /** Upgrade the old stock labels on replay without rewriting journal rows.
  * Preserve explicit/custom verbs and retain the call's inputs for results. */

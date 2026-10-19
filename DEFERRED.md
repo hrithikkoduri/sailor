@@ -105,17 +105,11 @@ base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
   Postgres implementation. _Where:_ `packages/core/src/sandbox/index.ts`;
   `apps/server/src/threads/`. _Trigger:_ none — completes the continuity
   work. _Size:_ M.
-- **`TraceSink` + `traceSinks: [...]` fan-out** — sink interface, one shared
-  sequence number, redaction before every sink; move `createLiveProjector`
-  and `projectConversation` next to the event schema so they version with it.
-  The seam external tracing adapters plug into. _Where:_
-  `packages/core/src/trace/`, `packages/core/src/engine/events.ts`,
-  `apps/server/src/runs/live-projector.ts`, `apps/server/src/chat/projection.ts`.
-  _Trigger:_ none — unblocks the OTel item. _Size:_ M.
 - **`runAgent` lifecycle** — fold heartbeat (`withHeartbeat` in
-  `apps/server/src/runs/lease.ts`), cancel polling, sink fan-out, status
-  mapping, and usage/cost into `runAgent` options; leaves `executeRun` as DB
-  bookkeeping (~150 lines). Depends on the two items above. _Where:_
+  `apps/server/src/runs/lease.ts`), cancel polling, `traceSinks` fan-out,
+  status mapping, and usage/cost into `runAgent` options; leaves `executeRun`
+  as DB bookkeeping (~150 lines). Depends on the sandbox-store item above
+  (the sink primitives landed with `TraceFanout`). _Where:_
   `packages/core/src/engine/loop.ts`, `apps/server/src/runs/execute.ts`.
   _Trigger:_ after slices 3+5. _Size:_ L.
 - **Revival policy primitives** — `planRevival(result, parentBudget)` pure

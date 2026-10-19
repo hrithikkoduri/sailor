@@ -15,6 +15,7 @@ import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
+  createLiveProjector,
   llmFromCatalog,
   openSandbox,
   releaseSandbox,
@@ -52,7 +53,6 @@ import {
   headRefFor,
 } from "../github/repo.js";
 import { withHeartbeat } from "./lease.js";
-import { createLiveProjector } from "./live-projector.js";
 import { createSailorAgent } from "../agents/sailor.js";
 import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
 
@@ -266,12 +266,11 @@ export async function executeRun(
         deps.notify?.(thread.id);
     },
   });
-  const fanout = new TraceFanout([jsonl, recorder]);
+  const fanout = new TraceFanout([jsonl, recorder, projectLive]);
 
   const sink = (e: AgentEvent) => {
     if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
       events.push(e);
-    projectLive(e);
     fanout.record(e);
   };
 
