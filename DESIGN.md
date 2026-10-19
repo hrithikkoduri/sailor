@@ -463,6 +463,53 @@ the old subpath _file_ targets as exact aliases (mirroring the tsconfig paths
 entry) — `DEBUG=vite:resolve` showed resolution still landing on the deleted
 `local.ts`. A package reorg must sweep consumer aliases, not just imports.
 
+## Decision #62 — Naming locked, verified against the registry
+
+The reviewer agent was right and I was wrong: the `@anchor` scope is
+unpublishable — an npm **user** named `anchor` exists (the registry's
+`maintainer:anchor` search shows their packages), and scope ownership follows
+the user/org name, not the published-package list. Verified 2026-10-19:
+`anchor-sdk` (unscoped) taken; `@anchor-sdk/*` taken (user `jinmax2025`);
+`@anchor/core` not publishable by us; `anchor-ai-sdk` **free**.
+
+**Locked:** npm `anchor-ai-sdk` · GitHub repo + docs domain `anchor-sdk`
+(`anchor-sdk.dev`) · brand **Anchor**. The monorepo keeps the workspace name
+`@anchor/core`; the rename happens at extraction (package.json + one
+find/replace across Sailor/evals), so no churn now. Claim the npm name early
+— register the `anchor-ai-sdk` package with a stub release, or at least
+reserve it — before someone else does.
+
+## Decision #63 — The public tool/engine surface is consumer-neutral
+
+Shipped `aa6b6b1`, before the split froze it as contract:
+
+- `testCommand` removed from `RunTask` and `ToolContext`. run_tests owns its
+  fallback: `runTestsTool({ defaultCommand })`, composed by
+  `createCodingTools({ testCommand })` / `createCodingAgent({ testCommand })`.
+  The full-suite-evidence rule is unchanged; it just lives with the tool.
+- No silent `chatStrategy` default: `runAgent` requires an agent or a
+  strategy, with an error that says so.
+- `SandboxCapabilities` lost its `[flag: string]: boolean` index signature
+  (typos type-checked); provider-specific flags live in
+  `extra?: Record<string, boolean>`.
+- `HeyoSizeClass` moved out of the generic `sandbox/types.ts` into the heyo
+  subpath.
+
+## Decision #64 — finish() carries a consumer-shaped handoff
+
+The biggest remaining Sailor leak is gone. `finish` is now
+`finish({ summary, success?, handoff? })` where the handoff's shape comes
+from the consumer: `EngineOptions.handoff = { schema, description?,
+threadPhase? }` declares the parameter from a JSON schema, the engine carries
+the model's object to `AgentResult.handoff` untouched, and `threadPhase`
+derives the resume phase the thread persists. Deleted from the engine:
+`RunDisposition`, `disposition`/`watch`/`resumeAt` on `AgentResult`, the
+run_finished event's `disposition`, and the loop's defaulting logic. Sailor
+owns the old vocabulary as `SAILOR_HANDOFF` (`agents/sailor-handoff.ts`) plus
+`readSailorHandoff()` — the rows, thread state, and worker log are unchanged.
+A handoff without a configured schema is a tool error. Core 190 (+2), server
+54; the engine contains no occurrence of the old words.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;

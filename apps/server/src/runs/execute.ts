@@ -53,6 +53,7 @@ import {
 import { heartbeatRun } from "./lease.js";
 import { createSailorAgent } from "../agents/sailor.js";
 import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
+import { readSailorHandoff, SAILOR_HANDOFF } from "../agents/sailor-handoff.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
 const activeControllers = new Map<string, AbortController>();
@@ -473,9 +474,12 @@ export async function executeRun(
         // The engine's fanout owns sequencing + redaction and flushes these
         // before the run resolves; the product's sink stays live-only.
         traceSinks: [jsonl, recorder, projectLive],
+        // Sailor's finish() vocabulary — a consumer schema now, not the engine's.
+        handoff: SAILOR_HANDOFF,
         onEvent: sink,
       },
     );
+    const sailor = readSailorHandoff(outcome.handoff, outcome.ok);
 
     const status: ExecuteRunOutcome["status"] =
       outcome.reason === "finished" && outcome.ok
@@ -509,7 +513,7 @@ export async function executeRun(
         status,
         finishedAt: new Date(),
         phase: outcome.phase ?? null,
-        disposition: outcome.disposition ?? null,
+        disposition: sailor.disposition ?? null,
         steps: outcome.steps,
         tokensIn: outcome.usage.promptTokens,
         tokensOut: outcome.usage.completionTokens,
@@ -555,15 +559,15 @@ export async function executeRun(
 
     // Standing watch intent: a "watch" conclusion is recorded for the
     // babysitter (step 13 reads it); any other declared conclusion supersedes it.
-    if (outcome.disposition === "watch") {
+    if (sailor.disposition === "watch") {
       await db
         .update(schema.threads)
         .set({
-          watch: (outcome.watch ?? {}) as Record<string, unknown>,
+          watch: (sailor.watch ?? {}) as Record<string, unknown>,
           updatedAt: new Date(),
         })
         .where(eq(schema.threads.id, thread.id));
-    } else if (outcome.disposition !== undefined) {
+    } else if (sailor.disposition !== undefined) {
       await db
         .update(schema.threads)
         .set({ watch: null, updatedAt: new Date() })
@@ -606,9 +610,9 @@ export async function executeRun(
       status,
       reason: outcome.reason,
       summary: outcome.summary,
-      disposition: outcome.disposition,
-      watch: outcome.watch,
-      resumeAt: outcome.resumeAt,
+      disposition: sailor.disposition,
+      watch: sailor.watch,
+      resumeAt: sailor.resumeAt,
       phase: outcome.phase,
       ...(outcome.revival ? { revival: outcome.revival } : {}),
       ...(outcome.checkpointRef
