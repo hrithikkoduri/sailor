@@ -652,7 +652,7 @@ export async function releaseThreadSandbox(
     thread.sandboxBackend === "local" ? local() : heyoProvider(cfg);
   await releaseSandbox(
     { id: thread.sandboxId, backend: thread.sandboxBackend ?? provider.name },
-    { provider },
+    provider,
   );
   await db
     .update(schema.threads)

@@ -93,13 +93,6 @@ These are independent; the "depends on" notes say when order matters.
   _Where:_ `packages/core/src/sandbox/types.ts` + adapters,
   `apps/server/src/runs/execute.ts`. _Trigger:_ none — correctness fix, ready
   now. _Size:_ S–M.
-- **Drop the legacy options bridge** — `providers.ts`'s
-  `CreateSandboxOptions`/`providerFor` and the legacy paths in
-  `openSandbox`/`releaseSandbox` (the lazy bridge import). Explicit providers
-  have been the only shape since decision #53; this is the last piece of the
-  old options-shape API, and the one place a "which backend?" guess still
-  exists. _Where:_ `packages/core/src/sandbox/`. _Trigger:_ before publish.
-  _Size:_ S.
 - **`createAnchor` facade** — ~20 lines of sugar over the run-pipeline calls
   (captures llm/provider/stores, returns `{ run, doctor }`). _Trigger:_ a
   second consumer wants the same wiring bundle (the eval CLI at step 15

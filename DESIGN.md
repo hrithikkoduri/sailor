@@ -424,6 +424,23 @@ Also recorded: the package's suites no longer read the repo-root
 extraction blocker by decoupling — Sailor's integration tests keep using the
 fixture, which is fine: it is a product fixture.
 
+## Decision #60 — The legacy options bridge is gone
+
+`providers.ts` (`CreateSandboxOptions` + `providerFor`) and the legacy paths
+in `openSandbox`/`releaseSandbox` are deleted. Explicit providers have been
+the only shape since #53, and the bridge was the last place a "which backend?"
+guess existed — the `{ local } | { heyo }` options shape inferred the
+provider. Its only consumer was the lifecycle test, rewritten to drive
+`local({ rootDir })` directly (the more honest test: it exercises what
+products drive). `releaseSandbox(handle, provider)` is positional now — no
+options object to smuggle a backend through; `openSandbox` requires a
+provider and keeps only the explicit callbacks. The lazy bridge import
+disappears with it, so the root entry's SDK-free property is structural
+(subpath imports only), not dependent on a dynamic import.
+
+Core 188 / server 54 with zero `providerFor`/`CreateSandboxOptions`
+references left in the repo.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
