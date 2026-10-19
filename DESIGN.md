@@ -369,6 +369,36 @@ The pass surfaced a real extraction blocker, now in DEFERRED: the engine and
 watch suites import `fixtures/buggy-lib` via `../../../../fixtures` — outside
 the package after the subtree split.
 
+## Decision #58 — Revival policy and publication evidence are package primitives
+
+Boundary B's first lift — the last engine logic the product owned. Two pure
+primitives in `packages/core/src/engine/` (revival.ts is now exported from
+the root; it was internal until now):
+
+- **`planRevival(result, task, threadBudget) -> RevivalPlan`** — the pure
+  decision (`revive` / `needs_human` / `none`): a run that died of budget
+  (`budget_exceeded` | `max_steps`) with a handoff (request and/or checkpoint)
+  continues with the SAME task, phase, and budget; once the thread's own caps
+  are spent, a human gets the note — which still quotes the agent's own words
+  about what remains. `ThreadBudget` (turns + dollars across runs, exhausted
+  at either cap, `record({ usd })` per run) is the accumulator.
+- Persistence stays product: Sailor's `handleBudgetAftermath` keeps the rows,
+  the `revived` idempotence flag, and the note insert; the hand-rolled
+  `budgetLeft` comparison and local `remainingText` are gone.
+- **`latestEvidenceForTree(sandbox, events)`** — decision #38's consumer half:
+  stage (`git add -A`), `git write-tree`, find the latest `run_tests` with
+  `meta.ran`, and answer `passed` / `failed` / `not_verified` for THAT tree;
+  an uninspectable tree is `inspected: false`, so publication paths fail
+  closed — never "nothing to verify". `publish_changes` calls this instead of
+  its inline copy.
+- One behavior note: a revived run's task is now always a string (the
+  `"(no task recorded)"` placeholder) rather than potentially null — matching
+  what the engine already substitutes at run time.
+
+Tests: the revival crossroads (request / checkpoint-only / caps spent / no
+evidence / non-budget reason), accrual at both caps, and the tree rule
+(fresh pass, fresh fail, stale tree, no run). Core 186.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;

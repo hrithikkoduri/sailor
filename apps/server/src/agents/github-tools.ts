@@ -1,5 +1,6 @@
 import {
   defineTool,
+  latestEvidenceForTree,
   type AgentEvent,
   type Sandbox,
   type Tool,
@@ -83,32 +84,17 @@ export function githubTools(deps: {
             meta: { published: false },
           };
         }
-        // Fail closed for an inability to inspect/stage the publication tree.
-        const tree = await deps.sandbox.exec("git add -A && git write-tree", {
-          timeoutSecs: 60,
-        });
-        const treeHash = tree.stdout.trim();
-        if (tree.exitCode !== 0 || !/^[a-f0-9]{40}$/.test(treeHash))
+        // What does the LATEST executed test run vouch for on THIS exact tree?
+        // The package owns the rule (decision #38 freshness evidence), and an
+        // uninspectable tree is fail-closed, never "nothing to verify".
+        const tree = await latestEvidenceForTree(deps.sandbox, deps.events);
+        if (!tree.inspected)
           return {
             ok: false,
             content:
               "Could not inspect the publication tree. Nothing was published.",
           };
-        const tests = [...deps.events]
-          .reverse()
-          .find(
-            (event): event is Extract<AgentEvent, { type: "tool_result" }> =>
-              event.type === "tool_result" &&
-              event.name === "run_tests" &&
-              event.meta?.ran === true,
-          );
-        const fresh = tests?.meta?.treeHash === treeHash;
-        const verification =
-          fresh && tests?.ok
-            ? "passed"
-            : fresh && tests && !tests.ok
-              ? "failed"
-              : "not_verified";
+        const verification = tree.verification;
         if (deps.policy?.requirePassingTests && verification !== "passed") {
           return {
             ok: false,
@@ -125,8 +111,11 @@ export function githubTools(deps: {
               : "No passing test run on this exact tree was recorded. This is not a claim that tests passed.";
         // The checkpoint becomes the commit on the PR — give it a real subject
         // (the first line of the publication summary), not a meta phrase.
-        const firstLine =
-          input.summary.trim().split("\n")[0]!.trim().replace(/[.\s]+$/, "");
+        const firstLine = input.summary
+          .trim()
+          .split("\n")[0]!
+          .trim()
+          .replace(/[.\s]+$/, "");
         const issuePrefix =
           deps.thread.issueNumber != null
             ? `#${deps.thread.issueNumber}: `

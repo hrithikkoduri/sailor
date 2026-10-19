@@ -105,12 +105,6 @@ base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
   Postgres implementation. _Where:_ `packages/core/src/sandbox/index.ts`;
   `apps/server/src/threads/`. _Trigger:_ none — completes the continuity
   work. _Size:_ M.
-- **Revival policy primitives** — `planRevival(result, parentBudget)` pure
-  function + a `ThreadBudget` accumulator (spend across runs);
-  `latestEvidenceForTree(sandbox, evidence)` + tool guard for publication
-  evidence. _Where:_ `packages/core/src/engine/`,
-  `apps/server/src/agents/github-tools.ts`. _Trigger:_ none — extraction of
-  shipped behavior. _Size:_ S.
 - **`createAnchor` facade** — ~20 lines of sugar over the run-pipeline calls
   (captures llm/provider/stores, returns `{ run, doctor }`). _Trigger:_ a
   second consumer wants the same wiring bundle (the eval CLI at step 15
@@ -201,8 +195,7 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Slice 5: `TraceSink` + `traceSinks` fan-out; move `live-projector.ts` and
   `chat/projection.ts` next to the event schema.
 - Slice 3: `SandboxStore`-backed `openSandbox` session (sources + callbacks).
-- Slice 7: `planRevival` + `ThreadBudget` +
-  `latestEvidenceForTree`; slice 2: provider `prepare()`.
+- Slice 2: provider `prepare()`.
 - Sailor ends as: rows, webhooks, GitHub, dashboard, stores.
 
 **Phase 4 — publish**

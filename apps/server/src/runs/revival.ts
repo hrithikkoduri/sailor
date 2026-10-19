@@ -10,8 +10,13 @@
  * Two callers, one function: the worker right after the run ends (the fast
  * path), and the sweep (the fallback when the fast path died with its worker).
  * `revived` on the run row makes both idempotent.
+ *
+ * The decision itself is pure and lives in the package (`planRevival` +
+ * `ThreadBudget`); this file is the product's persistence, note, and
+ * idempotence.
  */
 import { eq } from "drizzle-orm";
+import { planRevival, ThreadBudget, type RevivalRequest } from "@anchor/core";
 import { schema, type Db } from "../db/index.js";
 import { isUniqueViolation } from "../db/errors.js";
 import { appendEvent } from "../threads/inbox.js";
@@ -45,18 +50,32 @@ export async function handleBudgetAftermath(
     .where(eq(schema.threads.id, run.threadId));
   if (!thread || isTerminal(thread.state)) return {};
 
-  const budgetLeft =
-    thread.turnsUsed < thread.budgetMaxTurns &&
-    Number(thread.usdSpent) < Number(thread.budgetMaxUsd);
-  if (!budgetLeft) {
+  // The decision is the package's (pure and reviewable); the database is ours.
+  const evidence = (run.revival ?? null) as {
+    request?: RevivalRequest;
+    checkpointRef?: string;
+  } | null;
+  const plan = planRevival({
+    result: {
+      reason: "budget_exceeded",
+      ...(evidence?.request ? { revival: evidence.request } : {}),
+      ...(evidence?.checkpointRef
+        ? { checkpointRef: evidence.checkpointRef }
+        : {}),
+      ...(run.phase ? { phase: run.phase } : {}),
+    },
+    task: run.task ?? "(no task recorded)",
+    threadBudget: new ThreadBudget(
+      { maxTurns: thread.budgetMaxTurns, maxUsd: Number(thread.budgetMaxUsd) },
+      { turnsUsed: thread.turnsUsed, usdSpent: Number(thread.usdSpent) },
+    ),
+  });
+  if (plan.action === "none") return {};
+  if (plan.action === "needs_human") {
     await appendEvent(db, {
       threadId: thread.id,
       kind: "budget_exhausted",
-      payload: {
-        note:
-          "The thread's budget is spent, so this run was not revived — a human needs to raise the budget or narrow the task. Still remaining (per the agent): " +
-          remainingText(run.revival),
-      },
+      payload: { note: plan.note },
     });
     await db
       .update(schema.runs)
@@ -73,8 +92,8 @@ export async function handleBudgetAftermath(
         threadId: thread.id,
         trigger: "revival",
         agent: run.agent,
-        task: run.task ?? null,
-        startPhase: run.phase ?? null,
+        task: plan.task,
+        startPhase: plan.startPhase ?? null,
         status: "queued",
       })
       .returning({ id: schema.runs.id });
@@ -89,13 +108,4 @@ export async function handleBudgetAftermath(
     .set({ revived: true })
     .where(eq(schema.runs.id, run.id));
   return { revivedRunId: revived!.id };
-}
-
-/** The agent's own words about what remains, for the needs-human note. */
-function remainingText(revival: unknown): string {
-  const request = (revival as { request?: { remaining?: unknown } } | null)
-    ?.request;
-  return typeof request?.remaining === "string" && request.remaining.trim()
-    ? request.remaining.trim()
-    : "not stated";
 }
