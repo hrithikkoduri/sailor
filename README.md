@@ -82,8 +82,8 @@ product layers: rows, webhooks, GitHub, the dashboard, and the stores.
 
 Prerequisites: Node 22+, Docker (Postgres + Redis), a Heyo account for real
 microVMs (or run the CLI with `--local`), an OpenRouter-compatible LLM key,
-and a GitHub App for the full webhook loop. Everything environment-shaped
-lives in `.env.example`.
+and a GitHub App for the full webhook loop ([~3-minute setup](docs/github-app.md)
+— you bring your own). Everything environment-shaped lives in `.env.example`.
 
 ```bash
 git clone https://github.com/hrithikkoduri/sailor.git && cd sailor
