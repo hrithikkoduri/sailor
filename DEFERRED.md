@@ -182,11 +182,30 @@ the same model; (2) **the package is tight enough that a stranger installs
 
 - Sailor ends as: rows, webhooks, GitHub, dashboard, stores.
 
-**Phase 4 — publish**
+**Phase 4 — extraction (the runbook)**
 
-- Build (tsc) + exports map; README (quickstart, provider contract, eval
-  story); a guard test that `packages/core` never reads `process.env`; first
-  real version tag.
+Ready: `scripts/extract-anchor.sh` (git subtree split — full history), and
+things that ride the split: `LICENSE`, the build config, `DECISIONS.md`, and
+`.github/workflows/ci.yml` (nested outside the monorepo's root, so it becomes
+the new repo's CI from day one). Remaining steps, in order:
+
+1. **Claim the names first** (irreversible): npm `anchor-ai-sdk` (register or
+   publish a 0.0.1 stub), GitHub `anchor-sdk`, domain `anchor-sdk.dev`.
+2. **Run the split** → first commit in the new repo flips `main`/`types`/
+   `exports` to `dist`, adds `"prepare": "npm run build"` (github: installs),
+   and sets version 0.1.0.
+3. **Push** → CI runs on the carried workflow (typecheck, unit + local
+   conformance, docker conformance; live Heyo stays manual/secret-gated).
+4. **Publish** `anchor-ai-sdk@0.1.0`.
+5. **Switch Sailor over in ONE change**: dependency (github:…#v0.1.0 or npm
+   release), `@anchor/core` → `anchor-ai-sdk` (find/replace), tsconfig paths
+   - vitest aliases, delete `packages/core`; move `apps/evals` with the
+     package.
+6. **Product page**: README (positioning, quickstart, provider table with
+   capabilities + conformance status, eval-results link) + `examples/` (one
+   standalone local-sandbox run; one non-coding agent).
+7. **Benchmark rounds resume in the new repo**: Opus 5.5 on Lite-10 (budgets
+   capped), then TerminalBench / METR / ProgramBench as `benchmarks/<name>/`.
 
 **Not blocking any of the above:** E2B/Daytona adapters, OTel/LangSmith
 adapters, forge adapters, the ext4 artifact publish, `fork()`, janitor TTL.
