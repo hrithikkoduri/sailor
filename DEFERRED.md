@@ -210,6 +210,10 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Build (tsc) + exports map; README (quickstart, provider contract, eval
   story); a guard test that `packages/core` never reads `process.env`; first
   real version tag.
+- Move `fixtures/buggy-lib` under `packages/core/tests/fixtures/` — two core
+  suites import it via `../../../../fixtures`, which after the subtree split
+  lands outside the package and the tests fail. _Trigger:_ before extraction.
+  _Size:_ XS.
 
 **Not blocking any of the above:** E2B/Daytona adapters, OTel/LangSmith
 adapters, forge adapters, the ext4 artifact publish, `fork()`, janitor TTL.

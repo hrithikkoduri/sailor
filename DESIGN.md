@@ -353,6 +353,22 @@ before the result; a broken sink is contained; the heartbeat fires
 immediately and stops with the run; a polled cancel concludes `cancelled`
 mid-call. Core 179.
 
+## Decision #57 — The genericity guard names products (src + fixtures)
+
+`packages/core` may not name consumer products. The guard in
+`tests/unit/genericity.test.ts` scans `src/` AND `tests/`, carries a positive
+control (the rule proves it can fire), and reads every file but itself. The
+fix for a hit is to make the code generic or move it to the product — never
+to whitelist a file. First pass cleaned the conformance suite's fixtures
+(`sailor/issue-7-checkpoint` → `anchor/issue-7-checkpoint`,
+`sailor-app-dev[bot]` → `anchor-test[bot]`) and three comments. Ecosystem
+nouns stay allowed — the docker adapter documents SWE-bench images, which is
+interoperability, not product.
+
+The pass surfaced a real extraction blocker, now in DEFERRED: the engine and
+watch suites import `fixtures/buggy-lib` via `../../../../fixtures` — outside
+the package after the subtree split.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
