@@ -16,12 +16,7 @@
  */
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  compactionForContextWindow,
-  createLLMClient,
-  fetchModelCatalog,
-  type BudgetLimits,
-} from "@anchor/core";
+import { llmFromCatalog, type BudgetLimits } from "@anchor/core";
 import { local } from "@anchor/core/sandbox/local";
 import { heyo } from "@anchor/core/sandbox/heyo";
 import { docker } from "@anchor/core/sandbox/docker";
@@ -94,25 +89,15 @@ const model = String(args.get("model") ?? cfg.llm.model);
 
 // The model's real catalog entry prices the run and sizes compaction, exactly
 // as the product does — the eval must not run a differently-configured engine.
-const catalog = await fetchModelCatalog({
+// No price overrides on purpose: the CATALOG is the truth (live provider
+// rates); .env prices are known-stale and would silently misprice a round
+// (2026-10-18: 2x/10x off for GLM 5.3). Catalog unreachable → cost reads as
+// unknown rather than wrong.
+const { llm, catalog, compaction } = await llmFromCatalog({
   baseUrl: cfg.llm.baseUrl,
-  apiKey: cfg.llm.apiKey ?? "",
+  apiKey: cfg.llm.apiKey,
   model,
-}).catch(() => null);
-const llm = createLLMClient({
-  ...cfg.llm,
-  model,
-  // The CATALOG is the truth for pricing (live provider rates); env values are
-  // only a fallback. (2026-10-18: stale .env prices silently mispriced a whole
-  // round — 2x/10x off for GLM 5.3.)
-  priceInPerMTok: catalog?.priceInPerMTok ?? cfg.llm.priceInPerMTok,
-  priceOutPerMTok: catalog?.priceOutPerMTok ?? cfg.llm.priceOutPerMTok,
-  priceCacheReadPerMTok:
-    catalog?.priceCacheReadPerMTok ?? cfg.llm.priceCacheReadPerMTok,
 });
-const compaction = catalog?.contextLength
-  ? compactionForContextWindow(catalog.contextLength)
-  : undefined;
 const provider =
   providerName === "heyo"
     ? heyo(cfg.heyo)

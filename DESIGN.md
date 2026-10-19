@@ -270,6 +270,26 @@ after the migration; `provider.create(spec)` is the replacement.
 - **The live arm stays opt-in:** `RUN_LIVE_HEYO_TESTS=1` boots one VM per
   scenario; `ANCHOR_CONFORMANCE_REPO` enables the clone-shaped scenarios.
 
+## Decision #54 — `llmFromCatalog`: one call from model id to correct configuration
+
+Boundary A's first lift. Both consumers hand-rolled "catalog → prices →
+compaction" — and that duplication caused a real bug: a whole eval round was
+billed at stale `.env` prices (2x/10x off for GLM 5.3) because the precedence
+rule lived in two files. One factory in `packages/core/src/llm/from-catalog.ts`:
+
+    const { llm, catalog, compaction } = await llmFromCatalog({ baseUrl, apiKey, model });
+
+- **Precedence is explicit:** explicit options win (operator intent — Sailor
+  keeps env-price overrides), then the catalog, then silent degradation.
+  The eval passes no overrides on purpose: there the catalog is the truth and
+  an unreachable catalog reads as "cost unknown", never wrong.
+- **Compaction derives from the real window** (`compactionForContextWindow`,
+  clamped to the 200–300k product range); `fallbackCompaction` covers offline.
+- **Named verb-first** per #52: `llmFromCatalog` — "an LLM built from the
+  catalog". The old `createLLMClient({ catalog: "auto" })` sketch is dead.
+- Sailor's `catalogFor` + per-process catalog cache are gone; correctness in
+  one place beats saving one `/models` GET per run.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;

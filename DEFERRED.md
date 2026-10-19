@@ -105,11 +105,6 @@ base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
   Postgres implementation. _Where:_ `packages/core/src/sandbox/index.ts`;
   `apps/server/src/threads/`. _Trigger:_ none — completes the continuity
   work. _Size:_ M.
-- **Model-aware LLM factory** — `createLLMClient({ catalog: "auto" })` fetches
-  the provider catalog once, fills missing prices, derives compaction
-  defaults; delete `catalogFor` + the fallback wiring from `execute.ts`.
-  _Where:_ `packages/core/src/llm/`. _Trigger:_ none — extraction of shipped
-  behavior. _Size:_ S.
 - **`TraceSink` + `traceSinks: [...]` fan-out** — sink interface, one shared
   sequence number, redaction before every sink; move `createLiveProjector`
   and `projectConversation` next to the event schema so they version with it.
@@ -221,7 +216,7 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Slice 3: `SandboxStore`-backed `openSandbox` session (sources + callbacks).
 - Slice 6: `runAgent` lifecycle (heartbeat from `lease.ts`, cancel polling,
   sink fan-out, status mapping, usage/cost).
-- Slice 4: catalog-auto LLM factory; slice 7: `planRevival` + `ThreadBudget` +
+- Slice 7: `planRevival` + `ThreadBudget` +
   `latestEvidenceForTree`; slice 2: provider `prepare()`.
 - Sailor ends as: rows, webhooks, GitHub, dashboard, stores.
 

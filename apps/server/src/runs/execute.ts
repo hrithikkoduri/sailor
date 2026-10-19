@@ -15,9 +15,7 @@ import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
-  compactionForContextWindow,
-  createLLMClient,
-  fetchModelCatalog,
+  llmFromCatalog,
   openSandbox,
   releaseSandbox,
   runAgent,
@@ -26,7 +24,6 @@ import {
   type CompactionConfig,
   type HeyoSandboxConfig,
   type LLMClient,
-  type ModelCatalogEntry,
   type RevivalRequest,
   type Sandbox,
   type SandboxHandle,
@@ -60,30 +57,6 @@ import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
 const activeControllers = new Map<string, AbortController>();
-
-/**
- * Provider-catalog lookups, cached per endpoint+model for the process
- * lifetime — one fetch, not one per run. Failures cache as null: fallback
- * values apply and we don't hammer a dead endpoint.
- */
-const catalogCache = new Map<string, Promise<ModelCatalogEntry | null>>();
-function catalogFor(cfg: {
-  baseUrl: string;
-  apiKey?: string;
-  model?: string;
-}): Promise<ModelCatalogEntry | null> {
-  const key = `${cfg.baseUrl}|${cfg.model ?? ""}`;
-  let hit = catalogCache.get(key);
-  if (!hit) {
-    hit = fetchModelCatalog({
-      baseUrl: cfg.baseUrl,
-      apiKey: cfg.apiKey ?? "",
-      model: cfg.model ?? "",
-    });
-    catalogCache.set(key, hit);
-  }
-  return hit;
-}
 
 export function cancelRun(runId: string): boolean {
   const controller = activeControllers.get(runId);
@@ -371,30 +344,34 @@ export async function executeRun(
   const provider: SandboxProvider = deps.local ? local() : heyoProvider(cfg);
   const make = (s: SandboxSpec): Sandbox =>
     deps.sandboxFactory?.(s) ?? provider.create(s);
-  // Provider catalog (cached): the real context window and prices. Real runs
-  // only — injected LLMs (tests) stay offline and keep the static fallbacks.
-  const catalog =
-    !deps.llm && cfg.llm.apiKey && cfg.llm.model
-      ? await catalogFor(cfg.llm)
-      : null;
-  const llm =
-    deps.llm ??
-    createLLMClient({
-      ...cfg.llm,
-      priceInPerMTok: cfg.llm.priceInPerMTok ?? catalog?.priceInPerMTok,
-      priceOutPerMTok: cfg.llm.priceOutPerMTok ?? catalog?.priceOutPerMTok,
-      priceCacheReadPerMTok:
-        cfg.llm.priceCacheReadPerMTok ?? catalog?.priceCacheReadPerMTok,
-    });
-  // Big context, big memory: fold only when the conversation truly grows past
-  // the model's working window (derived from the catalog, clamped to the
-  // 200–300k product range), so long investigations keep their accumulated
-  // findings instead of re-deriving them. Unknown window → the static values.
-  const compaction =
-    deps.compaction ??
-    (catalog?.contextLength
-      ? compactionForContextWindow(catalog.contextLength)
-      : { maxEstimatedTokens: 256_000, keepRecentTokens: 64_000 });
+  // Provider catalog → live prices → compaction derived from the model's real
+  // window: one call in @anchor/core, shared with the eval so the precedence
+  // rules cannot drift apart (2026-10-18: hand-rolled catalog→prices wiring
+  // mispriced a whole eval round). Explicit cfg prices win when set — operator
+  // intent — and injected LLMs (tests) stay offline with the static fallbacks.
+  const built = deps.llm
+    ? null
+    : await llmFromCatalog({
+        baseUrl: cfg.llm.baseUrl,
+        apiKey: cfg.llm.apiKey,
+        model: cfg.llm.model ?? "",
+        priceInPerMTok: cfg.llm.priceInPerMTok,
+        priceOutPerMTok: cfg.llm.priceOutPerMTok,
+        priceCacheReadPerMTok: cfg.llm.priceCacheReadPerMTok,
+        // Big context, big memory: fold only when the conversation truly
+        // grows past the model's working window (clamped to the 200–300k
+        // product range). Unknown window → these static values.
+        fallbackCompaction: {
+          maxEstimatedTokens: 256_000,
+          keepRecentTokens: 64_000,
+        },
+      });
+  const llm = deps.llm ?? built!.llm;
+  const compaction = deps.compaction ??
+    built?.compaction ?? {
+      maxEstimatedTokens: 256_000,
+      keepRecentTokens: 64_000,
+    };
 
   /** The installation-scoped client for this thread (decisions #42/#43). */
   const githubClientForThread = async () => {
