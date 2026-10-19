@@ -1,4 +1,4 @@
-# Deferred work — the contributor ledger
+# ROADMAP.md — deferred work (the contributor ledger)
 
 Everything here is a decision already made and work intentionally not built
 yet. Each item names the event that pulls it back ("trigger"), where it lives,
@@ -21,7 +21,7 @@ history.
      DATABASE_URL=postgres://sailor:sailor@localhost:5432/sailor_test \
      REDIS_URL=redis://localhost:6379/15 npm run test:integration -w apps/server
    ```
-4. When an item ships: delete it here, record the decision in `DESIGN.md`.
+4. When an item ships: delete it here, record the decision in `DECISIONS.md`.
 
 ## Tracing & observability
 

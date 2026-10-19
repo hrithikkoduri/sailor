@@ -1,6 +1,8 @@
-# DESIGN.md — Sailor, built on Anchor
+# DECISIONS.md — Sailor's decision log
 
-> Living decisions log. Every entry: what was decided, why, and by whom. Update as we go.
+> Living decisions log. Every entry: what was decided, why, and by whom. It
+> parallels Anchor's own `DECISIONS.md` — the runtime's log lives in the
+> Anchor repo; this one keeps the product, pipeline, and monorepo history.
 > Earlier numbered entries preserve the design history. Decision #51 below
 > supersedes the mandatory phase/test-gate and implicit-publication behavior.
 

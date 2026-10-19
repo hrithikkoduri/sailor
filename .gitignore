@@ -10,3 +10,4 @@ test-results/
 playwright-report/
 .opencode/
 image/.build/
+BUILD_PLAN.md
