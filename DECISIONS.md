@@ -716,6 +716,46 @@ Three details are product policy, not package mechanics:
 The first run to use this is the WebRover #19 retry (a Playwright repro that
 lost its receipt at ~175s). Migration: `drizzle/0013_spotty_forge.sql`.
 
+## Decision #69 — Teams are declared here, delegated by Anchor
+
+Anchor builds the delegation mechanics (nested loop, `delegate` tool, context
+isolation, one sandbox, one budget, agent-tagged trace — package decision
+#71); Sailor decides who is on the team and what their work means. Neither side
+grows an orchestration framework.
+
+The first roster is three roles:
+
+- **Implementer (lead)** — the agent that exists today: investigate, change
+  code, validate, `finish()`. It keeps the delegate tool and nothing else
+  changes about its loop.
+- **Verifier (teammate, read-only)** — a fresh prompt that has never seen the
+  implementer's reasoning, with read tools and the shared workspace, so it
+  checks the *actual files* rather than a summary. It returns a verdict.
+- **Investigator (teammate, read-only)** — owns reproduction and evidence
+  gathering, keeping the repro's scratch out of the implementer's context.
+
+Why a verifier is the first teammate, concretely: the WebRover #19 run ended
+with the implementer *asserting* "verification in progress" — a prose status,
+not evidence, and the author of a change is the worst judge of it. A second
+loop with different context and read-only tools is the cheap independent check;
+sharing the sandbox means it inspects the real diff instead of a retelling.
+That is exactly what delegation (separate context, tool subset) provides and
+what a second prompt in the same conversation cannot.
+
+Two boundaries are deliberate:
+
+- **A verdict is evidence, not a completion signal.** It feeds the existing
+  publication gate (`publication.requirePassingTests` / `validateFinish`); it
+  does not add a second way for a run to end. `finish()` and the
+  `disposition` handoff path are unchanged, and a failed verification is a
+  normal revision turn, not a `blocked` handoff.
+- **One budget, shared.** Delegated usage charges the run; the verifier and
+  investigator are read-only, so the split barely moves the cost. Budget is
+  product policy (the package only transports the caps).
+
+Decided, not built — it is gated on Anchor's delegation landing, and tracked as
+"Agent teams in the pipeline" in `ROADMAP.md`.
+
 ## Open questions
 
 - Which SWE-bench Lite subset (30–50 tasks) and how to handle per-instance setup images

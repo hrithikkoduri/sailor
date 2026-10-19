@@ -44,6 +44,20 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
   label and the human reply becomes the next event. _Where:_
   `apps/server/src/github/`, `apps/server/src/agents/sailor-handoff.ts`.
   _Trigger:_ step 13 client wiring. _Size:_ S.
+- **Agent teams in the pipeline** — once Anchor ships delegation (package
+  decision #71, "Agent teams" in its roadmap), a run declares a roster instead
+  of one agent: the **implementer** stays the lead, a **verifier** teammate
+  (read-only tools, its own prompt, no view of the implementer's reasoning)
+  independently checks the diff and returns a verdict, and an **investigator**
+  teammate can own reproduction so the implementer's context stays clean. The
+  verifier's verdict is *evidence for the existing publication gate*
+  (`publication.requirePassingTests` / `validateFinish`), not a second
+  completion signal — `finish()` and the disposition path are unchanged
+  (Anchor #64/#71). Policy that stays here: the roster, each role's tool
+  subset, the budget split, and what a verdict gates. _Where:_
+  `apps/server/src/agents/`, `apps/server/src/runs/execute.ts`. _Trigger:_
+  Anchor's delegation lands; the verifier is the first delegation.
+  _Size:_ M.
 
 ## Forge providers (git hosts)
 
