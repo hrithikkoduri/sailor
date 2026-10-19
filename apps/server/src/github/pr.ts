@@ -4,9 +4,12 @@
  * Called by executeRun AFTER a successful run, while the sandbox is still
  * alive (the repo lives there). Two writes, in order:
  *
- *   1. git: push HEAD → refs/heads/sailor/* (never the base branch; the
- *      sandbox layer already installed git credentials, so `git push origin`
- *      just works — for GitHub and for a local bare origin in tests)
+ *   1. git: push a CLEAN commit → refs/heads/sailor/* (never the base
+ *      branch; the sandbox layer already installed git credentials, so
+ *      `git push origin` just works — for GitHub and for a local bare origin
+ *      in tests). The published commit is HEAD's tree minus `.anchor/` —
+ *      agent scratch rides checkpoints for durability, never the deliverable
+ *      — parented on the base's tip: one reviewable commit per delivery.
  *   2. API: open the PR with a trace link back to the dashboard
  *
  * Then the thread records prNumber/prUrl and moves to `pr_open`. The first
@@ -63,10 +66,27 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
   // Nothing new → no push → no webhook → no loop.
   const hasNewWork = await sandbox.hasChangesFrom(`origin/${head}`);
   if (hasNewWork) {
-    // Push — for a first delivery this creates the branch; for a FOLLOW-UP
-    // (babysitting: the PR already exists) it updates it in place.
-    // Force-pushing our own sailor/* branch is the idempotent thing to do.
-    const push = await sandbox.exec(`git push --force origin ${shq(`HEAD:refs/heads/${head}`)}`, { timeoutSecs: 300 });
+    // Publish ONE CLEAN commit: the agent's scratch (`.anchor/notes.md`) is
+    // force-added by every checkpoint for durability, so the work branch's
+    // history carries it — and the dev's repo must never see it. The notes
+    // stay in the sandbox and on the off-machine checkpoint branch; the
+    // published branch is HEAD's tree minus `.anchor/`, parented on the
+    // base's tip. Stable for a first delivery AND for follow-ups (the PR
+    // updates in place; never a second PR).
+    const script = [
+      "set -e",
+      `if git fetch --quiet origin ${shq(thread.baseRef)} 2>/dev/null; then BASE=$(git rev-parse FETCH_HEAD);`,
+      `else BASE=$(git rev-parse --verify --quiet refs/remotes/origin/${shq(thread.baseRef)} || git rev-parse --verify --quiet ${shq(thread.baseRef)} || true); fi`,
+      "git read-tree HEAD",
+      "git rm -rq --cached --ignore-unmatch .anchor",
+      "CLEAN_TREE=$(git write-tree)",
+      "git read-tree HEAD",
+      'MSG=$(git log -1 --format=%B HEAD)',
+      'if [ -n "$BASE" ]; then CLEAN_COMMIT=$(git commit-tree "$CLEAN_TREE" -p "$BASE" -m "$MSG"); else CLEAN_COMMIT=$(git commit-tree "$CLEAN_TREE" -m "$MSG"); fi',
+      `git push --force origin "$CLEAN_COMMIT:refs/heads/${head}"`,
+      'echo "published $CLEAN_COMMIT"',
+    ].join("\n");
+    const push = await sandbox.exec(script, { timeoutSecs: 300 });
     if (push.exitCode !== 0) {
       throw new Error(`git push failed (${push.exitCode}): ${push.output.trim().slice(0, 500)}`);
     }

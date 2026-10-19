@@ -127,6 +127,14 @@ describe("deliverPullRequest", () => {
     );
     expect(commit.exitCode).toBe(0);
 
+    // The agent's scratch rides checkpoints (durability) — force-added, the
+    // way the real checkpoint path does it. It must NOT ride the published
+    // branch: the dev's repo never sees `.anchor/`.
+    const scratch = await sandbox.exec(
+      'mkdir -p .anchor && echo "working notes" > .anchor/notes.md && git add -f .anchor/notes.md && git commit -q -m "agent turn checkpoint"',
+    );
+    expect(scratch.exitCode).toBe(0);
+
     const { github, created } = fakeGithub();
     const [thread] = await db
       .select()
@@ -169,9 +177,25 @@ describe("deliverPullRequest", () => {
     expect(git(bare, "rev-list", "--count", "refs/heads/main").trim()).toBe(
       "1",
     );
+    // ONE clean commit on the base tip — the checkpoint's notes are gone
+    // from the published history, not merely from the diff.
     expect(
       git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim(),
     ).toBe("2");
+    const publishedTree = git(
+      bare,
+      "ls-tree",
+      "-r",
+      "--name-only",
+      "refs/heads/sailor/issue-42",
+    );
+    expect(publishedTree).not.toContain(".anchor");
+    // …and the notes are still in the sandbox, where they belong. (The
+    // local backend copies localPath into its scratch root — ask the sandbox
+    // itself, not the source directory.)
+    const still = await sandbox.exec("cat .anchor/notes.md");
+    expect(still.exitCode).toBe(0);
+    expect(still.output).toContain("working notes");
 
     const [fresh] = await db
       .select()
@@ -199,7 +223,7 @@ describe("deliverPullRequest", () => {
     expect(created).toHaveLength(1); // no second PR
     expect(
       git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim(),
-    ).toBe("3");
+    ).toBe("2"); // still one clean commit — the squash tracks the new tree
 
     // THE LOOP GUARD: an acknowledgment run's footprint is checkpoint commits
     // with NO tree change. A no-op delivery must push NOTHING — otherwise its
@@ -220,7 +244,7 @@ describe("deliverPullRequest", () => {
     expect(created).toHaveLength(1);
     expect(
       git(bare, "rev-list", "--count", "refs/heads/sailor/issue-42").trim(),
-    ).toBe("3"); // no new commits landed
+    ).toBe("2"); // no new commits landed
 
     await sandbox.destroy();
   });

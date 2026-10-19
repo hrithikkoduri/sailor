@@ -38,6 +38,7 @@ entries are classified here:
 | #64 | `finish()` carries a consumer-shaped handoff | Architectural |
 | #65 | `anchor-ai-sdk` everywhere + publish guard | Misc |
 | #66 | extracted: the package's own repo | Misc |
+| #67 | the published branch never carries agent scratch | Architectural |
 
 ## Vocabulary (kept consistent everywhere)
 
@@ -584,6 +585,21 @@ from the monorepo and the source aliases/tsconfig paths are gone — one copy
 of the code, one source of truth. Remaining (DEFERRED): examples + eval
 results link, moving `apps/evals` into the package repo, the npm 0.1.0
 release, and benchmark rounds resuming there.
+
+## Decision #67 — The published branch never carries agent scratch
+
+Checkpoints force-add `.anchor/notes.md` for durability (the agent's memory
+must survive folds, restarts, and sandbox deaths), so the work branch's
+history legitimately contains it — and PR #25 proved that history ships: the
+notes landed in the dev's repo as a 76-line file. Publishing now builds **one
+clean commit** — HEAD's tree minus `.anchor/`, parented on the base's tip —
+and force-pushes that. The notes stay in the sandbox and on the off-machine
+checkpoint branch (`sailor/issue-*-checkpoint`); the PR shows only the work;
+follow-up deliveries keep the branch at exactly one reviewable commit. The
+integration test pins both halves: the published tree has no `.anchor`, and
+the sandbox still has the notes (`pr-delivery.test.ts`). The SDK prompt
+already promised this ("git-excluded and never part of the deliverable") —
+the publish path now enforces it.
 
 ## Streaming and activity follow-up (2026-10-18)
 
