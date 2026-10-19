@@ -184,33 +184,28 @@ the same model; (2) **the package is tight enough that a stranger installs
 
 **Phase 4 — extraction (the runbook)**
 
-Ready: `scripts/extract-anchor.sh` (git subtree split — full history), and
-things that ride the split: `LICENSE`, the build config, `DECISIONS.md`, and
-`.github/workflows/ci.yml` (nested outside the monorepo's root, so it becomes
-the new repo's CI from day one). Remaining steps, in order:
+✅ Done — the extraction shipped (2026-10-19):
+- **Names**: npm `anchor-ai-sdk@0.0.1` live (maintainer `hrithikkoduri`);
+  GitHub `hrithikkoduri/anchor-ai-sdk` public, CI on. Still to buy: the
+  `anchor-sdk.dev` domain.
+- **Split**: filter-repo over all three eras → 79 package-touching commits;
+  seeded 0.1.0 (dist entry points, `prepare`, lockfile), verified standalone
+  in the new repo, tagged `v0.1.0`, `main` pushed.
+- **Sailor switchover**: dependencies → `github:hrithikkoduri/anchor-ai-sdk#v0.1.0`
+  (server + evals), `packages/core` deleted, source aliases/tsconfig paths
+  gone — imports were already `anchor-ai-sdk` (zero churn).
 
-1. **Claim the names first** (irreversible): ✅ npm done — `anchor-ai-sdk@0.0.1`
-   is **live** (latest, maintainer `hrithikkoduri`; npm's 0.0.0-stage placeholder
-   from staged publishing sits harmlessly beside it). Still to reserve:
-   GitHub `hrithikkoduri/anchor-ai-sdk` and the domain `anchor-sdk.dev`.
-2. **Run the split** (`scripts/extract-anchor.sh` — filter-repo over all
-   three path eras: root `src/{llm,sandbox,tools}`, `packages/agent`,
-   `packages/core`; subtree split would drop the first acts) → first commit
-   in the new repo: `node scripts/prepare-publish.mjs` + `"prepare": "npm run
-build"` + version 0.1.0. The prepublishOnly guard refuses a src-flavored
-   publish.
-3. **Push** → CI runs on the carried workflow (typecheck, unit + local
-   conformance, docker conformance; live Heyo stays manual/secret-gated).
-4. **Publish** `anchor-ai-sdk@0.1.0`.
-5. **Switch Sailor over in ONE change**: dependency (github:…#v0.1.0 or npm
-   release) — imports are already `anchor-ai-sdk` (renamed pre-split), so
-   this is the dependency source, tsconfig paths + vitest aliases, delete
-   `packages/core`, and moving `apps/evals` into the package repo.
-6. **Product page**: README (positioning, quickstart, provider table with
-   capabilities + conformance status, eval-results link) + `examples/` (one
-   standalone local-sandbox run; one non-coding agent).
-7. **Benchmark rounds resume in the new repo**: Opus 5.5 on Lite-10 (budgets
-   capped), then TerminalBench / METR / ProgramBench as `benchmarks/<name>/`.
+Remaining:
+
+1. **Product page**: the README showcase + `assets/` logo live in the new
+   repo; then `examples/` (one standalone local-sandbox run; one non-coding
+   agent).
+2. **Move `apps/evals` into the package repo** (delete from the monorepo in
+   the same change); benchmark rounds resume there: Opus 5.5 on Lite-10
+   (budgets capped), then TerminalBench / METR / ProgramBench as
+   `benchmarks/<name>/`.
+3. **npm 0.1.0 release** (staged approval), later releases from CI with
+   `npm publish --provenance` (trusted publishing).
 
 **Not blocking any of the above:** E2B/Daytona adapters, OTel/LangSmith
 adapters, forge adapters, the ext4 artifact publish, `fork()`, janitor TTL.

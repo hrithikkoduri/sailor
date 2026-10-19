@@ -536,6 +536,22 @@ path eras** — root `src/{llm,sandbox,tools}`, `packages/agent` (31 commits),
 `packages/core` — because subtree split would have dropped the story's first
 acts.
 
+## Decision #66 — Extracted: the package lives at github.com/hrithikkoduri/anchor-ai-sdk
+
+The split ran (`git filter-repo` over all three eras: root
+`src/{llm,sandbox,tools}` → `packages/agent` → `packages/core`): 79
+package-touching commits with real history, the CI workflow + LICENSE +
+README + DECISIONS.md riding along. Seeded as 0.1.0 (dist entry points,
+`prepare` for `github:` installs, lockfile), **verified standalone in the new
+repo** (typecheck + the full suite green), tagged `v0.1.0`, pushed — CI
+queued on the first push. The npm name was already claimed (`anchor-ai-sdk`,
+0.0.1). Sailor now consumes a real dependency
+(`github:hrithikkoduri/anchor-ai-sdk#v0.1.0`); `packages/core` is deleted
+from the monorepo and the source aliases/tsconfig paths are gone — one copy
+of the code, one source of truth. Remaining (DEFERRED): examples + eval
+results link, moving `apps/evals` into the package repo, the npm 0.1.0
+release, and benchmark rounds resuming there.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
