@@ -105,13 +105,6 @@ base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
   Postgres implementation. _Where:_ `packages/core/src/sandbox/index.ts`;
   `apps/server/src/threads/`. _Trigger:_ none — completes the continuity
   work. _Size:_ M.
-- **`runAgent` lifecycle** — fold heartbeat (`withHeartbeat` in
-  `apps/server/src/runs/lease.ts`), cancel polling, `traceSinks` fan-out,
-  status mapping, and usage/cost into `runAgent` options; leaves `executeRun`
-  as DB bookkeeping (~150 lines). Depends on the sandbox-store item above
-  (the sink primitives landed with `TraceFanout`). _Where:_
-  `packages/core/src/engine/loop.ts`, `apps/server/src/runs/execute.ts`.
-  _Trigger:_ after slices 3+5. _Size:_ L.
 - **Revival policy primitives** — `planRevival(result, parentBudget)` pure
   function + a `ThreadBudget` accumulator (spend across runs);
   `latestEvidenceForTree(sandbox, evidence)` + tool guard for publication
@@ -208,8 +201,6 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Slice 5: `TraceSink` + `traceSinks` fan-out; move `live-projector.ts` and
   `chat/projection.ts` next to the event schema.
 - Slice 3: `SandboxStore`-backed `openSandbox` session (sources + callbacks).
-- Slice 6: `runAgent` lifecycle (heartbeat from `lease.ts`, cancel polling,
-  sink fan-out, status mapping, usage/cost).
 - Slice 7: `planRevival` + `ThreadBudget` +
   `latestEvidenceForTree`; slice 2: provider `prepare()`.
 - Sailor ends as: rows, webhooks, GitHub, dashboard, stores.

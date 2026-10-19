@@ -79,7 +79,7 @@ One dashboard with three faces, all served by the same Hono server:
 
 The "durable execution" school (Inngest, Temporal) exists to survive crashes, deploys, and retries without losing work or double-applying effects. We adopt the principles; we keep our own execution model (long-lived worker — decision #7):
 
-1. **State outside the process.** Postgres holds the truth: threads, runs, messages, events, trace_events. A worker crash, a deploy, or a browser refresh loses nothing — every reader read-repairs from the DB. _There is no browser "session" to lose: the session IS the Postgres thread row._
+1. **State outside the process.** Postgres holds the truth: threads, runs, messages, events, trace*events. A worker crash, a deploy, or a browser refresh loses nothing — every reader read-repairs from the DB. \_There is no browser "session" to lose: the session IS the Postgres thread row.*
 2. **Journaled steps.** `trace_events (run_id, seq)` is the run's journal: every LLM call (full prompt + response), tool call, and result, with a monotonic seq. The journal is what makes resume exact — rebuild the conversation, and (stretch) replay recorded LLM responses instead of paying for them again.
 3. **Lease + heartbeat, auto-resume.** While executing, a worker renews `runs.heartbeat_at` (~30s). A sweep marks stale runs `interrupted` and re-enqueues a resume run: restore the sandbox from `checkpoint_sha`, rebuild context from the journal, continue. Baseline = resume at checkpoint granularity; stretch = step-level memoization (replay journaled LLM calls by `(run_id, step)`).
 4. **At-least-once everywhere + idempotent effects.** Queues redeliver, webhooks repeat, workers retry — so every _effect_ is guarded: PR creation checks `threads.pr_number` first, comments are looked up before posting, branch pushes are force-push idempotent, deliveries deduped by GUID, threads by `(repo, issue)`.
@@ -320,6 +320,39 @@ unchanged, recorder sequencing + `afterRecord` ordering, and the projection
 suites (live driven through a fanout — which is how the redaction assertion
 now proves the live path is covered).
 
+## Decision #56 — The run loop owns its lifecycle: sinks, heartbeat, cancel
+
+Boundary A's third lift. `EngineOptions` gains `traceSinks`, `heartbeat`, and
+`cancel`; `runAgent` now owns everything every consumer was hand-rolling
+around it:
+
+- **`traceSinks`** — the engine builds one `TraceFanout` per run (one
+  sequence number, one redaction, flushed before the result — `run_finished`
+  included). `onEvent` still receives raw events for live consumers, and a
+  throwing subscriber can no longer kill the run (same rule as sinks).
+- **`heartbeat: { everyMs, beat }`** — first beat immediate, failures
+  swallowed, timer stopped on every exit **however the run ends**: all exits
+  pass through `conclude()`, which clears timers and flushes sinks. Timers
+  start after all throwing setup, so a failed context prepare cannot leak a
+  beater. Sailor passes `heartbeatRun(db, run.id)`; `withHeartbeat` is
+  deleted from `lease.ts`.
+- **`cancel: { everyMs, isCancelled }`** — polled and merged with the
+  caller's `signal` into one internal controller: the signal stays the
+  in-process fast path, the poll is the cross-process one (a durable flag any
+  process can stamp). Truthy → concludes `cancelled`. Sailor's `cancelWatch`
+  interval is deleted.
+- **Status vocabulary stays product.** Mapping `FinishReason` → row status
+  (`budget_exhausted`, `interrupted`, …) is Sailor's call, not the package's;
+  the engine returns reason/ok/usage and nothing product-shaped.
+- execute.ts net −50 lines (heartbeat wrapper, cancel watch, fanout wiring,
+  second flush all gone); its trace setup is now "build sinks, hand them
+  over". lease.ts −19.
+
+Tests: both sinks receive the identical full-run sequence and were flushed
+before the result; a broken sink is contained; the heartbeat fires
+immediately and stops with the run; a polled cancel concludes `cancelled`
+mid-call. Core 179.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
@@ -414,6 +447,6 @@ claims that need to be contamination-free.
 - Toolchain image contents (git, node, python, ripgrep, docker?, test runners) — finalize when we know target repos
 - Dashboard auth in production (v1 is localhost-only, no auth): token? behind Heyo's auth gate? decide when deploying
 - **Sandbox retention across runs (interjection + babysit wakes):** every run destroys its sandbox today; a review-comment wake therefore boots a fresh VM and re-clones the PR branch — _correct_ (the pushed branch is the handoff point) but not free. Proposal: the thread stores the sandbox handle; a **warm window** (Heyo already retains `/workspace` on scale-to-zero — 600s + `idle_action: retain`; local's `keep` exists) lets quick follow-ups reattach (interjection continuation, CI-fix loop); long-idle wakes cold-clone; a janitor destroys on terminal state/TTL; reattach must `fetch` + checkout-and-reset to avoid a stale workspace. Checkpoint-restore (`checkpoint_sha` → clone + checkout) remains the backend-independent fallback
-- **Baseline-relative suite evidence (pre-eval, from review).** "Full suite passes" is the wrong predicate for real repos — SWE-bench repos often ship pre-existing failing/flaky tests on `main`, which would deadlock `fix` (and `validateFinish`) forever. Design: `reproduce` records a **baseline** (first full-suite run, per-test results); success becomes a **delta** — FAIL_TO_PASS (task-provided target tests, or ≥1 baseline-failing test now passing) AND PASS_TO_PASS (no baseline-passing test regresses); exit codes remain the fallback when no per-test data exists. Requires per-test results: `run_tests` gains `junit_path` → `meta.tests` (regex-parsed JUnit XML, zero-dep — vitest/jest junit reporters, `pytest --junitxml`, gotestsum all emit it); step 15's task JSON carries the F2P/P2P lists. Optional de-flake: rerun baseline failures once before recording. Evidence-gating itself stays — the _definition of success_ gets honest
+- **Baseline-relative suite evidence (pre-eval, from review).** "Full suite passes" is the wrong predicate for real repos — SWE-bench repos often ship pre-existing failing/flaky tests on `main`, which would deadlock `fix` (and `validateFinish`) forever. Design: `reproduce` records a **baseline** (first full-suite run, per-test results); success becomes a **delta** — FAIL*TO_PASS (task-provided target tests, or ≥1 baseline-failing test now passing) AND PASS_TO_PASS (no baseline-passing test regresses); exit codes remain the fallback when no per-test data exists. Requires per-test results: `run_tests` gains `junit_path` → `meta.tests` (regex-parsed JUnit XML, zero-dep — vitest/jest junit reporters, `pytest --junitxml`, gotestsum all emit it); step 15's task JSON carries the F2P/P2P lists. Optional de-flake: rerun baseline failures once before recording. Evidence-gating itself stays — the \_definition of success* gets honest
 - **`advance.to` as a phase enum (nice-to-have).** The injected `advance` schema could declare `to` as an enum of the strategy's phase ids — fewer invalid targets. Low priority: default-next covers the common case, and the engine already rejects unknowns with the phase list
 - **`blocked` → user channel (product policy).** Package contract: `disposition: "blocked"` + `summary` (phrased as the question) + optional `resumeAt`; the engine carries, the product delivers. For sailor: post the question as a PR/issue comment (+ `agent:needs-input` label) and let the thread sleep; the human reply is a human-authored event → interject/queue (#28) → new run. Dashboard (step 18) shows the same summary as a message with a reply box. Nothing for the package to build — step 13 adds the client's comment/label methods

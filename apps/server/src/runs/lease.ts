@@ -39,25 +39,6 @@ export async function requestCancel(db: Db, runId: string): Promise<void> {
     .where(eq(schema.runs.id, runId));
 }
 
-/** Beat for as long as `fn` runs; stop afterwards (success or failure). */
-export async function withHeartbeat<T>(
-  db: Db,
-  runId: string,
-  fn: () => Promise<T>,
-  intervalMs = 30_000,
-): Promise<T> {
-  await heartbeatRun(db, runId);
-  const timer = setInterval(() => {
-    void heartbeatRun(db, runId).catch(() => undefined);
-  }, intervalMs);
-  timer.unref?.();
-  try {
-    return await fn();
-  } finally {
-    clearInterval(timer);
-  }
-}
-
 export interface SweepResult {
   staleRunId: string;
   threadId: string;

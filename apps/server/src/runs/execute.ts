@@ -20,7 +20,6 @@ import {
   openSandbox,
   releaseSandbox,
   runAgent,
-  TraceFanout,
   type AgentEvent,
   type BudgetLimits,
   type CompactionConfig,
@@ -52,7 +51,7 @@ import {
   githubRepoUrl,
   headRefFor,
 } from "../github/repo.js";
-import { withHeartbeat } from "./lease.js";
+import { heartbeatRun } from "./lease.js";
 import { createSailorAgent } from "../agents/sailor.js";
 import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
 
@@ -205,21 +204,9 @@ export async function executeRun(
   // Chat and machine turns now share one identity and completion contract.
   // Legacy phase positions are not instructions for the new agent runtime.
 
-  // Cross-process cancel: poll the durable flag; any process can set it.
-  const cancelWatch = setInterval(() => {
-    void db
-      .select({ requested: schema.runs.cancelRequestedAt })
-      .from(schema.runs)
-      .where(eq(schema.runs.id, run.id))
-      .then(([row]) => {
-        if (row?.requested) controller.abort();
-      })
-      .catch(() => undefined);
-  }, deps.cancelWatchEveryMs ?? 2_000);
-  cancelWatch.unref?.();
-
-  // Traces: NDJSON file + trace_events rows — one fanout owns the sequence
-  // number and one redaction before every sink (TraceFanout).
+  // Traces: NDJSON file + trace_events rows + the live stream — the sinks are
+  // handed to the engine, whose fanout owns the sequence number and redaction
+  // and flushes them before the run resolves.
   const traceDir = path.join(process.env.INIT_CWD ?? process.cwd(), "traces");
   const jsonl = new JsonlTrace(path.join(traceDir, `${run.id}.jsonl`));
 
@@ -266,12 +253,9 @@ export async function executeRun(
         deps.notify?.(thread.id);
     },
   });
-  const fanout = new TraceFanout([jsonl, recorder, projectLive]);
-
   const sink = (e: AgentEvent) => {
     if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
       events.push(e);
-    fanout.record(e);
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
@@ -512,36 +496,48 @@ export async function executeRun(
     };
     const revivalOn = deps.revival ?? cfg.budget.revival;
 
-    const outcome = await withHeartbeat(
-      db,
-      run.id,
-      () =>
-        runAgent(
-          { task: run.task ?? "(no task recorded)" },
-          {
-            llm,
-            sandbox,
-            agent,
-            startPhase,
-            thread: { store: new PostgresThreadStore(db), id: thread.id },
-            compaction,
-            // Product budget dials (SAILOR_MAX_STEPS / TOKENS / USD). The
-            // package defaults (40 steps, 1.5M tokens) stop long-horizon work
-            // around the 20th call — cumulative tokens grow with every call,
-            // and compaction only bounds the per-call context. Steps and
-            // dollars are the real runaway backstops.
-            budgets: engineBudgets,
-            // Revival (SAILOR_BUDGET_REVIVAL): warn at 85%, offer the
-            // request_revival handoff; the aftermath is this product's call.
-            ...(revivalOn ? { revival: {} } : {}),
-            checkpointPushRef,
-            signal: controller.signal,
-            onEvent: sink,
+    const outcome = await runAgent(
+      { task: run.task ?? "(no task recorded)" },
+      {
+        llm,
+        sandbox,
+        agent,
+        startPhase,
+        thread: { store: new PostgresThreadStore(db), id: thread.id },
+        compaction,
+        // Product budget dials (SAILOR_MAX_STEPS / TOKENS / USD). The
+        // package defaults (40 steps, 1.5M tokens) stop long-horizon work
+        // around the 20th call — cumulative tokens grow with every call,
+        // and compaction only bounds the per-call context. Steps and
+        // dollars are the real runaway backstops.
+        budgets: engineBudgets,
+        // Revival (SAILOR_BUDGET_REVIVAL): warn at 85%, offer the
+        // request_revival handoff; the aftermath is this product's call.
+        ...(revivalOn ? { revival: {} } : {}),
+        checkpointPushRef,
+        // The worker is presumed dead when heartbeats go stale (lease.ts).
+        heartbeat: {
+          everyMs: deps.heartbeatEveryMs,
+          beat: () => heartbeatRun(db, run.id),
+        },
+        // Durable cross-process cancel: any process can stamp the flag.
+        cancel: {
+          everyMs: deps.cancelWatchEveryMs,
+          isCancelled: async () => {
+            const [row] = await db
+              .select({ requested: schema.runs.cancelRequestedAt })
+              .from(schema.runs)
+              .where(eq(schema.runs.id, run.id));
+            return Boolean(row?.requested);
           },
-        ),
-      deps.heartbeatEveryMs,
+        },
+        signal: controller.signal,
+        // The engine's fanout owns sequencing + redaction and flushes these
+        // before the run resolves; the product's sink stays live-only.
+        traceSinks: [jsonl, recorder, projectLive],
+        onEvent: sink,
+      },
     );
-    await fanout.flush();
 
     const status: ExecuteRunOutcome["status"] =
       outcome.reason === "finished" && outcome.ok
@@ -682,7 +678,6 @@ export async function executeRun(
         : {}),
     };
   } catch (err) {
-    await fanout.flush().catch(() => undefined);
     const message = err instanceof Error ? err.message : String(err);
     await db
       .update(schema.runs)
@@ -697,7 +692,6 @@ export async function executeRun(
       reason: "error",
     };
   } finally {
-    clearInterval(cancelWatch);
     activeControllers.delete(run.id);
   }
 }
