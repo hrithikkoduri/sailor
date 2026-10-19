@@ -25,7 +25,7 @@
     "@heyocomputer/hws": "^0.4.0",
     "@hono/node-server": "^2.1.5",
     "@node-rs/argon2": "^2.2.2",
-    "anchor-ai-sdk": "^0.1.0",
+    "anchor-ai-sdk": "^0.1.1",
     "bullmq": "^6.3.16",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
