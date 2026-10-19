@@ -15,6 +15,12 @@ import type { HeyoSizeClass } from "anchor-ai-sdk/sandbox/heyo";
 export interface SailorConfig {
   /** Optional delivery policy; never a conversational completion gate. */
   publication: { requirePassingTests: boolean };
+  /**
+   * Long-command policy. A shell command still running after this many
+   * seconds is detached from the turn; its completion arrives as a later
+   * inbox turn (never a cancel, never agent polling). 0 disables.
+   */
+  exec: { backgroundAfterSecs: number };
   /** Heyo Cloud connection (Firecracker microVMs) — the only production sandbox. */
   heyo: {
     token: string | undefined;
@@ -201,6 +207,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
   return {
     publication: {
       requirePassingTests: env.SAILOR_REQUIRE_PASSING_TESTS === "1",
+    },
+    exec: {
+      // 120s is the old bash deadline: below it nothing changes; above it the
+      // command keeps running and the agent gets control back (decision #70).
+      backgroundAfterSecs:
+        optionalNumber(env.SAILOR_EXEC_BACKGROUND_AFTER_SECS) ?? 120,
     },
     heyo: {
       token: env.HEYO_TOKEN || undefined,

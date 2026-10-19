@@ -285,6 +285,46 @@ export const traceEvents = pgTable(
   ],
 );
 
+/**
+ * Commands that outlived their turn (decision #70). The engine reports a
+ * `background_started` handle; the worker's sweep polls it through the
+ * thread's retained sandbox and turns completion into an inbox event.
+ */
+export const backgroundJobs = pgTable(
+  "background_jobs",
+  {
+    id: uuidPk(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    /** The guest job directory inside the sandbox — the handle. */
+    jobId: text("job_id").notNull(),
+    command: text("command"),
+    /** The retained sandbox that owns the job (the thread's at launch). */
+    sandboxId: text("sandbox_id"),
+    /** running | done | lost */
+    status: text("status").notNull().default("running"),
+    exitCode: integer("exit_code"),
+    output: text("output"),
+    /** The job's hard lifetime, so a fresh client can poll it. */
+    timeoutSecs: integer("timeout_secs").notNull().default(3600),
+    launchedAt: timestamp("launched_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("background_jobs_job_unique").on(t.jobId),
+    index("background_jobs_running_idx").on(t.status, t.launchedAt),
+  ],
+);
+
 // --- row types (inferred from the table definitions above) -------------------
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -298,4 +338,4 @@ export type NewRun = typeof runs.$inferInsert;
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
 export type TraceEvent = typeof traceEvents.$inferSelect;
-export type NewTraceEvent = typeof traceEvents.$inferInsert;
+export type BackgroundJob = typeof backgroundJobs.$inferSelect;export type NewTraceEvent = typeof traceEvents.$inferInsert;

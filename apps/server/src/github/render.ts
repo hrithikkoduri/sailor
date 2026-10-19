@@ -125,6 +125,24 @@ export function renderGithubTask(
         (body ? `\n\n${body.slice(0, 4000)}` : "")
       );
     }
+    case "background_result": {
+      const jobId = s("jobId") ?? "unknown";
+      const command = s("command") ?? "(command not recorded)";
+      const output = (s("output") ?? "").trim();
+      const note = s("note");
+      const status = s("status") ?? "done";
+      if (status !== "done") {
+        return (
+          `A background command could not be confirmed (job ${jobId}) — do not run it again.` +
+          (note ? `\n${note}` : "") +
+          `\n\n$ ${command}`
+        );
+      }
+      return (
+        `A background command finished (job ${jobId}, exit ${n("exitCode") ?? "?"}) — do not run it again.` +
+        `\n\n$ ${command}\n\n${output || "(no output)"}`
+      );
+    }
     default:
       return `[${kind}] ${JSON.stringify(payload).slice(0, 500)}`;
   }

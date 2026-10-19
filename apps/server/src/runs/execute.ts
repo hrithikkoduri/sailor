@@ -55,6 +55,7 @@ import { heartbeatRun } from "./lease.js";
 import { createSailorAgent } from "../agents/sailor.js";
 import { githubTools, type PublicationPolicy } from "../agents/github-tools.js";
 import { readSailorHandoff, SAILOR_HANDOFF } from "../agents/sailor-handoff.js";
+import { recordBackgroundJob } from "./background.js";
 
 /** Live AbortControllers, keyed by run id — the cancel button's registry. */
 const activeControllers = new Map<string, AbortController>();
@@ -248,6 +249,20 @@ export async function executeRun(
             usd: liveUsage.costUsd.toFixed(4),
           })
           .where(eq(schema.runs.id, run.id));
+      }
+      // A detached command's handle is durable state, not trace trivia: the
+      // worker sweep needs it after this run (and this process) is gone.
+      if (e.type === "background_started") {
+        await recordBackgroundJob(db, {
+          runId: run.id,
+          threadId: thread.id,
+          jobId: e.jobId,
+          command: e.command,
+          sandboxId: opened?.id,
+          // The bash tool gives an unset deadline the max lifetime; an
+          // explicit deadline is at most the same cap.
+          timeoutSecs: 3600,
+        });
       }
       // Every recorded step nudges the dashboard watching this thread.
       if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
@@ -481,6 +496,10 @@ export async function executeRun(
         traceSinks: [jsonl, recorder, projectLive],
         // Sailor's finish() vocabulary — a consumer schema now, not the engine's.
         handoff: SAILOR_HANDOFF,
+        // Long commands detach instead of timing out the turn (decision #70).
+        ...(cfg.exec.backgroundAfterSecs > 0
+          ? { backgroundAfterSecs: cfg.exec.backgroundAfterSecs }
+          : {}),
         onEvent: sink,
       },
     );

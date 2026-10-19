@@ -29,6 +29,7 @@ import { drainInbox } from "../threads/inbox.js";
 import { createLivePublisher, createThreadNotifier } from "../server/stream.js";
 import { handleSweep } from "./sweep.js";
 import { runBabysitSweep } from "./babysit.js";
+import { sweepBackgroundJobs } from "../runs/background.js";
 
 const USAGE = `Usage: sailor worker [options]
 
@@ -170,6 +171,22 @@ export async function workerCommand(argv: string[]): Promise<number> {
       if (results.length > 0) {
         process.stdout.write(
           `[worker] sweep: ${results.length} stale run(s) recovered → resume queued\n`,
+        );
+      }
+      // Background commands: poll detached jobs on retained sandboxes and
+      // enqueue their completion as an inbox event. Never waits on a run.
+      const background = await sweepBackgroundJobs({
+        db,
+        queues,
+        local,
+        ...(githubApp ? { githubApp } : {}),
+        ...(botIdentity ? { gitIdentity: botIdentity } : {}),
+      });
+      if (background.length > 0) {
+        process.stdout.write(
+          `[worker] background: ${background
+            .map((r) => `${r.threadId.slice(0, 8)}/${r.jobId.slice(-6)} → ${r.status}${r.exitCode !== undefined ? ` (${r.exitCode})` : ""}`)
+            .join("; ")}\n`,
         );
       }
     },

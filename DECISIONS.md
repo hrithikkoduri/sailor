@@ -689,6 +689,33 @@ claims that need to be contamination-free.
 - `HEYO_TOKEN` / `LLM_API_KEY` never leave the orchestrator. `GITHUB_TOKEN` is minted per-run, short-lived, one-repo-scoped (GitHub App installation tokens long-term); git creds live in `/etc/git-credentials` **outside** `/workspace`.
 - Guardrails: trace redaction (no token-shaped strings in logs/DB), secrets never in VM images or repo copies.
 
+## Decision #68 — Long commands detach; completions arrive as inbox turns
+
+A bash command still running after `SAILOR_EXEC_BACKGROUND_AFTER_SECS`
+(default 120, 0 disables) no longer holds the run to its deadline: the engine
+returns a job handle at the threshold, emits `background_started`, and the
+session row gets a `background_jobs` row. The worker's existing 60s sweep
+polls each running job through the thread's **retained** sandbox and appends a
+`background_result` inbox event; the normal drain turns that into the next
+turn. Nothing cancels the active run, and the model is never asked to poll —
+the same delivery path as a webhook.
+
+Three details are product policy, not package mechanics:
+
+- **Retention is mandatory.** The job lives in the VM, and `destroy()` must not
+  park (scale to zero) a sandbox with a live job. Anchor makes this a property
+  of the detach result; Sailor's sweep parks the sandbox after the last job
+  completes, and refuses to park while a run is queued/running on the thread.
+- **A detached job does not gate mutations.** The agent is explicitly told not
+  to re-run it and may keep working; the single-flight gate only covers
+  unresolved *synchronous* commands.
+- **Lost receipts stay one-command failures.** Past `timeoutSecs + 90s` with no
+  receipt, the sweep kills the job and delivers a `lost` result — the model
+  sees the failure instead of a run that wedges.
+
+The first run to use this is the WebRover #19 retry (a Playwright repro that
+lost its receipt at ~175s). Migration: `drizzle/0013_spotty_forge.sql`.
+
 ## Open questions
 
 - Which SWE-bench Lite subset (30–50 tasks) and how to handle per-instance setup images
