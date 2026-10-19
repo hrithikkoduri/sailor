@@ -29,7 +29,9 @@ command -v git-filter-repo >/dev/null 2>&1 || {
 }
 
 echo "==> fresh clone (filter-repo must never touch the monorepo)"
-git clone -q "$MONOREPO" "$CLONE"
+# --no-local: a plain local-path clone hardlinks the object store, which
+# filter-repo (correctly) refuses to treat as a fresh clone.
+git clone -q --no-local "$MONOREPO" "$CLONE"
 
 echo "==> rewriting history over all three path eras"
 git -C "$CLONE" filter-repo \
