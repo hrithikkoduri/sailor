@@ -93,18 +93,6 @@ These are independent; the "depends on" notes say when order matters.
   _Where:_ `packages/core/src/sandbox/types.ts` + adapters,
   `apps/server/src/runs/execute.ts`. _Trigger:_ none — correctness fix, ready
   now. _Size:_ S–M.
-- **Provider `prepare()` hook** — fold the build-secret refresh
-  (`upsertHeyoSecret` call in `execute.ts`) into the Heyo provider as
-  `prepare()`, called with the git callback; removes provider vocabulary from
-  Sailor. Depends on the provider interface. _Where:_
-  `packages/core/src/sandbox/heyo.ts`. _Trigger:_ provider interface lands.
-  _Size:_ S.
-- **Store-backed `openSandbox` session** — `sources: [checkpointRef, headRef,
-base]` + a `SandboxStore` interface (`get/set/clear` per thread); adoption
-  and fallback callbacks become store operations. Sailor supplies the
-  Postgres implementation. _Where:_ `packages/core/src/sandbox/index.ts`;
-  `apps/server/src/threads/`. _Trigger:_ none — completes the continuity
-  work. _Size:_ M.
 - **`createAnchor` facade** — ~20 lines of sugar over the run-pipeline calls
   (captures llm/provider/stores, returns `{ run, doctor }`). _Trigger:_ a
   second consumer wants the same wiring bundle (the eval CLI at step 15
@@ -192,10 +180,6 @@ the same model; (2) **the package is tight enough that a stranger installs
 
 **Phase 3 — pull the primitives home (Sailor → Anchor)**
 
-- Slice 5: `TraceSink` + `traceSinks` fan-out; move `live-projector.ts` and
-  `chat/projection.ts` next to the event schema.
-- Slice 3: `SandboxStore`-backed `openSandbox` session (sources + callbacks).
-- Slice 2: provider `prepare()`.
 - Sailor ends as: rows, webhooks, GitHub, dashboard, stores.
 
 **Phase 4 — publish**
@@ -203,10 +187,6 @@ the same model; (2) **the package is tight enough that a stranger installs
 - Build (tsc) + exports map; README (quickstart, provider contract, eval
   story); a guard test that `packages/core` never reads `process.env`; first
   real version tag.
-- Move `fixtures/buggy-lib` under `packages/core/tests/fixtures/` — two core
-  suites import it via `../../../../fixtures`, which after the subtree split
-  lands outside the package and the tests fail. _Trigger:_ before extraction.
-  _Size:_ XS.
 
 **Not blocking any of the above:** E2B/Daytona adapters, OTel/LangSmith
 adapters, forge adapters, the ext4 artifact publish, `fork()`, janitor TTL.

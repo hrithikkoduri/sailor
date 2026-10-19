@@ -25,6 +25,9 @@ export function heyoProvider(
       ? { imageDockerfile: cfg.heyo.imageDockerfile }
       : {}),
     ...(cfg.heyo.imageAuth ? { imageAuth: cfg.heyo.imageAuth } : {}),
+    ...(cfg.heyo.buildSecretRefresh !== undefined
+      ? { buildSecretRefresh: cfg.heyo.buildSecretRefresh }
+      : {}),
     ...(cfg.heyo.imageSizeMb ? { imageSizeMb: cfg.heyo.imageSizeMb } : {}),
     sizeClass: cfg.heyo.sizeClass,
     diskSizeGb: cfg.heyo.diskSizeGb,

@@ -399,6 +399,31 @@ Tests: the revival crossroads (request / checkpoint-only / caps spent / no
 evidence / non-budget reason), accrual at both caps, and the tree rule
 (fresh pass, fresh fail, stale tree, no run). Core 186.
 
+## Decision #59 — Boundary B closes: the session store and provider prepare()
+
+Two lifts finish the "pull the primitives home" queue:
+
+- **`openSandboxSession` + `SandboxStore`** (`sandbox/index.ts`): the package
+  owns the continuity policy end to end — adopt the retained handle, clear the
+  store when it is gone, then try sources newest-usable-first (a dead ref is
+  reported via `onRefUnusable` before the next candidate), and write back
+  whatever opened. `SandboxStore` is `get`/`set`/`clear` on opaque keys;
+  `MemorySandboxStore` ships for tests and demos. What stayed product: the
+  Postgres implementation (`threads/sandbox-store.ts` — the thread row's
+  sandbox columns) and the `checkpointRef` bookkeeping. `openSandbox` with
+  explicit callbacks remains for one-shot consumers.
+- **`SandboxProvider.prepare({ gitToken })`**: optional, best-effort pre-run
+  maintenance. The Heyo provider now gates and performs the git-kind
+  build-secret refresh itself (`buildSecretRefresh` moved onto
+  `HeyoSandboxConfig`), so Sailor's execute.ts contains no `cfg.heyo.*` check
+  for it — just `provider.prepare?.({ gitToken })` with a log-and-continue
+  policy. The caller decides fatality; the provider owns the mechanics.
+
+Also recorded: the package's suites no longer read the repo-root
+`fixtures/buggy-lib` (they scaffold it in-test), resolving the DEFERRED
+extraction blocker by decoupling — Sailor's integration tests keep using the
+fixture, which is fine: it is a product fixture.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;

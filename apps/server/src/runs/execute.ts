@@ -17,7 +17,7 @@ import {
   JsonlTrace,
   createLiveProjector,
   llmFromCatalog,
-  openSandbox,
+  openSandboxSession,
   releaseSandbox,
   runAgent,
   type AgentEvent,
@@ -27,16 +27,15 @@ import {
   type LLMClient,
   type RevivalRequest,
   type Sandbox,
-  type SandboxHandle,
   type SandboxProvider,
   type SandboxSpec,
 } from "@anchor/core";
-import { upsertHeyoSecret } from "@anchor/core/sandbox/heyo";
 import { local } from "@anchor/core/sandbox/local";
 import { heyoProvider } from "../heyo-provider.js";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
+import { postgresSandboxStore } from "../threads/sandbox-store.js";
 import {
   ensureThreadState,
   isTerminal,
@@ -263,8 +262,9 @@ export async function executeRun(
   // sweep resume, follow-up) adopts it and finds the workspace — branch,
   // edits, and all — exactly as left. Terminal threads are torn down instead.
   const retain = thread.source === "github" && !isTerminal(thread.state);
-  const spec: SandboxSpec = {
-    ...sandboxSpecForThread(thread, baseDir),
+  /** A clone candidate: the same run fields, for one ref (null = base). */
+  const specWith = (checkpointRef: string | null): SandboxSpec => ({
+    ...sandboxSpecForThread({ ...thread, checkpointRef }, baseDir),
     retain,
     ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
     ...(deps.githubApp && thread.installationId != null
@@ -274,7 +274,7 @@ export async function executeRun(
           },
         }
       : {}),
-  };
+  });
 
   // Off-machine checkpoints (B): the side branch the push webhook ignores. It
   // is recorded only after a push actually succeeded, so a fresh clone never
@@ -287,53 +287,27 @@ export async function executeRun(
     assertSafeCheckpointRef(checkpointPushRef);
   }
 
-  // Git credentials for the run (decision #42): the FRESH installation token
-  // for this thread's repo — the sandbox layer installs it for clone + push.
-  let gitToken: string | undefined;
-  if (deps.githubApp && thread.installationId != null) {
-    try {
-      gitToken = await deps.githubApp.tokenFor(thread.installationId);
-    } catch (err) {
-      process.stdout.write(
-        `[run ${run.id}] installation token mint failed: ${err instanceof Error ? err.message : String(err)} — continuing without credentials\n`,
-      );
-    }
-  }
-  // Git-kind image builds run on Heyo's host and read their credential from
-  // the namespace secret store; installation tokens live an hour, so refresh
-  // the stored value on the way in (the sandbox re-mints for clone/push via
-  // spec.git). The upsert mechanic lives in @anchor/core; when/whether is
-  // Sailor policy. Best-effort — an older secret beats a failed run.
-  if (
-    !deps.local &&
-    cfg.heyo.imageKind === "git" &&
-    cfg.heyo.buildSecretRefresh &&
-    cfg.heyo.imageAuth?.secret &&
-    cfg.heyo.imageAuth.key &&
-    gitToken &&
-    cfg.heyo.token
-  ) {
-    try {
-      await upsertHeyoSecret({
-        server: cfg.heyo.server,
-        token: cfg.heyo.token,
-        namespace: cfg.heyo.namespace,
-        secret: cfg.heyo.imageAuth.secret,
-        key: cfg.heyo.imageAuth.key,
-        value: gitToken,
-      });
-    } catch (err) {
-      process.stdout.write(
-        `[run ${run.id}] build-secret refresh failed: ${err instanceof Error ? err.message : String(err)} — continuing with the stored value\n`,
-      );
-    }
-  }
   // The provider for this run, named and explicit: the retained handle's
   // backend is passed verbatim, so a future provider can never be
   // misclassified as heyo (the old `backend === "local" ? … : "heyo"` trap).
   const provider: SandboxProvider = deps.local ? local() : heyoProvider(cfg);
   const make = (s: SandboxSpec): Sandbox =>
     deps.sandboxFactory?.(s) ?? provider.create(s);
+  // Provider-side preparation (e.g. the git-kind build-secret refresh): the
+  // provider owns its own policy now; best-effort — an older secret beats a
+  // failed run.
+  try {
+    await provider.prepare?.({
+      ...(deps.githubApp && thread.installationId != null
+        ? { gitToken: () => deps.githubApp!.tokenFor(thread.installationId!) }
+        : {}),
+    });
+  } catch (err) {
+    process.stdout.write(
+      `[run ${run.id}] provider prepare failed: ${err instanceof Error ? err.message : String(err)} — continuing\n`,
+    );
+  }
+
   // Provider catalog → live prices → compaction derived from the model's real
   // window: one call in @anchor/core, shared with the eval so the precedence
   // rules cannot drift apart (2026-10-18: hand-rolled catalog→prices wiring
@@ -380,47 +354,20 @@ export async function executeRun(
   let opened: Sandbox | undefined;
   try {
     await ensureThreadState(db, thread.id, "running");
-    const sandbox = await openSandbox({
+    // The store keeps continuity (the thread row's sandbox columns); the
+    // package runs the session: adopt the retained handle, clear the stale
+    // pointer when it is gone, then try the checkpoint branch, then the base.
+    const sandbox = await openSandboxSession({
       provider,
       create: make,
-      spec,
-      ...(thread.sandboxId
-        ? {
-            adopt: {
-              id: thread.sandboxId,
-              backend: thread.sandboxBackend ?? provider.name,
-            } satisfies SandboxHandle,
-          }
-        : {}),
-      ...(thread.checkpointRef
-        ? {
-            fallbackSpec: {
-              ...sandboxSpecForThread(
-                { ...thread, checkpointRef: null },
-                baseDir,
-              ),
-              retain,
-              ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
-              ...(deps.githubApp && thread.installationId != null
-                ? {
-                    git: {
-                      token: () =>
-                        deps.githubApp!.tokenFor(thread.installationId!),
-                    },
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      onRetainedGone: async (handle) => {
-        process.stdout.write(
-          `[run ${run.id}] retained sandbox ${handle.id} unavailable — re-cloning\n`,
-        );
-        await db
-          .update(schema.threads)
-          .set({ sandboxId: null, sandboxBackend: null, updatedAt: new Date() })
-          .where(eq(schema.threads.id, thread.id));
-      },
+      store: postgresSandboxStore(db, provider.name),
+      key: thread.id,
+      sources: [
+        ...(thread.checkpointRef
+          ? [{ spec: specWith(thread.checkpointRef) }]
+          : []),
+        { spec: specWith(null) },
+      ],
       onRefUnusable: async (ref) => {
         process.stdout.write(
           `[run ${run.id}] checkpoint branch ${ref} unusable — cloning the base branch\n`,
@@ -432,15 +379,6 @@ export async function executeRun(
       },
     });
     opened = sandbox;
-    // Record which sandbox this thread now owns — the next run adopts it.
-    await db
-      .update(schema.threads)
-      .set({
-        sandboxId: sandbox.id,
-        sandboxBackend: sandbox.backend,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.threads.id, thread.id));
     const initial =
       thread.source === "github"
         ? await sandbox.exec("git rev-parse --verify HEAD", { timeoutSecs: 60 })
