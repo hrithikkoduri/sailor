@@ -16,13 +16,19 @@ export default defineConfig({
       {
         find: /^@anchor\/core\/sandbox\/heyo$/,
         replacement: fileURLToPath(
-          new URL("../../packages/core/src/sandbox/heyo.ts", import.meta.url),
+          new URL(
+            "../../packages/core/src/sandbox/heyo/index.ts",
+            import.meta.url,
+          ),
         ),
       },
       {
         find: /^@anchor\/core\/sandbox\/local$/,
         replacement: fileURLToPath(
-          new URL("../../packages/core/src/sandbox/local.ts", import.meta.url),
+          new URL(
+            "../../packages/core/src/sandbox/local/index.ts",
+            import.meta.url,
+          ),
         ),
       },
     ],

@@ -56,7 +56,7 @@ history.
 - **Artifact→git image fallback chain** — try the primary image source; on job
   failure, destroy and recreate from the secondary. Remember to widen the
   build-secret refresh condition to "git anywhere in the chain". _Where:_
-  `packages/core/src/sandbox/heyo.ts` `start()`, `apps/server/src/runs/execute.ts`.
+  `packages/core/src/sandbox/heyo/index.ts` `start()`, `apps/server/src/runs/execute.ts`.
   _Trigger:_ artifact kind primary in production **and** store flakiness seen
   on pulls. _Size:_ S–M.
 - **Publish the ext4 + flip `HEYO_IMAGE_KIND=artifact`** — blocked externally:
@@ -75,7 +75,7 @@ history.
 - **Ports/routes for non-coding sandboxes** — `HeyoSandbox` hardcodes
   `routes: []` (private: exec/shell only). A consumer running a dev server or
   a browser task needs exposed ports/preview routes on the deployment spec.
-  _Where:_ `packages/core/src/sandbox/heyo.ts` (`HeyoSandboxConfig.routes`,
+  _Where:_ `packages/core/src/sandbox/heyo/index.ts` (`HeyoSandboxConfig.routes`,
   health port). _Trigger:_ first non-coding consumer needing HTTP. _Size:_
   S–M.
 

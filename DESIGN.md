@@ -441,6 +441,28 @@ disappears with it, so the root entry's SDK-free property is structural
 Core 188 / server 54 with zero `providerFor`/`CreateSandboxOptions`
 references left in the repo.
 
+## Decision #61 — Provider folders, E2B/Daytona stubs, and the sandbox README
+
+The sandbox layer groups by provider now: `heyo/{index,exec,secret}`,
+`docker/index`, `local/index` (all `git mv` — history preserved), plus `e2b/`
+and `daytona/` stub subpaths whose factories throw with a pointer to the
+README. Consumer subpaths (`@anchor/core/sandbox/*`) and the contract are
+unchanged; `package.json` exports point at the new entries. `local` stays as
+the documented dev/CI backend (no isolation): removing it would make the
+package's own suite daemon-dependent.
+
+`sandbox/README.md` is the architecture guide: each `SandboxProvider` member's
+promise, what `start()` must guarantee, the shared infra a backend inherits
+(`gitAccess()` → checkpoints/reserved scratch; the exec contract with the
+never-replay-an-ambiguous-launch rule and the Heyo 30s-ceiling case study),
+`runSandboxConformance` as the acceptance test, and an "adding a provider"
+checklist.
+
+One hidden coupling found on the way: `apps/server/vitest.config.ts` pinned
+the old subpath _file_ targets as exact aliases (mirroring the tsconfig paths
+entry) — `DEBUG=vite:resolve` showed resolution still landing on the deleted
+`local.ts`. A package reorg must sweep consumer aliases, not just imports.
+
 ## Streaming and activity follow-up (2026-10-18)
 
 - **Package mechanism:** LLM streams accept an optional `onReasoning` callback;
