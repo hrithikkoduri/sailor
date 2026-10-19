@@ -1,57 +1,46 @@
 /**
- * TraceRecorder — the product's trace persistence.
+ * TraceRecorder — the product's durable journal (trace_events rows).
  *
- * The engine's event stream becomes two durable artifacts with ONE sequence
- * number, so the file and the database always agree on ordering:
- *   - an NDJSON file per run (`traces/<run-id>.jsonl` — the PR trace link)
- *   - rows in `trace_events` (the journal durable resume replays, decision #15)
+ * A TraceSink: entries arrive from a TraceFanout already sequenced and
+ * redacted, so the file and the database always agree on ordering, and no
+ * persistence path can forget redaction (decision #15's durable replay).
  *
  * DB writes need a runId (a `runs` row), which only exists when a thread
- * context does — CLI-only runs write the file alone; worker runs (step 10)
- * write both.
+ * context does — CLI-only runs trace to the NDJSON file alone.
+ *
+ * `afterRecord` runs inside this sink's chain, after the row is in: product
+ * bookkeeping (live usage, runs row, dashboard nudge) rides the same order,
+ * so a refresh triggered by a nudge always sees the row it would read.
  */
-import { JsonlTrace, redact, type AgentEvent } from "@anchor/core";
+import type { TraceSink, TracedEvent } from "@anchor/core";
 import { schema, type Db } from "../db/index.js";
 
-export interface TraceTargets {
-  jsonl?: JsonlTrace;
-  db?: Db;
-  runId?: string;
-}
-
-export class TraceRecorder {
-  private fallbackSeq = 0;
+export class TraceRecorder implements TraceSink {
+  readonly name = "db";
   private recorded = 0;
 
-  constructor(private readonly targets: TraceTargets = {}) {}
+  constructor(
+    private readonly targets: {
+      db: Db;
+      runId: string;
+      afterRecord?: (entry: TracedEvent) => void | Promise<void>;
+    },
+  ) {}
 
   /** How many events have been recorded. */
   get events(): number {
     return this.recorded;
   }
 
-  async record(event: AgentEvent): Promise<void> {
-    let seq: number;
-    if (this.targets.jsonl) {
-      seq = await this.targets.jsonl.record(event);
-    } else {
-      seq = this.fallbackSeq++;
-    }
-
-    if (this.targets.db && this.targets.runId) {
-      await this.targets.db.insert(schema.traceEvents).values({
-        runId: this.targets.runId,
-        seq,
-        type: event.type,
-        // The same redaction as the NDJSON sink — no persistence path may
-        // forget it (folding previews and summaries can quote tool output).
-        payload: JSON.parse(redact(JSON.stringify(event))) as Record<
-          string,
-          unknown
-        >,
-      });
-    }
-
+  async record(entry: TracedEvent): Promise<void> {
+    await this.targets.db.insert(schema.traceEvents).values({
+      runId: this.targets.runId,
+      seq: entry.seq,
+      type: entry.event.type,
+      // Already redacted by the fanout — the entry is the payload contract.
+      payload: entry.event as unknown as Record<string, unknown>,
+    });
     this.recorded += 1;
+    await this.targets.afterRecord?.(entry);
   }
 }

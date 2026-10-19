@@ -14,8 +14,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../config.js";
-import { JsonlTrace } from "@anchor/core";
-import { TraceRecorder } from "../trace/store.js";
+import { JsonlTrace, TraceFanout } from "@anchor/core";
 import {
   codingAgent,
   createLLMClient,
@@ -210,11 +209,11 @@ export async function runCommand(argv: string[]): Promise<number> {
   // Trace: NDJSON file per run (DB rows join in step 10, when a thread owns the run).
   const runId = randomUUID();
   const jsonl = new JsonlTrace(path.join(baseDir, "traces", `${runId}.jsonl`));
-  const recorder = new TraceRecorder({ jsonl });
-  let sinkTail: Promise<void> = Promise.resolve();
+  // One fanout owns sequencing and redaction; the sink only relays and prints.
+  const fanout = new TraceFanout([jsonl]);
   const sink = (e: AgentEvent) => {
     printer(e);
-    sinkTail = sinkTail.then(() => recorder.record(e));
+    fanout.record(e);
   };
 
   try {
@@ -232,15 +231,15 @@ export async function runCommand(argv: string[]): Promise<number> {
       },
     );
 
-    await sinkTail; // flush the trace before exiting
+    await fanout.flush(); // flush the trace before exiting
     await sandbox.destroy();
     process.stdout.write(
-      `\ntrace: ${path.relative(baseDir, jsonl.filePath)} (${recorder.events} events)\n`,
+      `\ntrace: ${path.relative(baseDir, jsonl.filePath)} (${jsonl.length} events)\n`,
     );
     if (args.keep) process.stdout.write(`sandbox kept: ${sandbox.id}\n`);
     return result.ok ? 0 : 1;
   } catch (err) {
-    await sinkTail.catch(() => undefined);
+    await fanout.flush().catch(() => undefined);
     process.stderr.write(
       `\nrun failed: ${err instanceof Error ? err.message : String(err)}\n`,
     );

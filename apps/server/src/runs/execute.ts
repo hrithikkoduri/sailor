@@ -19,6 +19,7 @@ import {
   openSandbox,
   releaseSandbox,
   runAgent,
+  TraceFanout,
   type AgentEvent,
   type BudgetLimits,
   type CompactionConfig,
@@ -217,11 +218,10 @@ export async function executeRun(
   }, deps.cancelWatchEveryMs ?? 2_000);
   cancelWatch.unref?.();
 
-  // Traces: NDJSON file + trace_events rows, one sequence (step 8).
+  // Traces: NDJSON file + trace_events rows — one fanout owns the sequence
+  // number and one redaction before every sink (TraceFanout).
   const traceDir = path.join(process.env.INIT_CWD ?? process.cwd(), "traces");
   const jsonl = new JsonlTrace(path.join(traceDir, `${run.id}.jsonl`));
-  const recorder = new TraceRecorder({ jsonl, db, runId: run.id });
-  let sinkTail: Promise<void> = Promise.resolve();
 
   // Live projections for the chat stream (step 18): cumulative assistant text
   // at ~10/s + activity markers. Fire-and-forget; the trace is the truth.
@@ -239,33 +239,40 @@ export async function executeRun(
     steps: 0,
   };
 
+  const recorder = new TraceRecorder({
+    db,
+    runId: run.id,
+    // Product bookkeeping rides the recorder's chain, after the row is in:
+    // a dashboard nudge can never race the row a refresh would read.
+    afterRecord: async (entry) => {
+      const e = entry.event;
+      if (e.type === "llm_call_finished") {
+        liveUsage.promptTokens += e.usage.promptTokens;
+        liveUsage.completionTokens += e.usage.completionTokens;
+        liveUsage.costUsd += e.usage.costUsd ?? 0;
+        liveUsage.steps = Math.max(liveUsage.steps, e.step);
+        await db
+          .update(schema.runs)
+          .set({
+            steps: liveUsage.steps,
+            tokensIn: liveUsage.promptTokens,
+            tokensOut: liveUsage.completionTokens,
+            usd: liveUsage.costUsd.toFixed(4),
+          })
+          .where(eq(schema.runs.id, run.id));
+      }
+      // Every recorded step nudges the dashboard watching this thread.
+      if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
+        deps.notify?.(thread.id);
+    },
+  });
+  const fanout = new TraceFanout([jsonl, recorder]);
+
   const sink = (e: AgentEvent) => {
     if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
       events.push(e);
     projectLive(e);
-    sinkTail = sinkTail
-      .then(() => recorder.record(e))
-      .then(async () => {
-        if (e.type === "llm_call_finished") {
-          liveUsage.promptTokens += e.usage.promptTokens;
-          liveUsage.completionTokens += e.usage.completionTokens;
-          liveUsage.costUsd += e.usage.costUsd ?? 0;
-          liveUsage.steps = Math.max(liveUsage.steps, e.step);
-          await db
-            .update(schema.runs)
-            .set({
-              steps: liveUsage.steps,
-              tokensIn: liveUsage.promptTokens,
-              tokensOut: liveUsage.completionTokens,
-              usd: liveUsage.costUsd.toFixed(4),
-            })
-            .where(eq(schema.runs.id, run.id));
-        }
-        // Every recorded step nudges the dashboard watching this thread.
-        if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
-          deps.notify?.(thread.id);
-      })
-      .catch(() => undefined);
+    fanout.record(e);
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
@@ -535,7 +542,7 @@ export async function executeRun(
         ),
       deps.heartbeatEveryMs,
     );
-    await sinkTail;
+    await fanout.flush();
 
     const status: ExecuteRunOutcome["status"] =
       outcome.reason === "finished" && outcome.ok
@@ -676,7 +683,7 @@ export async function executeRun(
         : {}),
     };
   } catch (err) {
-    await sinkTail.catch(() => undefined);
+    await fanout.flush().catch(() => undefined);
     const message = err instanceof Error ? err.message : String(err);
     await db
       .update(schema.runs)
