@@ -116,11 +116,14 @@ These are independent; the "depends on" notes say when order matters.
 - **Baseline-relative suite evidence** — FAIL*TO_PASS / PASS_TO_PASS deltas:
   `run_tests` gains `junit_path` → `meta.tests` (JUnit XML regex parse);
   success = no baseline-passing test regresses. \_Where:*
-  `packages/core/src/tools/run-tests.ts`, step-15 task JSON.
+  The Anchor repo now: `src/tools/run-tests.ts` + the eval task JSON under
+  `evals/data/` (owner: the package repo).
   _Trigger:_ evals on real repos whose `main` is not green. _Size:_ M.
-- **`blocked` → user channel** — package carries `disposition: "blocked"` +
-  summary; Sailor posts it as a comment + `agent:needs-input` label and the
-  human reply becomes the next event. _Where:_ `apps/server/src/github/`.
+- **`blocked` → user channel** — the consumer handoff schema carries
+  `disposition: "blocked"` + summary (the engine only transports the opaque
+  handoff — decision #64); Sailor posts it as a comment + `agent:needs-input`
+  label and the human reply becomes the next event. _Where:_
+  `apps/server/src/github/`, `apps/server/src/agents/sailor-handoff.ts`.
   _Trigger:_ step 13 client wiring. _Size:_ S.
 
 ## Forge providers (git hosts)
@@ -185,6 +188,7 @@ the same model; (2) **the package is tight enough that a stranger installs
 **Phase 4 — extraction (the runbook)**
 
 ✅ Done — the extraction shipped (2026-10-19):
+
 - **Names**: npm `anchor-ai-sdk@0.0.1` live (maintainer `hrithikkoduri`);
   GitHub `hrithikkoduri/anchor-ai-sdk` public, CI on. Still to buy: the
   `anchor-sdk.dev` domain.
@@ -192,20 +196,25 @@ the same model; (2) **the package is tight enough that a stranger installs
   seeded 0.1.0 (dist entry points, `prepare`, lockfile), verified standalone
   in the new repo, tagged `v0.1.0`, `main` pushed.
 - **Sailor switchover**: dependencies → `github:hrithikkoduri/anchor-ai-sdk#v0.1.0`
-  (server + evals), `packages/core` deleted, source aliases/tsconfig paths
-  gone — imports were already `anchor-ai-sdk` (zero churn).
+  (server), `packages/core` + `apps/evals` deleted, source aliases/tsconfig
+  paths gone — imports were already `anchor-ai-sdk` (zero churn). The GitHub
+  repo is renamed **sailor** (private; remote updated). Anchor CI caught and
+  fixed a self-containment bug (the evals tsconfig extended a path outside
+  the repo).
 
 Remaining:
 
-1. **Product page**: the README showcase + `assets/` logo live in the new
-   repo; then `examples/` (one standalone local-sandbox run; one non-coding
-   agent).
-2. **Move `apps/evals` into the package repo** (delete from the monorepo in
-   the same change); benchmark rounds resume there: Opus 5.5 on Lite-10
-   (budgets capped), then TerminalBench / METR / ProgramBench as
-   `benchmarks/<name>/`.
+1. **Product page**: ✅ README showcase + `assets/` logo + accuracy pass
+   shipped in the Anchor repo; `examples/` (one standalone local-sandbox run;
+   one non-coding agent) still to add there.
+2. ✅ `apps/evals` moved into the package repo and deleted from this monorepo;
+   benchmark rounds resume there: Opus 5.5 on Lite-10 (budgets capped), then
+   TerminalBench / METR / ProgramBench as `benchmarks/<name>/`.
 3. **npm 0.1.0 release** (staged approval), later releases from CI with
    `npm publish --provenance` (trusted publishing).
+4. **The image namespace** (`harness/sailor-toolchain`, Heyo namespace
+   `harness`) still carries the old name — renaming means rebuilding and
+   re-pushing the toolchain image, so it stays a deliberate follow-up.
 
 **Not blocking any of the above:** E2B/Daytona adapters, OTel/LangSmith
 adapters, forge adapters, the ext4 artifact publish, `fork()`, janitor TTL.
