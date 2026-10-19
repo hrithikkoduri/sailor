@@ -66,14 +66,23 @@ export function TurnContent({
   // closes it.
   if (last?.kind === "activity") last.active = running;
   // While the run is live and nothing is visibly streaming, show the tail
-  // "Thinking" line. The activity panel carries its own spinner, so it does
-  // not need this below it.
+  // "Thinking" line. The activity panel and an open reasoning block carry
+  // their own spinner and "Thinking" header, so they do not need this below
+  // them.
   const streamingText =
     last?.kind === "part" &&
     last.part.kind === "text" &&
     !!last.part.text &&
     !last.part.complete;
-  const thinking = running && last?.kind !== "activity" && !streamingText;
+  const streamingReasoning =
+    last?.kind === "part" &&
+    last.part.kind === "reasoning" &&
+    !last.part.complete;
+  const thinking =
+    running &&
+    last?.kind !== "activity" &&
+    !streamingText &&
+    !streamingReasoning;
   return (
     <div className="space-y-4">
       {blocks.map((block) =>
