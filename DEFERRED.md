@@ -189,12 +189,10 @@ things that ride the split: `LICENSE`, the build config, `DECISIONS.md`, and
 `.github/workflows/ci.yml` (nested outside the monorepo's root, so it becomes
 the new repo's CI from day one). Remaining steps, in order:
 
-1. **Claim the names first** (irreversible): ✅ npm done — `anchor-ai-sdk`
-   claimed by `hrithikkoduri` (0.0.1 staged 2026-10-19; approve new-package
-   publishes in npmjs.com → Staged Packages — the placeholder 0.0.0-stage is
-   npm's, not ours). `scripts/publish-claim.sh` prepared it in a temp copy.
-   Still to reserve: GitHub `hrithikkoduri/anchor-ai-sdk` and the domain
-   `anchor-sdk.dev`.
+1. **Claim the names first** (irreversible): ✅ npm done — `anchor-ai-sdk@0.0.1`
+   is **live** (latest, maintainer `hrithikkoduri`; npm's 0.0.0-stage placeholder
+   from staged publishing sits harmlessly beside it). Still to reserve:
+   GitHub `hrithikkoduri/anchor-ai-sdk` and the domain `anchor-sdk.dev`.
 2. **Run the split** (`scripts/extract-anchor.sh` — filter-repo over all
    three path eras: root `src/{llm,sandbox,tools}`, `packages/agent`,
    `packages/core`; subtree split would drop the first acts) → first commit
