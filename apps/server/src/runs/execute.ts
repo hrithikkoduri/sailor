@@ -16,6 +16,7 @@ import { eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
   createLiveProjector,
+  gitSnapshot,
   llmFromCatalog,
   openSandboxSession,
   releaseSandbox,
@@ -453,7 +454,11 @@ export async function executeRun(
         // Revival (SAILOR_BUDGET_REVIVAL): warn at 85%, offer the
         // request_revival handoff; the aftermath is this product's call.
         ...(revivalOn ? { revival: {} } : {}),
-        checkpointPushRef,
+        // Off-machine durability via the package's git snapshot: commit the
+        // turn boundary and force-push the side branch (reported, not fatal).
+        ...(checkpointPushRef
+          ? { snapshot: gitSnapshot({ push: checkpointPushRef }) }
+          : {}),
         // The worker is presumed dead when heartbeats go stale (lease.ts).
         heartbeat: {
           everyMs: deps.heartbeatEveryMs,
