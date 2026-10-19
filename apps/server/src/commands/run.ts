@@ -16,7 +16,7 @@ import path from "node:path";
 import { loadConfig } from "../config.js";
 import { JsonlTrace, TraceFanout } from "@anchor/core";
 import {
-  codingAgent,
+  createCodingAgent,
   createLLMClient,
   runAgent,
   type AgentEvent,
@@ -221,11 +221,13 @@ export async function runCommand(argv: string[]): Promise<number> {
 
     const result = await runAgent(
       // No explicit context: the coding strategy's prepareContext() writes the repo map.
-      { task: args.issue, testCommand: args.testCmd },
+      { task: args.issue },
       {
         llm,
         sandbox,
-        agent: codingAgent,
+        agent: createCodingAgent(
+          args.testCmd ? { testCommand: args.testCmd } : {},
+        ),
         budgets: { maxSteps: args.maxSteps ?? 40, maxUsd: args.maxUsd ?? 5 },
         onEvent: sink,
       },
