@@ -128,7 +128,7 @@ export function applyLiveEvent(
       Object.assign(text("text"), { text: event.text ?? "", complete: true });
       if (
         event.reasoning ||
-        event.reasoningTokens !== undefined ||
+        (event.reasoningTokens ?? 0) > 0 ||
         next.parts.some((p) => p.id === `reasoning-${step}`)
       ) {
         const part = text("reasoning");

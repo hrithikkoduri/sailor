@@ -31,6 +31,15 @@ export function TurnContent({
 }) {
   const blocks: Block[] = [];
   for (const part of parts) {
+    // Older traces (and older servers) created a reasoning part for
+    // `reasoning_tokens: 0` with no text — it is noise, not a block.
+    if (
+      part.kind === "reasoning" &&
+      part.complete &&
+      !part.text?.trim() &&
+      !((part.reasoningTokens ?? 0) > 0)
+    )
+      continue;
     if (
       part.kind === "text" &&
       !part.text &&
