@@ -81,16 +81,26 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
   re-pushing the toolchain image (`image/build.sh`), then swapping
   `HEYO_IMAGE`/`HEYO_NAMESPACE`. _Trigger:_ the next image rebuild, or before
   any public launch. _Size:_ S (+ one image build).
-- **Heyo platform issues (operator-dependent)** — artifact-store upload path
-  (`Broken pipe` / `502` / `setRepo` credential refusal),
-  `get.us2.heyo.work` TLS handshake failure. Reported via the owner; retry
-  when acknowledged.
+- **Pin the toolchain tag by digest** — the deployment names
+  `harness/sailor-toolchain:latest`, so an image rebuild silently changes what
+  every new VM boots. `heyctl set artifact --ref <digest>` pins it; do that
+  once the image stops moving. _Size:_ S.
+- **Heyo platform issue (operator-dependent)** — `get.us2.heyo.work` TLS
+  handshake failure. Reported via the owner; retry when acknowledged.
 - **The write-up (BUILD_PLAN step 19)** — the public narrative: how the
   pipeline works, the eval numbers, and the Anchor split. _Trigger:_ before
   any launch. _Size:_ M.
 
 ## Recently completed (for context)
 
+- **The toolchain artifact, published (2026-10-20)** — the Heyo store accepted
+  the 4 GiB rootfs (`heyctl artifact push`, public tag
+  `harness/sailor-toolchain:latest`), after the owner's fix. `image/build.sh`
+  now builds a real ext4 (docker export → `mke2fs -d` in a Linux container,
+  since macOS cannot set root ownership) and pushes it. `.env` runs
+  `HEYO_IMAGE_KIND=artifact`; Sailor gained `HEYO_IMAGE_STORE` for a
+  namespace-scoped store. Smoke passed: boot **125.6s** (was 207s with the
+  git clone-and-build), toolchain green (git/python/pytest/node/npm/rg).
 - **The extraction (2026-10-19)** — Anchor published: `anchor-ai-sdk@0.1.0` on
   npm, its own repo with full history, CI, README, logo, examples, and
   decision log; Sailor consumes it from the registry. `packages/core` and

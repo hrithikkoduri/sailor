@@ -26,6 +26,8 @@ export interface SailorConfig {
     token: string | undefined;
     server: string;
     namespace: string;
+    /** Artifact store both store kinds read from (default: the public hub). */
+    imageStore: string | undefined;
     image: string;
     /** How `image` resolves: a prebuilt artifact, a store Dockerfile manifest, or a git source. */
     imageKind: "artifact" | "dockerfile" | "git";
@@ -218,6 +220,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       token: env.HEYO_TOKEN || undefined,
       server: env.HEYO_SERVER ?? "https://admin.us5.heyo.work",
       namespace: env.HEYO_NAMESPACE ?? "sailor",
+      // The namespace's own store, when the image was pushed there. Unset →
+      // the package's default (the public hub).
+      imageStore: env.HEYO_IMAGE_STORE || undefined,
       image: env.HEYO_IMAGE ?? "heyo/bun:latest",
       // artifact: pull a prebuilt rootfs from the store. dockerfile: a store
       // Dockerfile manifest the host builds. git: the host clones + builds

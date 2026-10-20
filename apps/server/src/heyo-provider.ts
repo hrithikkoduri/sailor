@@ -17,6 +17,7 @@ export function heyoProvider(
     token: cfg.heyo.token ?? "",
     server: cfg.heyo.server,
     namespace: cfg.heyo.namespace,
+    ...(cfg.heyo.imageStore ? { imageStore: cfg.heyo.imageStore } : {}),
     image: cfg.heyo.image,
     imageKind: cfg.heyo.imageKind,
     ...(cfg.heyo.imageRepo ? { imageRepo: cfg.heyo.imageRepo } : {}),
