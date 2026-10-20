@@ -30,7 +30,8 @@
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "ioredis": "^6.0.0",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "e2b": "^2.56.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

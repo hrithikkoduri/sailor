@@ -8,7 +8,7 @@
 import { loadConfig } from "../config.js";
 import { type Sandbox } from "anchor-ai-sdk";
 import { local } from "anchor-ai-sdk/sandbox/local";
-import { heyoProvider } from "../heyo-provider.js";
+import { sandboxProvider } from "../sandbox-provider.js";
 
 interface SmokeArgs {
   repo: string;
@@ -75,7 +75,7 @@ export async function smokeCommand(argv: string[]): Promise<number> {
   }
 
   const cfg = loadConfig();
-  const provider = args.local ? local() : heyoProvider(cfg);
+  const provider = args.local ? local() : sandboxProvider(cfg);
   const sandbox: Sandbox = provider.create({
     repoUrl: args.repo,
     ref: args.ref,

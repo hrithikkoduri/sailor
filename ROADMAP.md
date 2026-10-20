@@ -93,6 +93,12 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
 
 ## Recently completed (for context)
 
+- **E2B sandbox selection (2026-10-20)** — `SAILOR_SANDBOX=e2b` selects
+  Anchor's E2B adapter for runs and smoke checks; Heyo remains the default.
+  `E2B_TEMPLATE` names the consumer's template. `image/e2b.Dockerfile` and
+  `image/build-e2b.mjs` build the Sailor toolchain without Heyo boot plumbing.
+  The published `sailor-toolchain:latest` template passed the toolchain smoke
+  in 8.8s, including 3.0s to start and clone. No agent run was triggered.
 - **The toolchain artifact, published (2026-10-20)** — the Heyo store accepted
   the 4 GiB rootfs (`heyctl artifact push`, public tag
   `harness/sailor-toolchain:latest`), after the owner's fix. `image/build.sh`

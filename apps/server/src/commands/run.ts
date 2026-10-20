@@ -22,7 +22,7 @@ import {
   type AgentEvent,
   type Sandbox,
 } from "anchor-ai-sdk";
-import { heyoProvider } from "../heyo-provider.js";
+import { sandboxProvider } from "../sandbox-provider.js";
 import { local } from "anchor-ai-sdk/sandbox/local";
 
 const USAGE = `Usage: sailor run <repo> <issue> [options]
@@ -192,7 +192,7 @@ export async function runCommand(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const provider = args.local ? local() : heyoProvider(cfg);
+  const provider = args.local ? local() : sandboxProvider(cfg);
   const sandbox: Sandbox = provider.create(
     isUrl(args.repo)
       ? { repoUrl: args.repo, ref: args.ref, keep: args.keep }

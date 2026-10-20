@@ -32,7 +32,10 @@ import {
   type SandboxSpec,
 } from "anchor-ai-sdk";
 import { local } from "anchor-ai-sdk/sandbox/local";
-import { heyoProvider } from "../heyo-provider.js";
+import {
+  providerForBackend,
+  sandboxProvider,
+} from "../sandbox-provider.js";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import { PostgresThreadStore } from "../threads/thread-store.js";
@@ -306,7 +309,9 @@ export async function executeRun(
   // The provider for this run, named and explicit: the retained handle's
   // backend is passed verbatim, so a future provider can never be
   // misclassified as heyo (the old `backend === "local" ? … : "heyo"` trap).
-  const provider: SandboxProvider = deps.local ? local() : heyoProvider(cfg);
+  const provider: SandboxProvider = deps.local
+    ? local()
+    : sandboxProvider(cfg);
   const make = (s: SandboxSpec): Sandbox =>
     deps.sandboxFactory?.(s) ?? provider.create(s);
   // Provider-side preparation (e.g. the git-kind build-secret refresh): the
@@ -676,7 +681,7 @@ export async function releaseThreadSandbox(
   if (!thread.sandboxId) return;
   const cfg = loadConfig();
   const provider =
-    thread.sandboxBackend === "local" ? local() : heyoProvider(cfg);
+    providerForBackend(thread.sandboxBackend, cfg);
   await releaseSandbox(
     { id: thread.sandboxId, backend: thread.sandboxBackend ?? provider.name },
     provider,

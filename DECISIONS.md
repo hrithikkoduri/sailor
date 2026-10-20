@@ -816,6 +816,17 @@ Effective on the next worker restart; no package release needed.
 
 ## Open questions
 
+### E2B provider selection (2026-10-20)
+
+Sailor selects its remote sandbox with `SAILOR_SANDBOX=heyo|e2b` (default
+Heyo). The consumer owns template names and credentials; Anchor owns sandbox
+execution. E2B reads `E2B_API_KEY`, `E2B_TEMPLATE` (default `base`), and optional
+`E2B_USER`, `E2B_TIMEOUT_MS`, and `E2B_DOMAIN`. Retained sandbox release uses
+the stored backend rather than assuming Heyo. No database migration is needed:
+the backend column is text. The E2B toolchain build is separate from Heyo's
+ext4 build and omits its init/SSH boot plumbing. Switching providers does not
+migrate an existing VM; use a fresh thread when testing the new provider.
+
 - Which SWE-bench Lite subset (30–50 tasks) and how to handle per-instance setup images
 - Toolchain image contents (git, node, python, ripgrep, docker?, test runners) — finalize when we know target repos
 - Dashboard auth in production (v1 is localhost-only, no auth): token? behind Heyo's auth gate? decide when deploying

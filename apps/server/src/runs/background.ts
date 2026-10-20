@@ -22,7 +22,7 @@ import { local } from "anchor-ai-sdk/sandbox/local";
 import { loadConfig } from "../config.js";
 import { schema, type Db } from "../db/index.js";
 import type { BackgroundJob } from "../db/schema.js";
-import { heyoProvider } from "../heyo-provider.js";
+import { sandboxProvider } from "../sandbox-provider.js";
 import { appendEvent, drainInbox } from "../threads/inbox.js";
 import type { Queues } from "../queue/index.js";
 import type { GitHubAppService } from "../github/app.js";
@@ -161,7 +161,7 @@ export async function sweepBackgroundJobs(
   }
 
   const cfg = loadConfig();
-  const provider = deps.local ? local() : heyoProvider(cfg);
+  const provider = deps.local ? local() : sandboxProvider(cfg);
   const results: BackgroundSweepResult[] = [];
 
   for (const [threadId, jobs] of byThread) {

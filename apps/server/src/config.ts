@@ -15,6 +15,8 @@ import type { HeyoSizeClass } from "anchor-ai-sdk/sandbox/heyo";
 export interface SailorConfig {
   /** Optional delivery policy; never a conversational completion gate. */
   publication: { requirePassingTests: boolean };
+  /** Which sandbox backend runs the agent: the Heyo VMs, or E2B. */
+  sandbox: "heyo" | "e2b";
   /**
    * Long-command policy. A shell command still running after this many
    * seconds is detached from the turn; its completion arrives as a later
@@ -42,6 +44,18 @@ export interface SailorConfig {
     buildSecretRefresh: boolean;
     sizeClass: HeyoSizeClass;
     diskSizeGb: number;
+  };
+  /** E2B cloud sandboxes (the alternative backend). */
+  e2b: {
+    apiKey: string | undefined;
+    /** Template name or ID; E2B boots templates, not Docker images. */
+    template: string;
+    /** Commands run as this user (SWE-bench-style images want root). */
+    user: string | undefined;
+    /** Sandbox lifetime in milliseconds (Hobby caps at 1 hour). */
+    timeoutMs: number;
+    /** Self-hosted/region control plane. */
+    domain: string | undefined;
   };
   /** GitHub App (decision #42) — replaces the PAT entirely. */
   github: {
@@ -209,6 +223,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
   return {
     publication: {
       requirePassingTests: env.SAILOR_REQUIRE_PASSING_TESTS === "1",
+    },
+    sandbox: env.SAILOR_SANDBOX === "e2b" ? "e2b" : "heyo",
+    e2b: {
+      apiKey: env.E2B_API_KEY || undefined,
+      template: env.E2B_TEMPLATE ?? "base",
+      user: env.E2B_USER || undefined,
+      timeoutMs: optionalNumber(env.E2B_TIMEOUT_MS) ?? 60 * 60_000,
+      domain: env.E2B_DOMAIN || undefined,
     },
     exec: {
       // 120s is the old bash deadline: below it nothing changes; above it the

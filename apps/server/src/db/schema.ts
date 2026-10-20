@@ -141,7 +141,7 @@ export const threads = pgTable(
     checkpointSha: text("checkpoint_sha"), // resume/fork point (git commit in the VM)
     /** The retained sandbox this thread owns (A) — Heyo deployment id or local dir id. */
     sandboxId: text("sandbox_id"),
-    sandboxBackend: text("sandbox_backend"), // "heyo" | "local"
+    sandboxBackend: text("sandbox_backend"), // "heyo" | "e2b" | "local"
     /** Off-machine checkpoint branch (B), e.g. sailor/issue-20-checkpoint. */
     checkpointRef: text("checkpoint_ref"),
     summary: text("summary"), // running summary of the work (context compaction)
