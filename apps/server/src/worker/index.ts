@@ -33,7 +33,8 @@ import { sweepBackgroundJobs } from "../runs/background.js";
 
 const USAGE = `Usage: sailor worker [options]
 
-  --local                  run sandboxes on this machine (dev; default: heyo microVMs)
+  --local                  run sandboxes on this machine (dev; default: the
+                           configured provider — heyo or e2b)
   --sweep-every-ms <n>     how often to check for stale runs (default 60000, min 5000)
   --heartbeat-every-ms <n> lease cadence while running (default 30000, min 500)
   --stale-after-ms <n>     heartbeat age that marks a run dead (default 120000;
@@ -209,7 +210,7 @@ export async function workerCommand(argv: string[]): Promise<number> {
   );
 
   process.stdout.write(
-    `[worker] up — backend: ${local ? "local (dev, no isolation)" : "heyo"}, sweep every ${sweepEveryMs}ms, queue: runs (concurrency 1)` +
+    `[worker] up — backend: ${local ? "local (dev, no isolation)" : cfg.sandbox.provider}, sweep every ${sweepEveryMs}ms, queue: runs (concurrency 1)` +
       `${githubApp ? `, babysit every ${Math.round(BABYSIT_REPEAT_MS / 60_000)}min` : " (no GitHub App — babysitter idle)"}\n`,
   );
 

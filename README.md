@@ -78,6 +78,32 @@ The agent runtime itself — the loop, the sandbox contract, traces, budgets,
 compaction, revival — is **Anchor**, consumed from npm. Sailor owns the
 product layers: rows, webhooks, GitHub, the dashboard, and the stores.
 
+## Sandbox providers
+
+The agent runs on one of three backends, selected with
+`SAILOR_SANDBOX_PROVIDER`:
+
+| value | what it is |
+| --- | --- |
+| `heyo` | Heyo Cloud Firecracker microVMs (default; production path) |
+| `e2b` | E2B cloud sandboxes (remote; build a template first) |
+| `local` | this host, **no isolation** — development only |
+
+E2B boots a **template**, not an arbitrary Docker image at create time. Build
+the toolchain template once:
+
+```bash
+E2B_API_KEY=... npm run e2b:template
+# then in .env:
+SAILOR_SANDBOX_PROVIDER=e2b
+E2B_API_KEY=...
+E2B_TEMPLATE=anchor-sailor-toolchain:latest
+```
+
+`npm run sailor -- sandbox smoke` is the quickest end-to-end check on either
+remote backend; `npm run sailor -- run <repo> "<issue>"` runs the agent
+directly without a GitHub App or the queue.
+
 ## Quickstart (development)
 
 Prerequisites: Node 22+, Docker (Postgres + Redis), a Heyo account for real

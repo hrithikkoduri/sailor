@@ -27,6 +27,7 @@
     "@node-rs/argon2": "^2.2.2",
     "anchor-ai-sdk": "^0.1.4",
     "bullmq": "^6.3.16",
+    "e2b": "^2.56.0",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "ioredis": "^6.0.0",

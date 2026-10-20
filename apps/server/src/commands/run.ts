@@ -2,7 +2,7 @@
  * `sailor run <repo> <issue>` — one agent run, end to end.
  *
  * This is the product's thin glue over the framework package:
- *   build the sandbox (--local for dev, heyo microVM by default)
+ *   build the sandbox (--local for dev, the configured remote provider by default)
  *   → write the repo map
  *   → runAgent(codingAgent) with live event printing
  *   → report the result
@@ -22,7 +22,7 @@ import {
   type AgentEvent,
   type Sandbox,
 } from "anchor-ai-sdk";
-import { heyoProvider } from "../heyo-provider.js";
+import { configuredSandboxProvider } from "../sandbox-provider.js";
 import { local } from "anchor-ai-sdk/sandbox/local";
 
 const USAGE = `Usage: sailor run <repo> <issue> [options]
@@ -30,7 +30,8 @@ const USAGE = `Usage: sailor run <repo> <issue> [options]
   <repo>            git URL, or a local path (copied into the sandbox)
   <issue>           the task text — quote it
 
-  --local           run on this machine (dev); default is a Heyo microVM
+  --local           run on this machine (dev); default: the configured
+                    sandbox provider (heyo or e2b)
   --ref <branch>    checkout a branch/tag/sha after cloning (URL repos only)
   --test-cmd <cmd>  explicit test command for run_tests (default: auto-detect)
   --max-steps <n>   turn budget (default 40)
@@ -185,14 +186,14 @@ export async function runCommand(argv: string[]): Promise<number> {
     );
     return 1;
   }
-  if (localPath && !args.local) {
+  if (localPath && !args.local && cfg.sandbox.provider !== "local") {
     process.stderr.write(
-      `local paths need --local (a microVM clones a repoUrl) — got ${localPath}\n`,
+      `local paths need --local or SAILOR_SANDBOX_PROVIDER=local (a remote sandbox clones a repoUrl) — got ${localPath}\n`,
     );
     return 1;
   }
 
-  const provider = args.local ? local() : heyoProvider(cfg);
+  const provider = args.local ? local() : configuredSandboxProvider(cfg);
   const sandbox: Sandbox = provider.create(
     isUrl(args.repo)
       ? { repoUrl: args.repo, ref: args.ref, keep: args.keep }
@@ -200,7 +201,7 @@ export async function runCommand(argv: string[]): Promise<number> {
   );
 
   process.stdout.write(
-    `\nsailor run — backend: ${sandbox.backend}, sandbox: ${sandbox.id}\nrepo: ${args.repo}\nissue: ${args.issue}\n\n`,
+    `\nsailor run — backend: ${sandbox.backend}\nrepo: ${args.repo}\nissue: ${args.issue}\n\n`,
   );
 
   const printer = makePrinter(args.verbose);
@@ -218,6 +219,7 @@ export async function runCommand(argv: string[]): Promise<number> {
 
   try {
     await sandbox.start();
+    process.stdout.write(`sandbox: ${sandbox.id}\n\n`);
 
     const result = await runAgent(
       // No explicit context: the coding strategy's prepareContext() writes the repo map.

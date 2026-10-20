@@ -21,7 +21,26 @@ export interface SailorConfig {
    * inbox turn (never a cancel, never agent polling). 0 disables.
    */
   exec: { backgroundAfterSecs: number };
-  /** Heyo Cloud connection (Firecracker microVMs) — the only production sandbox. */
+  /**
+   * Which sandbox backend a run uses. `heyo` is the default production path;
+   * `e2b` is a drop-in remote backend; `local` is dev-only (no isolation).
+   * A retained thread's own backend is used for release, not this setting.
+   */
+  sandbox: {
+    provider: "heyo" | "e2b" | "local";
+    e2b: {
+      apiKey: string | undefined;
+      /** E2B template with the repo toolchain (build scripts/build-e2b-template.mjs). */
+      template: string;
+      /** Commands run as this user; SWE-bench-style images want root. */
+      user: string | undefined;
+      /** Sandbox lifetime in milliseconds (Hobby caps at 1 hour). */
+      timeoutMs: number;
+      /** Self-hosted/region-specific E2B control plane. */
+      domain: string | undefined;
+    };
+  };
+  /** Heyo Cloud connection (Firecracker microVMs) — the default production sandbox. */
   heyo: {
     token: string | undefined;
     server: string;
@@ -170,6 +189,18 @@ export function loadDotEnv(
   }
 }
 
+function sandboxProvider(
+  value: string | undefined,
+): "heyo" | "e2b" | "local" {
+  const v = (value ?? "heyo").toLowerCase();
+  if (v !== "heyo" && v !== "e2b" && v !== "local") {
+    throw new Error(
+      `SAILOR_SANDBOX_PROVIDER must be heyo, e2b, or local — got "${value}"`,
+    );
+  }
+  return v;
+}
+
 function sizeClass(value: string | undefined): HeyoSizeClass {
   const v = (value ?? "small") as HeyoSizeClass;
   if (!SIZE_CLASSES.includes(v)) {
@@ -213,6 +244,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
       // command keeps running and the agent gets control back (decision #70).
       backgroundAfterSecs:
         optionalNumber(env.SAILOR_EXEC_BACKGROUND_AFTER_SECS) ?? 120,
+    },
+    sandbox: {
+      provider: sandboxProvider(env.SAILOR_SANDBOX_PROVIDER),
+      e2b: {
+        apiKey: env.E2B_API_KEY || undefined,
+        template: env.E2B_TEMPLATE ?? "anchor-sailor-toolchain:latest",
+        user: env.E2B_USER || undefined,
+        timeoutMs: optionalNumber(env.E2B_TIMEOUT_MS) ?? 60 * 60_000,
+        domain: env.E2B_DOMAIN || undefined,
+      },
     },
     heyo: {
       token: env.HEYO_TOKEN || undefined,

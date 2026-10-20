@@ -21,6 +21,9 @@ describe("parseEnvFile", () => {
 describe("loadConfig", () => {
   it("has sane defaults when the environment is empty", () => {
     const cfg = loadConfig({});
+    expect(cfg.sandbox.provider).toBe("heyo");
+    expect(cfg.sandbox.e2b.template).toBe("anchor-sailor-toolchain:latest");
+    expect(cfg.sandbox.e2b.timeoutMs).toBe(3_600_000);
     expect(cfg.heyo.server).toBe("https://admin.us5.heyo.work");
     expect(cfg.heyo.sizeClass).toBe("small");
     expect(cfg.llm.baseUrl).toBe("https://openrouter.ai/api/v1");
@@ -36,6 +39,11 @@ describe("loadConfig", () => {
 
   it("reads overrides from the environment", () => {
     const cfg = loadConfig({
+      SAILOR_SANDBOX_PROVIDER: "e2b",
+      E2B_API_KEY: "e2b_test",
+      E2B_TEMPLATE: "custom-template:latest",
+      E2B_USER: "root",
+      E2B_TIMEOUT_MS: "900000",
       HEYO_TOKEN: "tok",
       HEYO_SIZE_CLASS: "medium",
       HEYO_DISK_GB: "8",
@@ -48,6 +56,11 @@ describe("loadConfig", () => {
       SAILOR_PUBLIC_URL: "https://dash.example",
       DEV_AUTH_BYPASS: "1",
     });
+    expect(cfg.sandbox.provider).toBe("e2b");
+    expect(cfg.sandbox.e2b.apiKey).toBe("e2b_test");
+    expect(cfg.sandbox.e2b.template).toBe("custom-template:latest");
+    expect(cfg.sandbox.e2b.user).toBe("root");
+    expect(cfg.sandbox.e2b.timeoutMs).toBe(900_000);
     expect(cfg.heyo.token).toBe("tok");
     expect(cfg.heyo.sizeClass).toBe("medium");
     expect(cfg.heyo.diskSizeGb).toBe(8);
@@ -64,5 +77,11 @@ describe("loadConfig", () => {
 
   it("rejects invalid size classes loudly", () => {
     expect(() => loadConfig({ HEYO_SIZE_CLASS: "huge" })).toThrow(/HEYO_SIZE_CLASS/);
+  });
+
+  it("rejects an unknown sandbox provider loudly", () => {
+    expect(() =>
+      loadConfig({ SAILOR_SANDBOX_PROVIDER: "firecracker" }),
+    ).toThrow(/SAILOR_SANDBOX_PROVIDER/);
   });
 });

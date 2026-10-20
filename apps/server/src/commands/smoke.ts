@@ -1,6 +1,6 @@
 /**
  * `sailor sandbox smoke` — the Day-1 proof, now a permanent command:
- * boot a sandbox (real Firecracker microVM by default) → clone a repo →
+ * boot a sandbox (the configured remote provider by default) → clone a repo →
  * run a command → checkpoint → destroy (unless --keep).
  *
  * Every step is timed and printed; exit code 0 means the whole loop works.
@@ -8,7 +8,7 @@
 import { loadConfig } from "../config.js";
 import { type Sandbox } from "anchor-ai-sdk";
 import { local } from "anchor-ai-sdk/sandbox/local";
-import { heyoProvider } from "../heyo-provider.js";
+import { configuredSandboxProvider } from "../sandbox-provider.js";
 
 interface SmokeArgs {
   repo: string;
@@ -26,7 +26,7 @@ const USAGE = `Usage: sailor sandbox smoke [options]
   --ref <branch>      branch/tag/sha to check out after cloning
   --test-cmd <cmd>    command that proves the checkout works
                       (default: git log --oneline -1 && ls && echo SMOKE-TESTS-OK)
-  --local             run on this machine instead of a microVM (dev only)
+  --local             run on this machine instead of the configured provider
   --keep              keep the sandbox for debugging instead of destroying it
   --toolchain         prove the VM image's toolchain (git/python/node/rg)
                       instead of the default test command
@@ -75,7 +75,7 @@ export async function smokeCommand(argv: string[]): Promise<number> {
   }
 
   const cfg = loadConfig();
-  const provider = args.local ? local() : heyoProvider(cfg);
+  const provider = args.local ? local() : configuredSandboxProvider(cfg);
   const sandbox: Sandbox = provider.create({
     repoUrl: args.repo,
     ref: args.ref,
@@ -97,14 +97,15 @@ export async function smokeCommand(argv: string[]): Promise<number> {
   };
 
   process.stdout.write(
-    `\nsailor sandbox smoke — backend: ${sandbox.backend}, id: ${sandbox.id}, repo: ${args.repo}${args.ref ? ` @ ${args.ref}` : ""}\n\n`,
+    `\nsailor sandbox smoke — backend: ${sandbox.backend}, repo: ${args.repo}${args.ref ? ` @ ${args.ref}` : ""}\n\n`,
   );
 
   const t0 = Date.now();
   try {
-    await step("start sandbox (create → boot → toolchain → clone)", () =>
-      sandbox.start(),
-    );
+    await step("start sandbox (create → boot → toolchain → clone)", async () => {
+      await sandbox.start();
+      process.stdout.write(`      sandbox: ${sandbox.id}\n`);
+    });
 
     await step("sanity: uname", async () => {
       const r = await sandbox.exec("uname -a", { timeoutSecs: 60 });
@@ -145,7 +146,7 @@ export async function smokeCommand(argv: string[]): Promise<number> {
     );
     if (args.keep) {
       process.stdout.write(
-        `sandbox kept: ${sandbox.id} — delete later with heyctl or the console\n`,
+        `sandbox kept: ${sandbox.id} — release it with the provider's console or \`sailor\` cleanup\n`,
       );
     }
     return 0;

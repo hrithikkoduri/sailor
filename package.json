@@ -15,7 +15,8 @@
     "dev": "node scripts/dev.mjs",
     "sailor": "npm run cli -w apps/server --",
     "doctor": "npm run doctor -w apps/server --",
-    "migrate": "npm run migrate -w apps/server --"
+    "migrate": "npm run migrate -w apps/server --",
+    "e2b:template": "node scripts/build-e2b-template.mjs"
   },
   "engines": {
     "node": ">=20"

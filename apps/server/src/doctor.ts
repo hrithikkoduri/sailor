@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process";
 import { Pool } from "pg";
 import { Redis } from "ioredis";
 import { probeHeyo } from "anchor-ai-sdk/sandbox/heyo";
+import { e2bProvider } from "./e2b-provider.js";
 import type { SailorConfig } from "./config.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
@@ -148,9 +149,22 @@ export async function runDoctor(cfg: SailorConfig): Promise<CheckResult[]> {
   });
 
   // --- credentials ----------------------------------------------------------
-  // HEYO_TOKEN gets a LIVE probe: presence alone hides the classic failures
-  // (expired token, wrong server, token confined to a different namespace).
-  if (cfg.heyo.token) {
+  // The selected remote provider gets a LIVE probe: presence alone hides the
+  // classic failures (expired token, wrong server, missing template).
+  if (cfg.sandbox.provider === "e2b") {
+    const health = await e2bProvider(cfg).probe();
+    results.push({
+      name: "E2B",
+      status: health.ok ? "ok" : "fail",
+      detail: health.ok
+        ? `reachable — template ${cfg.sandbox.e2b.template}`
+        : `probe failed: ${health.detail ?? "unreachable"}`,
+      hint: health.ok
+        ? undefined
+        : "Check E2B_API_KEY and E2B_TEMPLATE, then build the template: node scripts/build-e2b-template.mjs",
+      required: false,
+    });
+  } else if (cfg.heyo.token) {
     const health = await probeHeyo({
       server: cfg.heyo.server,
       token: cfg.heyo.token,
