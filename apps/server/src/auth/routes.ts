@@ -11,6 +11,7 @@ import { createSession, deleteSession, SESSION_COOKIE } from "./session.js";
 import { hashPassword, normalizeEmail, passwordProblem, verifyPassword } from "./password.js";
 import { createEmailUser, findUserByEmail, publicUser, upsertGithubUser } from "./users.js";
 import { exchangeCodeForToken, fetchGithubIdentity } from "./github-oauth.js";
+import { rateLimit, type Limiter } from "../server/rate-limit.js";
 
 export interface AuthConfig {
   sessionTtlDays: number;
@@ -31,6 +32,9 @@ export interface AuthRoutesDeps {
   publicUrl: string;
   getUser: UserFromRequest;
   oauth?: { slug?: string; clientId?: string; clientSecret?: string; fetchFn?: typeof fetch };
+  /** Per-IP credential-stuffing guards; omitted means unlimited. */
+  loginLimiter?: Limiter;
+  signupLimiter?: Limiter;
   log?: (line: string) => void;
 }
 
@@ -39,6 +43,11 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const cookieOpts = { httpOnly: true, secure: deps.config.secureCookies, sameSite: "Lax" as const, path: "/" };
   const setSession = (c: Context, token: string, expiresAt: Date) =>
     setCookie(c, SESSION_COOKIE, token, { ...cookieOpts, expires: expiresAt });
+
+  // Guards run before the handlers below, so a blocked request never reaches
+  // password hashing or the database.
+  if (deps.signupLimiter) app.use("/auth/signup", rateLimit(deps.signupLimiter, "signup"));
+  if (deps.loginLimiter) app.use("/auth/login", rateLimit(deps.loginLimiter, "login"));
 
   app.post("/auth/signup", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };

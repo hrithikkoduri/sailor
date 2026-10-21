@@ -39,6 +39,7 @@ import { createApiRoutes } from "./api.js";
 import { createStreamHub, type StreamHub } from "./stream.js";
 import { sessionUser, SESSION_COOKIE } from "../auth/session.js";
 import { ensureDevUser } from "../auth/users.js";
+import { createLimiter, type Limiter } from "./rate-limit.js";
 
 export interface ServerDeps {
   db: Db;
@@ -65,6 +66,8 @@ export interface ServerDeps {
   };
   /** Live-update fanout (step 17b): SSE clients get "thread changed" nudges. */
   hub?: StreamHub;
+  /** Override the per-IP auth limiters (tests, or a Redis-backed limiter). */
+  authLimiters?: { login?: Limiter; signup?: Limiter };
 }
 
 type ThreadRow = typeof schema.threads.$inferSelect;
@@ -192,6 +195,13 @@ export function createServerApp(deps: ServerDeps): Hono {
   };
   const publicUrl = deps.publicUrl ?? "http://localhost:5173";
 
+  // Credential-stuffing guards: a burst of logins or signups from one address
+  // is refused, which also caps how much argon2 work an attacker can trigger.
+  const authLimiters = {
+    login: deps.authLimiters?.login ?? createLimiter({ limit: 10, windowMs: 5 * 60_000 }),
+    signup: deps.authLimiters?.signup ?? createLimiter({ limit: 5, windowMs: 60 * 60_000 }),
+  };
+
   // The session resolver: cookie → session → user (or the dev-bypass user).
   const getUser: UserFromRequest = async (c) => {
     const user = await sessionUser(deps.db, getCookie(c, SESSION_COOKIE));
@@ -208,6 +218,8 @@ export function createServerApp(deps: ServerDeps): Hono {
       publicUrl,
       getUser,
       oauth: deps.oauth,
+      loginLimiter: authLimiters.login,
+      signupLimiter: authLimiters.signup,
       log,
     }),
   );

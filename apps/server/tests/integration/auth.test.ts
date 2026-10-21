@@ -9,6 +9,7 @@ import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
 import { createServerApp } from "../../src/server/app.js";
+import { createLimiter } from "../../src/server/rate-limit.js";
 import { loadConfig } from "../../src/config.js";
 
 const SECRET = "test-webhook-secret";
@@ -151,5 +152,34 @@ describe("auth flows", () => {
     const me = await bypassApp.request("/auth/me");
     expect(me.status).toBe(200);
     expect(((await me.json()) as { user: { email: string } }).user.email).toBe("dev@localhost");
+  });
+
+  it("login and signup are rate limited per client address", async () => {
+    const limitedApp = createServerApp({
+      db,
+      queues,
+      webhookSecret: SECRET,
+      authConfig: { sessionTtlDays: 30, secureCookies: false, devBypass: false },
+      authLimiters: {
+        login: createLimiter({ limit: 2, windowMs: 60_000 }),
+        signup: createLimiter({ limit: 2, windowMs: 60_000 }),
+      },
+      log: () => undefined,
+    });
+    const credentials = { email: "alice@test.dev", password: "hunter2hunter2" };
+
+    // Failed attempts count too: one wrong password, then the real login,
+    // exhausts a budget of two.
+    expect((await postJson(limitedApp, "/auth/login", { ...credentials, password: "nope-wrong" })).status).toBe(401);
+    expect((await postJson(limitedApp, "/auth/login", credentials)).status).toBe(200);
+
+    const blocked = await postJson(limitedApp, "/auth/login", credentials);
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+
+    // Each route has its own bucket.
+    expect((await postJson(limitedApp, "/auth/signup", { email: "bob@test.dev", password: "short" })).status).toBe(400);
+    expect((await postJson(limitedApp, "/auth/signup", { email: "bob@test.dev", password: "short" })).status).toBe(400);
+    expect((await postJson(limitedApp, "/auth/signup", { email: "bob@test.dev", password: "short" })).status).toBe(429);
   });
 });
