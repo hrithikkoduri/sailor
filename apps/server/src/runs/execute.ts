@@ -34,6 +34,7 @@ import {
 import { local } from "anchor-ai-sdk/sandbox/local";
 import { redactEvent } from "anchor-ai-sdk";
 import { attachRepository, questionTools } from "../agents/questions-tools.js";
+import { secretTools } from "../agents/secret-tools.js";
 import { enabledRepositories } from "../threads/repositories.js";
 import { repoEnabled } from "../github/installations.js";
 import {
@@ -522,7 +523,8 @@ export async function executeRun(
         null,
         2,
       ),
-      [...questionTools({ db, threadId: thread.id, userId: thread.userId, sandbox,
+      [...secretTools({ db, threadId: thread.id, userId: thread.userId, sandbox }),
+       ...questionTools({ db, threadId: thread.id, userId: thread.userId, sandbox,
         hasRepository: thread.source !== "workspace",
         ...(deps.githubApp
           ? {
