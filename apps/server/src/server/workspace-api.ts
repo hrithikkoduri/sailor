@@ -7,6 +7,7 @@ import { RUN_JOB_OPTIONS } from "../queue/index.js";
 import { enabledRepositories } from "../threads/repositories.js";
 import { validateAnswers, type Question } from "../threads/questions.js";
 import { releaseThreadSandbox } from "../runs/execute.js";
+import { deleteSecret, listSecrets, putSecret } from "../secrets/store.js";
 
 export function createWorkspaceRoutes(deps: ApiDeps) {
   const app = new Hono();
@@ -153,6 +154,47 @@ export function createWorkspaceRoutes(deps: ApiDeps) {
     await deps.queues.runs.add("run", { runId: result.runId }, RUN_JOB_OPTIONS);
     deps.hub?.notify(c.req.param("id"));
     return c.json({ ok: true, runId: result.runId });
+  });
+
+  // --- account secrets (write-only) -------------------------------------------
+  // The value is accepted here and never returned anywhere: responses carry
+  // metadata only, and the plaintext is decrypted server-side at tool time.
+  app.get("/api/secrets", async (c) => {
+    const user = await deps.getUser(c);
+    if (!user) return c.json({ error: "unauthorized" }, 401);
+    return c.json({ secrets: await listSecrets(deps.db, user.id) });
+  });
+
+  app.post("/api/secrets", async (c) => {
+    const user = await deps.getUser(c);
+    if (!user) return c.json({ error: "unauthorized" }, 401);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      name?: unknown; envVar?: unknown; value?: unknown;
+    };
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const envVar = typeof body.envVar === "string" ? body.envVar.trim() : "";
+    const value = typeof body.value === "string" ? body.value : "";
+    if (!/^[a-z][a-z0-9_-]{0,39}$/.test(name))
+      return c.json({ error: "Use a short name like daytona (lowercase letters, digits, - or _)." }, 400);
+    if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(envVar))
+      return c.json({ error: "Use an environment variable name like DAYTONA_API_KEY." }, 400);
+    if (!value.trim() || value.length > 8192)
+      return c.json({ error: "A secret value is required (8192 characters max)." }, 400);
+    try {
+      const secret = await putSecret(deps.db, user.id, { name, envVar, value });
+      return c.json({ secret }, 201);
+    } catch (err) {
+      // Never echo the value; the message only covers key/config problems.
+      return c.json({ error: err instanceof Error ? err.message : "Could not store the secret." }, 500);
+    }
+  });
+
+  app.delete("/api/secrets/:id", async (c) => {
+    const user = await deps.getUser(c);
+    if (!user) return c.json({ error: "unauthorized" }, 401);
+    const removed = await deleteSecret(deps.db, user.id, c.req.param("id"));
+    if (!removed) return c.json({ error: "Secret not found." }, 404);
+    return c.json({ ok: true });
   });
 
   app.post("/api/threads", async (c) => {

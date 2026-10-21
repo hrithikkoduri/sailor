@@ -142,6 +142,49 @@ test("a question collapses to a slim bar above the composer and reopens", async 
   await expect(page.getByRole("form", { name: "Pick a home" })).toBeVisible();
 });
 
+test("settings lists secrets as metadata and never shows a value", async ({ page }) => {
+  await mockWorkspace(page);
+  let posted: Record<string, unknown> = {};
+  let deleted = "";
+  let secrets = [{ id: "s1", name: "daytona", envVar: "DAYTONA_API_KEY",
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastUsedAt: null }];
+  await page.route("**/api/secrets", async (route) => {
+    if (route.request().method() === "POST") {
+      posted = route.request().postDataJSON() as Record<string, unknown>;
+      secrets = [...secrets, { id: "s2", name: String(posted.name), envVar: String(posted.envVar),
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastUsedAt: null }];
+      return route.fulfill({ json: { secret: secrets.at(-1) } });
+    }
+    return route.fulfill({ json: { secrets } });
+  });
+  await page.route("**/api/secrets/*", (route) => {
+    deleted = route.request().url().split("/").pop() ?? "";
+    if (route.request().method() === "DELETE") {
+      secrets = secrets.filter((s) => s.id !== deleted);
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.fallback();
+  });
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Secrets" })).toBeVisible();
+  await expect(page.getByText("DAYTONA_API_KEY ·")).toBeVisible();
+  // No reveal control exists anywhere in the section.
+  await expect(page.getByRole("button", { name: /reveal|show value/i })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Add secret" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a secret" });
+  await dialog.getByLabel("Name the agent asks for").fill("e2b");
+  await dialog.getByLabel("Environment variable for the command").fill("E2B_API_KEY");
+  await dialog.getByLabel("Value").fill("sk-test-value");
+  await dialog.getByRole("button", { name: "Store secret" }).click();
+  expect(posted).toMatchObject({ name: "e2b", envVar: "E2B_API_KEY", value: "sk-test-value" });
+  await expect(page.getByText("E2B_API_KEY ·")).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete secret daytona" }).click();
+  expect(deleted).toBe("s1");
+  await expect(page.getByText("daytona", { exact: true })).toHaveCount(0);
+});
+
 test("trace table deep links into the explorer and home fits on mobile", async ({ page }, info) => {
   await mockWorkspace(page);
   await page.route("**/api/traces?*", (route) => route.fulfill({ json: { traces: [{ id: "run-1", threadId: "thread-1", title: "Fix empty batches", repo: "acme/worker-service", status: "succeeded", task: "fix", steps: 12, tokensIn: 1200, tokensOut: 300, usd: "0.02", createdAt: new Date().toISOString(), startedAt: null, finishedAt: null }], hasMore: false, page: 0 } }));

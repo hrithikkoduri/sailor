@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowUpRight, Monitor, Moon, Sun } from "lucide-react";
 import { getGate, refreshRepos, type GateData } from "@/features/repos/api";
 import { RepoPicker } from "@/features/repos/components/repo-picker";
+import { SecretsSection } from "./secrets-section";
 import { AppShell } from "@/features/shell/app-shell";
 import { GithubMark } from "@/elements/brand";
 import { Button } from "@/elements/button";
@@ -156,6 +157,12 @@ export function SettingsPage() {
                 and grant Sailor access to that repository, then refresh again. Only repositories your GitHub App installation can access will appear here.
               </p>
             </div>
+          </SettingsSection>
+          <SettingsSection
+            title="Secrets"
+            description="Keys the agent may use, stored encrypted and write-only."
+          >
+            <SecretsSection />
           </SettingsSection>
         </div>
       </div>

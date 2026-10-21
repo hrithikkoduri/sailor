@@ -340,6 +340,39 @@ export const backgroundJobs = pgTable(
   ],
 );
 
+/**
+ * Account secrets (write-only at the API boundary).
+ *
+ * AES-256-GCM with a deployment key (`SAILOR_SECRET_KEY`), never stored here.
+ * The associated data binds a row to its owner and name, so a ciphertext moved
+ * to another row fails to decrypt. Values are only read by the server when an
+ * approved tool call needs them.
+ */
+export const secrets = pgTable(
+  "secrets",
+  {
+    id: uuidPk(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Short handle the agent asks for, e.g. "daytona". */
+    name: text("name").notNull(),
+    /** Env var name injected for a single command, e.g. DAYTONA_API_KEY. */
+    envVar: text("env_var").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    iv: text("iv").notNull(),
+    tag: text("tag").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (t) => [unique("secrets_user_name_unique").on(t.userId, t.name)],
+);
+
 // --- row types (inferred from the table definitions above) -------------------
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

@@ -462,6 +462,46 @@ describe("dashboard api", () => {
     expect(installation).toBeTruthy();
   });
 
+  it("stores secrets write-only: metadata out, value never returned, delete works", async () => {
+    process.env.SAILOR_SECRET_KEY ??= Buffer.alloc(32, 5).toString("base64");
+    const created = await app.request("/api/secrets", {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "daytona", envVar: "DAYTONA_API_KEY", value: "sk-do-not-echo" }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = await created.text();
+    expect(createdBody).not.toContain("sk-do-not-echo");
+    expect(JSON.parse(createdBody)).toMatchObject({ secret: { name: "daytona", envVar: "DAYTONA_API_KEY" } });
+
+    const listed = await app.request("/api/secrets", { headers: { cookie } });
+    expect(listed.status).toBe(200);
+    const listedBody = await listed.text();
+    expect(listedBody).not.toContain("sk-do-not-echo");
+    const { secrets } = JSON.parse(listedBody) as { secrets: Array<{ id: string; name: string }> };
+    expect(secrets.map((s) => s.name)).toContain("daytona");
+
+    // Replacing by name keeps one row and still never reveals the value.
+    const replaced = await app.request("/api/secrets", {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "daytona", envVar: "DAYTONA_API_KEY", value: "sk-rotated" }),
+    });
+    expect(replaced.status).toBe(201);
+    const after = JSON.parse((await (await app.request("/api/secrets", { headers: { cookie } })).text()) as string) as { secrets: unknown[] };
+    expect(after.secrets).toHaveLength(1);
+
+    const bad = await app.request("/api/secrets", {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Bad Name", envVar: "lower", value: "x" }),
+    });
+    expect(bad.status).toBe(400);
+
+    const removed = await app.request(`/api/secrets/${secrets.find((s) => s.name === "daytona")!.id}`, {
+      method: "DELETE", headers: { cookie },
+    });
+    expect(removed.status).toBe(200);
+    expect((await app.request(`/api/secrets/${secrets[0]!.id}`, { method: "DELETE", headers: { cookie } })).status).toBe(404);
+  });
+
   it("lists owned threads with latest run + pending counts, hides other users' threads", async () => {
     const res = await app.request("/api/threads", { headers: { cookie } });
     expect(res.status).toBe(200);

@@ -279,6 +279,7 @@ export async function mockWorkspace(
       return route.fulfill({ json: { ok: true, enabled: 0 } });
     if (url.pathname === "/api/onboarding")
       return route.fulfill({ json: gate });
+    if (url.pathname === "/api/secrets") return route.fulfill({ json: { secrets: [] } });
     if (url.pathname === "/api/threads")
       return route.fulfill({
         json: { threads: [{ ...thread, pendingEvents: 0, latestRun: run }] },
