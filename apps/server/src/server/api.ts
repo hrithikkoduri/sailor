@@ -34,6 +34,7 @@ import { requestCancel } from "../runs/lease.js";
 import { appendEvent, drainInbox, pendingEvents } from "../threads/inbox.js";
 import { isTerminal } from "../threads/state.js";
 import { createStreamHub, type StreamHub } from "./stream.js";
+import { createWorkspaceRoutes } from "./workspace-api.js";
 
 export interface ApiDeps {
   db: Db;
@@ -63,6 +64,7 @@ const runSummary = (r: RunRow) => ({
 
 const threadSummary = (t: ThreadRow) => ({
   id: t.id,
+  title: t.title,
   repo: t.repo,
   issueNumber: t.issueNumber,
   state: t.state,
@@ -100,13 +102,13 @@ export function createApiRoutes(deps: ApiDeps): Hono {
   const visibleWhere = (userId: string) =>
     or(
       eq(schema.threads.userId, userId),
-      isNull(schema.threads.installationId),
+      and(isNull(schema.threads.installationId), isNull(schema.threads.userId)),
     );
 
   const threadVisibleTo = (
     thread: Pick<ThreadRow, "userId" | "installationId">,
     userId: string,
-  ) => thread.userId === userId || thread.installationId === null;
+  ) => thread.userId === userId || (thread.installationId === null && thread.userId === null);
 
   const loadThread = async (threadId: string) => {
     const [thread] = await deps.db
@@ -115,6 +117,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       .where(eq(schema.threads.id, threadId));
     return thread;
   };
+
+  app.route("/", createWorkspaceRoutes({ ...deps, hub }));
 
   // --- list ---------------------------------------------------------------------
 
@@ -181,6 +185,8 @@ export function createApiRoutes(deps: ApiDeps): Hono {
       .where(eq(schema.runs.threadId, thread.id))
       .orderBy(desc(schema.runs.createdAt));
     const pending = await pendingEvents(deps.db, thread.id);
+    const questions = await deps.db.select().from(schema.questionRequests)
+      .where(eq(schema.questionRequests.threadId, thread.id)).orderBy(asc(schema.questionRequests.createdAt));
     const eventRows = await deps.db
       .select()
       .from(schema.events)
@@ -262,6 +268,7 @@ export function createApiRoutes(deps: ApiDeps): Hono {
         receivedAt: e.receivedAt,
         consumedAt: e.consumedAt,
       })),
+      questions,
       pendingEvents: pending.map((e) => ({
         id: String(e.id),
         kind: e.kind,

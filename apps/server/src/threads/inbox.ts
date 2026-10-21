@@ -76,16 +76,21 @@ export async function drainInbox(
   threadId: string,
   opts: { startPhase?: string } = {},
 ): Promise<WokenRun | null> {
+  const waiting = await deps.db.select({ id: schema.questionRequests.id }).from(schema.questionRequests)
+    .where(and(eq(schema.questionRequests.threadId, threadId), eq(schema.questionRequests.status, "pending"))).limit(1);
+  if (waiting.length) return null; // a durable form, not queued work, owns the next input
   const pending = await pendingEvents(deps.db, threadId);
   if (pending.length === 0) return null;
   // A batch of nothing but dashboard messages is a CONVERSATION turn, not a
   // coding mission (decision #48): it runs the chat agent — one "respond"
   // phase, the reply IS the turn. Any GitHub/machine event makes it coding.
   const agent = pending.every((e) => e.kind === "chat_message") ? "chat" : "coding";
+  const attachment = pending.find((e) => e.kind === "repository_attachment")?.payload as { repository?: string } | undefined;
   const run = await wakeThread(deps, threadId, {
     trigger: "inbox",
     task: renderInboxTask(pending),
     agent,
+    ...(typeof attachment?.repository === "string" ? { repoAttachment: attachment.repository } : {}),
     ...(opts.startPhase !== undefined ? { startPhase: opts.startPhase } : {}),
   });
   if (run) await consumeEvents(deps.db, pending.map((e) => e.id));
