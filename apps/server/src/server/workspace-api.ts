@@ -23,6 +23,35 @@ export function createWorkspaceRoutes(deps: ApiDeps) {
     return c.json({ ok: true, title });
   });
 
+  /**
+   * Delete a thread and everything that belongs to it.
+   *
+   * A live run owns the sandbox, so deletion is refused while one is queued or
+   * running — the user stops it first, exactly like any other destructive
+   * action on work in progress. Events are deleted explicitly (their FK is
+   * `set null`, which would otherwise leave orphan rows), and the retained
+   * sandbox is released before the rows disappear.
+   */
+  app.delete("/api/threads/:id", async (c) => {
+    const user = await deps.getUser(c);
+    if (!user) return c.json({ error: "unauthorized" }, 401);
+    const [thread] = await deps.db.select().from(schema.threads)
+      .where(and(eq(schema.threads.id, c.req.param("id")), eq(schema.threads.userId, user.id)));
+    if (!thread) return c.json({ error: "Thread not found." }, 404);
+    const active = await deps.db.select({ id: schema.runs.id }).from(schema.runs)
+      .where(and(eq(schema.runs.threadId, thread.id), inArray(schema.runs.status, ["queued", "running"])));
+    if (active.length)
+      return c.json({ error: "Stop the current run before deleting this thread." }, 409);
+
+    await releaseThreadSandbox(deps.db, thread).catch(() => undefined);
+    await deps.db.transaction(async (tx) => {
+      await tx.delete(schema.events).where(eq(schema.events.threadId, thread.id));
+      await tx.delete(schema.runs).where(eq(schema.runs.threadId, thread.id));
+      await tx.delete(schema.threads).where(eq(schema.threads.id, thread.id));
+    });
+    return c.json({ ok: true });
+  });
+
   app.post("/api/threads/:id/repository", async (c) => {
     const user = await deps.getUser(c);
     if (!user) return c.json({ error: "unauthorized" }, 401);

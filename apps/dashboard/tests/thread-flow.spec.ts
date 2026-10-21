@@ -146,6 +146,24 @@ test("a repo-backed thread can change repository explicitly", async ({ page }) =
   expect(switched).toBe("acme/worker-service");
 });
 
+test("deleting a thread confirms first, then returns to the list", async ({ page }) => {
+  await mockWorkspace(page);
+  let deleted = false;
+  await page.route("**/api/threads/thread-1", (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deleted = true;
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/threads/thread-1");
+  await page.getByRole("button", { name: "Delete thread", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete this thread?" });
+  await expect(dialog).toContainText("cannot be undone");
+  await expect(dialog).toContainText("pull request already opened stays on GitHub");
+  await dialog.getByRole("button", { name: "Delete thread" }).click();
+  await expect(page).toHaveURL(/\/threads$/);
+  expect(deleted).toBe(true);
+});
+
 test("switcher and panels settle without blur and honor reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await mockWorkspace(page);

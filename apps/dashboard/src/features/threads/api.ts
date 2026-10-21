@@ -91,6 +91,8 @@ export interface QuestionRequest {
 
 export const createThread = (text: string, repo?: string) =>
   api<{ thread: ThreadSummary; runId: string }>("/api/threads", { method: "POST", body: JSON.stringify({ text, repo }) });
+export const deleteThread = (id: string) =>
+  api<{ ok: boolean }>(`/api/threads/${id}`, { method: "DELETE" });
 export const renameThread = (id: string, title: string) =>
   api<{ ok: boolean; title: string }>(`/api/threads/${id}`, { method: "PATCH", body: JSON.stringify({ title }) });
 export const attachThreadRepository = (id: string, repository: string) =>

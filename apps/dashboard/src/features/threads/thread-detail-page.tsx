@@ -17,6 +17,7 @@ import {
   ExternalLink,
   GitPullRequest,
   MoreHorizontal,
+  Trash2,
   Square,
   Workflow,
   MessageSquare,
@@ -31,7 +32,7 @@ import { QueuedBubbles } from "@/features/chat/components/queued-bubbles";
 import { useThreadStream } from "@/features/chat/use-thread-stream";
 import { emptyLive, mergeConversation } from "@/features/chat/live";
 import { cancelEvent, interjectEvent, postMessage } from "@/features/chat/api";
-import { cancelRun, getThread, keepSandbox, type ThreadDetail } from "./api";
+import { cancelRun, deleteThread, getThread, keepSandbox, type ThreadDetail } from "./api";
 import { repositoryLabel } from "./api";
 import { useThreadTabs } from "@/features/thread-tabs/thread-tabs-provider";
 import { ThreadDock } from "@/features/thread-tabs/thread-dock";
@@ -333,6 +334,43 @@ export function ThreadDetailPage() {
                 </DropdownMenu>
               </>
             )}
+            <Dialog>
+              <DialogTrigger asChild>
+                <IconButton
+                  label="Delete thread"
+                  disabled={!!active || busy !== null}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 />
+                </IconButton>
+              </DialogTrigger>
+              <DialogContent className="rounded-2xl sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Delete this thread?</DialogTitle>
+                  <DialogDescription>
+                    This removes the conversation, its runs, and its traces. Any
+                    pull request already opened stays on GitHub. This cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                {active && (
+                  <p className="text-xs text-warning">Stop the current run first.</p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="destructive"
+                    disabled={!!active || busy !== null}
+                    onClick={() => {
+                      void run(id, () => deleteThread(id)).then((ok) => {
+                        if (ok) navigate("/threads", { replace: true });
+                      });
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete thread
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       }>

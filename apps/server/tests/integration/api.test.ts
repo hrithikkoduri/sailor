@@ -426,6 +426,42 @@ describe("dashboard api", () => {
     expect(await blocked.json()).toMatchObject({ error: expect.stringMatching(/current run/) });
   });
 
+  it("deletes a thread with its runs and events, refusing while a run is active", async () => {
+    const [installation] = await db.select().from(schema.installations)
+      .where(eq(schema.installations.userId, userId));
+    const [firstRepo] = await db.select({ fullName: schema.repositories.fullName })
+      .from(schema.repositories)
+      .innerJoin(schema.installations, eq(schema.repositories.installationRef, schema.installations.id))
+      .where(and(eq(schema.installations.userId, userId), eq(schema.repositories.enabled, true)))
+      .limit(1);
+    const makeThread = async () => {
+      const res = await app.request("/api/threads", {
+        method: "POST", headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ text: "Delete me", repo: firstRepo!.fullName }),
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json() as { thread: { id: string }; runId: string };
+      terminalThreadIds.push(body.thread.id);
+      return body;
+    };
+
+    const finished = await makeThread();
+    await db.update(schema.runs).set({ status: "succeeded" }).where(eq(schema.runs.id, finished.runId));
+    const removed = await app.request(`/api/threads/${finished.thread.id}`, { method: "DELETE", headers: { cookie } });
+    expect(removed.status).toBe(200);
+    expect(await db.select().from(schema.threads).where(eq(schema.threads.id, finished.thread.id))).toHaveLength(0);
+    expect(await db.select().from(schema.runs).where(eq(schema.runs.threadId, finished.thread.id))).toHaveLength(0);
+    expect(await db.select().from(schema.events).where(eq(schema.events.threadId, finished.thread.id))).toHaveLength(0);
+    expect((await app.request(`/api/threads/${finished.thread.id}`, { headers: { cookie } })).status).toBe(404);
+
+    const live = await makeThread();
+    const blocked = await app.request(`/api/threads/${live.thread.id}`, { method: "DELETE", headers: { cookie } });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ error: expect.stringMatching(/Stop the current run/) });
+    await db.update(schema.runs).set({ status: "succeeded" }).where(eq(schema.runs.id, live.runId));
+    expect(installation).toBeTruthy();
+  });
+
   it("lists owned threads with latest run + pending counts, hides other users' threads", async () => {
     const res = await app.request("/api/threads", { headers: { cookie } });
     expect(res.status).toBe(200);
