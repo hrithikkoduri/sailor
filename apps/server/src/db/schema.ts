@@ -122,6 +122,7 @@ export const threads = pgTable(
   {
     id: uuidPk(),
     repo: text("repo").notNull(), // "owner/name"
+    title: text("title"),
     issueNumber: integer("issue_number").notNull(),
     // lifecycle: queued | running | pr_open | waiting_ci | fixing |
     //            addressing_comments | merged | closed | abandoned
@@ -173,6 +174,18 @@ export const threads = pgTable(
   (t) => [unique("threads_repo_issue_unique").on(t.repo, t.issueNumber)], // business dedup: one thread per issue
 );
 
+/** A durable, single-use form. Answers resume work; page refreshes do not. */
+export const questionRequests = pgTable("question_requests", {
+  id: uuidPk(),
+  threadId: uuid("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  questions: jsonb("questions").notNull(),
+  answers: jsonb("answers"),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+});
+
 export const runs = pgTable(
   "runs",
   {
@@ -187,6 +200,8 @@ export const runs = pgTable(
     agent: text("agent").notNull().default("coding"),
     /** The instruction this run works on (from the issue, or a follow-up comment). */
     task: text("task"),
+    /** Explicit composer attachment, applied before this run's model call. */
+    repoAttachment: text("repo_attachment"),
     /** Where the run starts (e.g. "fix" for a resumed interjection). Null = thread position / first phase. */
     startPhase: text("start_phase"),
     phase: text("phase"), // descriptive approach: understand | act | validate | respond
