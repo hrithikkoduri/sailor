@@ -6,7 +6,7 @@
 > Earlier numbered entries preserve the design history. Decision #51 below
 > supersedes the mandatory phase/test-gate and implicit-publication behavior.
 
-**One-line pitch:** label a GitHub issue `agent:fix`, get a PR with the fix, passing tests, and a link to the full agent trace — all inside an isolated Firecracker microVM.
+**One-line pitch:** an engineering workspace where conversations become shipped work, with optional repository attachment, explicit PR delivery, and a full agent trace. Issues are one triage entry point, not a requirement.
 
 ## How this log is classified
 
@@ -815,6 +815,71 @@ default components so products can compose them — is tracked in `ROADMAP.md`.
 Effective on the next worker restart; no package release needed.
 
 ## Open questions
+
+### On-demand threads and durable questions (2026-10-20)
+
+Threads are conversations, not necessarily issues. `POST /api/threads` starts
+work from an explicit user instruction. An attached composer repository must
+be enabled and owned through the user's installation; it is cloned before
+the agent starts. Without a repository the thread has `source=workspace` and
+an empty git workspace. Manual repository threads use `source=manual`; neither
+creates an issue. A negative legacy issue number is only a dedup placeholder,
+never shown as a GitHub issue or used to authorize publication.
+
+The agent sees the enabled repository names. A clear match can use the
+product's `attach_repository`; ambiguity uses `ask_questions` with a repository
+choice. Attachment refuses to overwrite another repository or existing work.
+Tokens are supplied to checkout through the sandbox command environment, not
+in model arguments or a stored credential file. Repository answers recheck
+access before accepting a selection.
+
+`ask_questions` validates and persists up to eight questions, then signals the
+run's cancellation controller. This is an intentional product pause: the run
+row is `paused`/`blocked`, and no subsequent tools in the response execute.
+The underlying Anchor trace still records its cancellation honestly. A pending
+form prevents the worker's ordinary inbox drain from starting more work.
+Answers are real user input, not an `origin=runtime` message. A locked thread
+row and conditional pending-to-answered update atomically persist the form,
+the user event, and exactly one next run. The queue is the doorbell after the
+transaction. No model call waits for a human, and refresh preserves the form.
+
+The SDK's new in-run background delivery also supersedes live job sweeping:
+Sailor records `background_completed` as settled and skips sweeping threads
+with active runs. The old sweep remains a fallback after an interrupted run.
+
+Navigation separates the Home entry point, all conversations, tracked GitHub
+issues, tracked PRs, paginated run traces, and existing Settings. Issues/PRs are
+Sailor-tracked work, not an import of all repository objects. Trace links reuse
+the existing journal explorer rather than introducing a second trace viewer.
+
+### Thread tabs and compact controls (2026-10-20)
+
+Sailor is an engineering workspace, not an issue-only PR agent. GitHub issues
+are an optional triage entry point. Repo-backed on-demand threads get the same
+explicit publication tool; issue-free PRs use stable `sailor/thread-<uuid>`
+branches, a thread/summary title, and no synthetic issue lookup or closing link.
+Publication rechecks ownership, enabled installation access, and verification
+policy. Prior-turn work compares against the base/PR rather than the current
+turn's checkpoint. Attaching a repository can unlock publication in the same
+run; credentials remain command-scoped. New triage providers are future work,
+not part of this change.
+
+Whenever the agent needs an answer from the user it must use `ask_questions`,
+not ask in prose. This includes missing information, permission, decisions
+about blockers, and a dependency that would otherwise reduce a requested
+working feature to a stub. Clear work does not need gratuitous check-ins.
+
+Thread tabs and Conversation/Trace share a single header row. Titles rename
+inline in the active tab. The composer replaces Send with Stop while a run is
+active, without discarding its draft. Tabs are client navigation, not worker
+lifecycle: closing one does not cancel its run. The keyboard switcher and tabs
+retain message drafts, unfinished question answers, and reading position.
+
+Repository attachment remains available in an existing workspace thread's
+composer. A busy thread queues attachment for its next run; pending questions
+must be answered first. The worker rechecks enabled access and only persists
+the attached repository after checkout succeeds, leaving the workspace intact
+if checkout refuses existing work or access has been revoked.
 
 ### E2B provider selection (2026-10-20)
 

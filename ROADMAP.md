@@ -93,6 +93,35 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
 
 ## Recently completed (for context)
 
+- **Issue-free delivery and question contract (2026-10-20)** — Repository-backed
+  on-demand threads can publish and update PRs on stable `sailor/thread-<id>`
+  branches, including work from earlier turns. Attachment unlocks publication
+  during the same run; every side effect rechecks enabled repository ownership.
+  All user questions use `ask_questions` and pause, including changed scope.
+  Issues are optional triage; Linear/Jira integration remains unimplemented.
+- **Motion consistency (2026-10-20)** — Shared settled springs for dialogs and
+  switcher highlights; tab panels retain their exit animation without blur or
+  per-token layout animation. Workspace entry, rail scrolling, and tab movement
+  honor reduced motion.
+- **Compact thread controls (2026-10-20)** — Open tabs, inline rename, and
+  Conversation/Trace share one header row. Stop replaces Send in the composer
+  while a run is active. The keyboard switcher preserves message drafts,
+  question answers, and reading position; closing a tab never cancels work.
+  Existing workspace threads can attach an enabled repository from the composer;
+  busy threads queue checkout for the next run.
+- **Repository refresh (2026-10-20)** — Settings can resync linked installations
+  from GitHub without changing saved enabled/disabled choices. New repos start
+  disabled; revoked repos disappear after a complete paginated fetch. Refresh
+  is disabled while local toggle edits are unsaved. A missing-repo note links
+  to GitHub App installation access settings.
+- **Workspace and on-demand threads (2026-10-20)** — Home, Threads, Issues,
+  Pull requests, Traces, and Settings have separate routes. A composer creates
+  a user-owned thread without creating a GitHub issue, optionally checking out
+  an enabled repository before the first model call. Empty threads offer
+  `attach_repository` (clear requests) and `ask_questions` (ambiguous ones).
+  Questions are durable forms; submitting answers starts one continuation on
+  the same retained sandbox. Traces list individual runs and deep-link into
+  the existing explorer. The palette and typography remain porcelain/graphite.
 - **E2B sandbox selection (2026-10-20)** — `SAILOR_SANDBOX=e2b` selects
   Anchor's E2B adapter for runs and smoke checks; Heyo remains the default.
   `E2B_TEMPLATE` names the consumer's template. `image/e2b.Dockerfile` and

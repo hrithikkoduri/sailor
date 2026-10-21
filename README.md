@@ -8,8 +8,8 @@
 <h1 align="center">Sailor</h1>
 
 <p align="center">
-  <strong>Label a GitHub issue. Get back a reviewed pull request.</strong><br />
-  With tests, a full trace, and receipts — the agent runs in an isolated
+  <strong>An engineering workspace. From a conversation to shipped work.</strong><br />
+  Start with a goal, optionally attach a repository, and follow every step — the agent runs in an isolated
   Firecracker microVM, built on
   <a href="https://github.com/hrithikkoduri/anchor-ai-sdk">Anchor</a>.
 </p>
@@ -28,13 +28,30 @@
 
 ## The loop
 
+Start directly from **Home → Start thread**, without a GitHub
+issue. Write a request and optionally attach an enabled repository. If no
+repository is selected, Sailor can work in a fresh sandbox, attach a clearly
+identified repository, or ask you to choose through an inline form. Answering
+the form resumes the same conversation and retained sandbox.
+
+The sidebar has **Home**, **Threads**, **Issues**, **Pull requests**, **Traces**,
+and **Settings**. Issues and PRs show work tracked by Sailor; Traces lists runs
+with steps, token usage, cost, duration, and links into the full journal.
+
+After updating, run `npm run migrate` before starting the server/worker. The
+workspace migration adds thread titles and durable question forms. Publication
+does not require an issue: a repo-backed thread can open and update
+a PR when the user requests delivery. A repo-less thread must attach an enabled
+repository first. GitHub issues are one optional triage entry point, not the
+definition of a Sailor thread. Other triage integrations are future work.
+
 ```
-issue labeled agent:fix
-  → webhook (Hono)        verify signature · resolve the thread · enqueue
+conversation or triaged GitHub issue
+  → intake (Hono)         authorize · resolve the thread · enqueue
   → worker (BullMQ)       one run per thread · heartbeats · resume-safe
   → agent in a microVM    clone · reproduce · fix · run the repo's own tests
-  → publish_changes       an explicit tool — withheld unless a passing run
-                          matches the exact tree it tested
+  → publish_changes       explicit, access-checked delivery when requested;
+                          unverified work is a draft (stricter policy optional)
   → pull request          with a trace link
 ```
 
