@@ -121,7 +121,7 @@ async function settle(
 
 function specFor(
   deps: BackgroundSweepDeps,
-  thread: { installationId: number | null },
+  thread: { installationId: number | null; repo: string },
 ): SandboxSpec {
   return {
     // Adoption must keep the parked disk; the job lives on it.
@@ -130,7 +130,7 @@ function specFor(
     ...(deps.githubApp && thread.installationId != null
       ? {
           git: {
-            token: () => deps.githubApp!.tokenFor(thread.installationId!),
+            token: () => deps.githubApp!.tokenFor(thread.installationId!, [thread.repo.split("/")[1] ?? thread.repo]),
           },
         }
       : {}),
@@ -154,7 +154,11 @@ export async function sweepBackgroundJobs(
   if (running.length === 0) return [];
 
   const byThread = new Map<string, BackgroundJob[]>();
+  const active = await deps.db.select({ threadId: schema.runs.threadId }).from(schema.runs)
+    .where(inArray(schema.runs.status, ["queued", "running"]));
+  const activeThreads = new Set(active.map((r) => r.threadId));
   for (const job of running) {
+    if (activeThreads.has(job.threadId)) continue; // the SDK owns live delivery
     const list = byThread.get(job.threadId) ?? [];
     list.push(job);
     byThread.set(job.threadId, list);

@@ -22,15 +22,24 @@ export function headRefFor(issueNumber: number): string {
   return `sailor/issue-${issueNumber}`;
 }
 
+/** Issue-free conversations use their stable thread ID, never the legacy placeholder issue number. */
+export function headRefForThread(thread: { id: string; source: string; issueNumber: number; headRef: string | null }): string {
+  return thread.headRef ?? (thread.source === "github"
+    ? headRefFor(thread.issueNumber)
+    : `sailor/thread-${thread.id}`);
+}
+
+const safeHead = /^(?:(sailor|harness)\/issue-\d+|sailor\/thread-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
 /**
  * Never push to main — or anywhere that isn't one of OUR issue branches.
  * `sailor/*` is the current shape; `harness/*` is accepted because PRs opened
  * before the rename keep their branch, and babysitting pushes update it.
  */
 export function assertSafeHeadRef(head: string, base: string): void {
-  if (!/^(sailor|harness)\/issue-\d+$/.test(head)) {
+  if (!safeHead.test(head)) {
     throw new Error(
-      `refusing to push: head branch must be "sailor/issue-*" (got "${head}")`,
+      `refusing to push: head branch must be a sailor issue/thread branch (got "${head}")`,
     );
   }
   if (head === base) {
@@ -48,9 +57,9 @@ export function checkpointRefFor(headRef: string): string {
 }
 
 export function assertSafeCheckpointRef(ref: string): void {
-  if (!/^(sailor|harness)\/issue-\d+-checkpoint$/.test(ref)) {
+  if (!ref.endsWith("-checkpoint") || !safeHead.test(ref.slice(0, -"-checkpoint".length))) {
     throw new Error(
-      `refusing to push: checkpoint branch must be "sailor/issue-*-checkpoint" (got "${ref}")`,
+      `refusing to push: checkpoint branch must be a sailor issue/thread checkpoint (got "${ref}")`,
     );
   }
 }

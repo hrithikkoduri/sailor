@@ -16,6 +16,8 @@ export function renderGithubTask(
     typeof payload[k] === "number" ? (payload[k] as number) : undefined;
 
   switch (kind) {
+    case "repository_attachment":
+      return `The user attached ${s("repository") ?? "a repository"} to this thread. It is checked out before this run. Continue the original request in that repository.\n\n${s("body") ?? ""}`;
     case "check_run":
     case "status": {
       const names = Array.isArray(payload.checks)

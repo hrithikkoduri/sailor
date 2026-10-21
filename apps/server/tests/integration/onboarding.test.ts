@@ -31,12 +31,17 @@ describe("onboarding", () => {
   let app: ReturnType<typeof createServerApp>;
   let cookie: string;
   let userId: string;
+  let failRefresh = false;
+  let githubRepos = [
+    { full_name: "acme/alpha", private: true, default_branch: "main" },
+    { full_name: "acme/beta", private: false, default_branch: "develop" },
+  ];
 
   const fakeClient = {
-    listInstallationRepositories: async () => [
-      { full_name: "acme/alpha", private: true, default_branch: "main" },
-      { full_name: "acme/beta", private: false, default_branch: "develop" },
-    ],
+    listInstallationRepositories: async () => {
+      if (failRefresh) throw new Error("GitHub unavailable");
+      return githubRepos;
+    },
   } as unknown as GitHubClient;
 
   const fakeApp: GitHubAppService = {
@@ -46,6 +51,7 @@ describe("onboarding", () => {
     }),
     clientFor: async () => fakeClient,
     tokenFor: async () => "fake-token",
+    invalidateTokens: () => undefined,
     appSlug: async () => undefined,
     botIdentity: async () => undefined,
   };
@@ -218,5 +224,32 @@ describe("onboarding", () => {
         .from(schema.threads)
         .where(eq(schema.threads.repo, "acme/beta")),
     ).toHaveLength(0);
+  });
+
+  it("refreshes from GitHub while keeping choices and adding new repos disabled", async () => {
+    expect((await app.request("/api/onboarding/repos/refresh", { method: "POST" })).status).toBe(401);
+    githubRepos = [...githubRepos, { full_name: "acme/new-project", private: true, default_branch: "main" }];
+    const response = await app.request("/api/onboarding/repos/refresh", { method: "POST", headers: { cookie } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ repositories: 3, installations: 1 });
+    const [installation] = await db.select().from(schema.installations).where(eq(schema.installations.installationId, INSTALLATION));
+    const repos = await db.select().from(schema.repositories).where(eq(schema.repositories.installationRef, installation!.id));
+    expect(repos.find((r) => r.fullName === "acme/alpha")?.enabled).toBe(true);
+    expect(repos.find((r) => r.fullName === "acme/beta")?.enabled).toBe(false);
+    expect(repos.find((r) => r.fullName === "acme/new-project")?.enabled).toBe(false);
+  });
+
+  it("does not modify choices on an upstream failure and removes repos whose access was revoked", async () => {
+    failRefresh = true;
+    expect((await app.request("/api/onboarding/repos/refresh", { method: "POST", headers: { cookie } })).status).toBe(502);
+    const [installation] = await db.select().from(schema.installations).where(eq(schema.installations.installationId, INSTALLATION));
+    const before = await db.select().from(schema.repositories).where(eq(schema.repositories.installationRef, installation!.id));
+    expect(before).toHaveLength(3);
+    failRefresh = false;
+    githubRepos = githubRepos.filter((r) => r.full_name !== "acme/beta");
+    expect((await app.request("/api/onboarding/repos/refresh", { method: "POST", headers: { cookie } })).status).toBe(200);
+    const after = await db.select().from(schema.repositories).where(eq(schema.repositories.installationRef, installation!.id));
+    expect(after.map((r) => r.fullName).sort()).toEqual(["acme/alpha", "acme/new-project"]);
+    expect(after.find((r) => r.fullName === "acme/alpha")?.enabled).toBe(true);
   });
 });

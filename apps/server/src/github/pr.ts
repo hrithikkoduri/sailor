@@ -29,7 +29,7 @@ import { schema, type Db } from "../db/index.js";
 import type { Thread } from "../db/schema.js";
 import { ensureThreadState } from "../threads/state.js";
 import type { GitHubClient } from "./client.js";
-import { assertSafeHeadRef, headRefFor } from "./repo.js";
+import { assertSafeHeadRef, headRefForThread } from "./repo.js";
 
 export interface DeliverPullRequestDeps {
   db: Db;
@@ -41,6 +41,7 @@ export interface DeliverPullRequestDeps {
   summary?: string;
   verification?: string;
   draft?: boolean;
+  gitToken?: () => Promise<string>;
 }
 
 export interface DeliveredPullRequest {
@@ -56,7 +57,9 @@ export function traceUrl(publicUrl: string, threadId: string, runId: string): st
 export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<DeliveredPullRequest | null> {
   const { db, sandbox, github, thread } = deps;
 
-  const head = thread.headRef ?? headRefFor(thread.issueNumber);
+  if (!["github", "manual"].includes(thread.source))
+    throw new Error("Attach a GitHub repository before publishing changes.");
+  const head = headRefForThread(thread);
   assertSafeHeadRef(head, thread.baseRef);
 
   // Is there anything to DELIVER? Ask the sandbox by CONTENT — trees, never
@@ -66,6 +69,12 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
   // Nothing new → no push → no webhook → no loop.
   const hasNewWork = await sandbox.hasChangesFrom(`origin/${head}`);
   if (hasNewWork) {
+    // A repository attached mid-run was fetched with a command-scoped token,
+    // not stored credentials. Publication uses the same ephemeral boundary.
+    const token = await deps.gitToken?.();
+    const git = token
+      ? "git -c 'credential.helper=!f() { echo username=x-access-token; printf \"password=%s\\n\" \"$GIT_TOKEN\"; }; f'"
+      : "git";
     // Publish ONE CLEAN commit: the agent's scratch (`.anchor/notes.md`) is
     // force-added by every checkpoint for durability, so the work branch's
     // history carries it — and the dev's repo must never see it. The notes
@@ -75,7 +84,7 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
     // updates in place; never a second PR).
     const script = [
       "set -e",
-      `if git fetch --quiet origin ${shq(thread.baseRef)} 2>/dev/null; then BASE=$(git rev-parse FETCH_HEAD);`,
+      `if ${git} fetch --quiet origin ${shq(thread.baseRef)} 2>/dev/null; then BASE=$(git rev-parse FETCH_HEAD);`,
       `else BASE=$(git rev-parse --verify --quiet refs/remotes/origin/${shq(thread.baseRef)} || git rev-parse --verify --quiet ${shq(thread.baseRef)} || true); fi`,
       "git read-tree HEAD",
       "git rm -rq --cached --ignore-unmatch .anchor",
@@ -83,10 +92,10 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
       "git read-tree HEAD",
       'MSG=$(git log -1 --format=%B HEAD)',
       'if [ -n "$BASE" ]; then CLEAN_COMMIT=$(git commit-tree "$CLEAN_TREE" -p "$BASE" -m "$MSG"); else CLEAN_COMMIT=$(git commit-tree "$CLEAN_TREE" -m "$MSG"); fi',
-      `git push --force origin "$CLEAN_COMMIT:refs/heads/${head}"`,
+      `${git} push --force origin "$CLEAN_COMMIT:refs/heads/${head}"`,
       'echo "published $CLEAN_COMMIT"',
     ].join("\n");
-    const push = await sandbox.exec(script, { timeoutSecs: 300 });
+    const push = await sandbox.exec(script, { timeoutSecs: 300, ...(token ? { env: { GIT_TOKEN: token } } : {}) });
     if (push.exitCode !== 0) {
       throw new Error(`git push failed (${push.exitCode}): ${push.output.trim().slice(0, 500)}`);
     }
@@ -98,12 +107,14 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
     return { prNumber: thread.prNumber, prUrl: thread.prUrl ?? "", headRef: head };
   }
 
-  const issue = await github.getIssue(thread.repo, thread.issueNumber);
+  const issue = thread.source === "github"
+    ? await github.getIssue(thread.repo, thread.issueNumber) : undefined;
+  const title = issue ? `Fix #${thread.issueNumber}: ${issue.title}`
+    : thread.title?.trim() || deps.summary?.trim().split("\n")[0] || "Update repository";
   const body = [
-    `Fixes #${thread.issueNumber}`,
-    "",
-    "## 🤖 sailor fix",
-    deps.summary?.trim() ? deps.summary.trim() : "The agent completed the work on this issue.",
+    ...(issue ? [`Fixes #${thread.issueNumber}`, ""] : []),
+    "## 🤖 sailor changes",
+    deps.summary?.trim() ? deps.summary.trim() : "The agent completed the requested repository changes.",
     ...(deps.verification ? ["", `**Verification:** ${deps.verification}`] : []),
     "",
     `**Full trace:** ${traceUrl(deps.publicUrl, thread.id, deps.runId)}`,
@@ -112,7 +123,7 @@ export async function deliverPullRequest(deps: DeliverPullRequestDeps): Promise<
     repo: thread.repo,
     head,
     base: thread.baseRef,
-    title: `Fix #${thread.issueNumber}: ${issue.title}`,
+    title: title.slice(0, 256),
     body,
     ...(deps.draft !== undefined ? { draft: deps.draft } : {}),
   });

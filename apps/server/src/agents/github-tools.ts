@@ -4,6 +4,7 @@ import {
   type AgentEvent,
   type Sandbox,
   type Tool,
+  shq,
 } from "anchor-ai-sdk";
 import { eq } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
@@ -11,6 +12,7 @@ import type { Thread } from "../db/schema.js";
 import type { GitHubClient } from "../github/client.js";
 import { deliverPullRequest, type DeliveredPullRequest } from "../github/pr.js";
 import { repoEnabled } from "../github/installations.js";
+import { enabledRepositories } from "../threads/repositories.js";
 
 export interface PublicationPolicy {
   requirePassingTests?: boolean;
@@ -26,10 +28,20 @@ export function githubTools(deps: {
   github: () => Promise<GitHubClient | undefined>;
   events: AgentEvent[];
   startRef?: string;
+  gitToken?: () => Promise<string>;
   policy?: PublicationPolicy;
   onPublished: (result: DeliveredPullRequest) => void;
 }): Tool[] {
   const access = async () => {
+    // Attachment can happen during this run. Read the current scope and
+    // reauthorize every side effect, rather than trusting the initial prompt.
+    const [current] = await deps.db.select().from(schema.threads)
+      .where(eq(schema.threads.id, deps.thread.id));
+    if (!current || !["github", "manual"].includes(current.source)) return undefined;
+    Object.assign(deps.thread, current);
+    if (current.source === "manual" && !(await enabledRepositories(deps.db, current.userId))
+      .some((repo) => repo.fullName === current.repo && repo.installationId === current.installationId))
+      return undefined;
     if (
       deps.thread.installationId == null ||
       !(await repoEnabled(
@@ -70,17 +82,25 @@ export function githubTools(deps: {
             content:
               "GitHub installation access is unavailable; no changes were published.",
           };
-        if (!deps.startRef)
+        // A follow-up may publish work completed in an earlier turn. Compare
+        // manual threads with their base/PR, not this turn's checkpoint HEAD.
+        const comparisonRef = deps.thread.source === "manual"
+          ? `refs/remotes/origin/${deps.thread.prNumber != null ? deps.thread.headRef : deps.thread.baseRef}`
+          : deps.startRef;
+        const revision = comparisonRef ? await deps.sandbox.exec(
+          `git rev-parse --verify ${shq(`${comparisonRef}^{commit}`)}`, { timeoutSecs: 60 },
+        ) : undefined;
+        if (!comparisonRef || revision?.exitCode !== 0)
           return {
             ok: false,
             content:
               "Could not establish the starting repository revision. Publication was withheld.",
           };
-        if (!(await deps.sandbox.hasChangesFrom(deps.startRef))) {
+        if (!(await deps.sandbox.hasChangesFrom(comparisonRef))) {
           return {
             ok: true,
             content:
-              "No new repository changes were made in this turn. Nothing was published.",
+              "No unpublished repository changes were found. Nothing was published.",
             meta: { published: false },
           };
         }
@@ -117,7 +137,7 @@ export function githubTools(deps: {
           .trim()
           .replace(/[.\s]+$/, "");
         const issuePrefix =
-          deps.thread.issueNumber != null
+          deps.thread.source === "github"
             ? `#${deps.thread.issueNumber}: `
             : "";
         const subject = `${issuePrefix}${firstLine}`.slice(0, 72);
@@ -148,7 +168,8 @@ export function githubTools(deps: {
           summary: input.summary,
           verification: verificationText,
           // New unverified work is explicitly a draft, not a certified fix.
-          draft: verification !== "passed",
+           draft: verification !== "passed",
+          gitToken: deps.gitToken,
         });
         if (!published)
           return { ok: false, content: "No pull request was published." };
@@ -194,7 +215,8 @@ export function githubTools(deps: {
             ok: false,
             content: "Thread not found. No comment was posted.",
           };
-        const target = thread.prNumber ?? thread.issueNumber;
+        const target = thread.prNumber ?? (thread.source === "github" ? thread.issueNumber : null);
+        if (target == null) return { ok: false, content: "This thread has no GitHub issue or PR to reply to. Publish the requested changes first." };
         await github.commentOnIssue(thread.repo, target, input.body);
         return {
           ok: true,

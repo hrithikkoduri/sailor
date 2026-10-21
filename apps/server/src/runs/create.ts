@@ -16,6 +16,7 @@ export interface NewRunSpec {
   trigger: string;
   /** The instruction this run works on. */
   task?: string;
+  repoAttachment?: string;
   /** Where the run starts (e.g. "fix" for a resumed interjection). */
   startPhase?: string;
   /** Which built-in agent takes this turn: "coding" (default) or "chat". */
@@ -30,6 +31,7 @@ export async function createRun(deps: { db: Db; queues: Queues }, spec: NewRunSp
       trigger: spec.trigger,
       agent: spec.agent ?? "coding",
       task: spec.task ?? null,
+      repoAttachment: spec.repoAttachment ?? null,
       startPhase: spec.startPhase ?? null,
       status: "queued",
     })

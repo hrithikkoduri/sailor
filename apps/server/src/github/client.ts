@@ -139,11 +139,14 @@ export function createGitHubClient(opts: GitHubClientOptions): GitHubClient {
     addLabels: (repo, issueNumber, labels) =>
       request("POST", `/repos/${repo}/issues/${issueNumber}/labels`, { labels }),
     listInstallationRepositories: async () => {
-      const res = await request<{ repositories: GithubInstallationRepo[] }>(
-        "GET",
-        "/installation/repositories?per_page=100",
-      );
-      return res.repositories;
+      const repos: GithubInstallationRepo[] = [];
+      for (let page = 1; ; page++) {
+        const res = await request<{ repositories: GithubInstallationRepo[] }>(
+          "GET", `/installation/repositories?per_page=100&page=${page}`,
+        );
+        repos.push(...res.repositories);
+        if (res.repositories.length < 100) return repos;
+      }
     },
     whoami: () => request("GET", "/user"),
   };

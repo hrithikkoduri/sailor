@@ -4,7 +4,7 @@
  * `repositories.enabled` is THE GATE: onboarding selections decide which repos
  * may trigger agent runs. Everything else (webhooks, sweeps) checks it first.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { GitHubAppService } from "./app.js";
 
@@ -56,19 +56,27 @@ export async function upsertInstallation(db: Db, spec: InstallationSpec) {
 export async function syncRepositories(db: Db, githubApp: GitHubAppService, installationRowId: string, installationId: number) {
   const client = await githubApp.clientFor(installationId);
   const repos = await client.listInstallationRepositories();
-  for (const repo of repos) {
-    await db
-      .insert(schema.repositories)
-      .values({
-        installationRef: installationRowId,
-        fullName: repo.full_name,
-        defaultBranch: repo.default_branch,
-      })
-      .onConflictDoUpdate({
-        target: [schema.repositories.installationRef, schema.repositories.fullName],
-        set: { defaultBranch: repo.default_branch, updatedAt: new Date() },
-      });
-  }
+  // Fetch every page before writing: an upstream error must never turn a
+  // partial response into a deletion of still-accessible repositories.
+  await db.transaction(async (tx) => {
+    for (const repo of repos) {
+      await tx
+        .insert(schema.repositories)
+        .values({
+          installationRef: installationRowId,
+          fullName: repo.full_name,
+          defaultBranch: repo.default_branch,
+        })
+        .onConflictDoUpdate({
+          target: [schema.repositories.installationRef, schema.repositories.fullName],
+          set: { defaultBranch: repo.default_branch, updatedAt: new Date() },
+        });
+    }
+    await tx.delete(schema.repositories).where(and(
+      eq(schema.repositories.installationRef, installationRowId),
+      ...(repos.length ? [notInArray(schema.repositories.fullName, repos.map((r) => r.full_name))] : []),
+    ));
+  });
   return repos.length;
 }
 

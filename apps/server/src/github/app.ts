@@ -20,8 +20,21 @@ export interface GitHubAppService {
   ): Promise<{ id: number; account: { login: string; type: string } }>;
   /** Installation-scoped client — token minted, cached, refreshed. */
   clientFor(installationId: number): Promise<GitHubClient>;
-  /** The installation token itself — used as git credentials inside a sandbox. */
-  tokenFor(installationId: number): Promise<string>;
+  /**
+   * The installation token itself — used as git credentials inside a sandbox.
+   *
+   * `repositories` narrows the token to those repository NAMES (GitHub's
+   * installation-token scoping). Sailor always passes the one repository the
+   * thread is allowed to touch: the token reaches the agent's shell, so an
+   * unscoped installation token would grant every installed repository.
+   */
+  tokenFor(installationId: number, repositories?: readonly string[]): Promise<string>;
+  /**
+   * Drop cached tokens so the next mint reflects the CURRENT repository
+   * toggles. Called at run start: a token carries the permissions it was
+   * minted with for its whole life, so a toggle cannot affect a live one.
+   */
+  invalidateTokens(installationId?: number): void;
   /**
    * The App's own slug (GET /app) — the rename-proof bot identity. Webhook
    * self-checks (`<slug>[bot]`) read this instead of trusting a configured
@@ -66,7 +79,10 @@ export function signAppJwt(
 export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
   const doFetch = opts.fetchFn ?? fetch;
   const now = opts.now ?? (() => Date.now());
-  const tokenCache = new Map<number, { token: string; expiresAt: number }>();
+  /** Tokens live about an hour; we never trust one older than this, so a
+   * repo disabled in Settings stops being reachable within one run. */
+  const TOKEN_MAX_AGE_MS = 10 * 60_000;
+  const tokenCache = new Map<string, { token: string; expiresAt: number; mintedAt: number }>();
   // The App slug rarely changes (renames only) — cache it; a failed read
   // retries next call so a boot-time flake cannot freeze the fallback.
   let slugPromise: Promise<string | undefined> | undefined;
@@ -74,7 +90,7 @@ export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
     | Promise<{ name: string; email: string } | undefined>
     | undefined;
 
-  async function appRequest<T>(method: string, path: string): Promise<T> {
+  async function appRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await doFetch(`https://api.github.com${path}`, {
       method,
       headers: {
@@ -82,7 +98,9 @@ export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
         accept: "application/vnd.github+json",
         "x-github-api-version": "2022-11-28",
         "user-agent": "sailor-agent",
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -93,22 +111,37 @@ export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
     return (await res.json()) as T;
   }
 
-  async function mint(installationId: number): Promise<string> {
+  async function mint(installationId: number, repositories?: readonly string[]): Promise<string> {
     const res = await appRequest<{ token: string; expires_at: string }>(
       "POST",
       `/app/installations/${installationId}/access_tokens`,
+      repositories?.length ? { repositories: [...repositories] } : undefined,
     );
-    tokenCache.set(installationId, {
+    const scope = repositories?.length ? [...repositories].sort().join(",") : "*";
+    tokenCache.set(`${installationId}:${scope}`, {
       token: res.token,
       expiresAt: new Date(res.expires_at).getTime(),
+      mintedAt: now(),
     });
     return res.token;
   }
 
-  async function tokenFor(installationId: number): Promise<string> {
-    const cached = tokenCache.get(installationId);
-    if (cached && cached.expiresAt - now() > 5 * 60_000) return cached.token; // refresh window
-    return mint(installationId);
+  async function tokenFor(
+    installationId: number,
+    repositories?: readonly string[],
+  ): Promise<string> {
+    // Scope is part of the cache key: a narrowed token must never be served
+    // for an unscoped request, or vice versa.
+    const scope = repositories?.length ? [...repositories].sort().join(",") : "*";
+    const key = `${installationId}:${scope}`;
+    const cached = tokenCache.get(key);
+    if (
+      cached &&
+      now() - cached.mintedAt < TOKEN_MAX_AGE_MS &&
+      cached.expiresAt - now() > 60_000
+    )
+      return cached.token;
+    return mint(installationId, repositories);
   }
 
   // Rename-proof bot identity: webhooks present us as `<slug>[bot]` — never
@@ -133,6 +166,12 @@ export function createGitHubApp(opts: GitHubAppOptions): GitHubAppService {
     getInstallation: (installationId) =>
       appRequest("GET", `/app/installations/${installationId}`),
     tokenFor,
+    invalidateTokens: (installationId) => {
+      if (installationId === undefined) return tokenCache.clear();
+      const prefix = `${installationId}:`;
+      for (const key of tokenCache.keys())
+        if (key.startsWith(prefix)) tokenCache.delete(key);
+    },
     clientFor: async (installationId) =>
       createGitHubClient({ token: await tokenFor(installationId) }),
     appSlug,

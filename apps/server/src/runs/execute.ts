@@ -12,7 +12,7 @@
  * the matching run status. A cancel button elsewhere calls cancelRun(runId).
  */
 import path from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   JsonlTrace,
   createLiveProjector,
@@ -32,6 +32,10 @@ import {
   type SandboxSpec,
 } from "anchor-ai-sdk";
 import { local } from "anchor-ai-sdk/sandbox/local";
+import { redactEvent } from "anchor-ai-sdk";
+import { attachRepository, questionTools } from "../agents/questions-tools.js";
+import { enabledRepositories } from "../threads/repositories.js";
+import { repoEnabled } from "../github/installations.js";
 import {
   providerForBackend,
   sandboxProvider,
@@ -131,6 +135,17 @@ export interface ExecuteRunOutcome {
 const isUrl = (repo: string) => /^(https?:\/\/|git@|ssh:\/\/)/.test(repo);
 
 /**
+ * Git credentials are scoped to THIS thread's repository (plus repositories it
+ * explicitly attached) — never to the installation's whole enabled set.
+ *
+ * Enabling a repository in Settings makes it *selectable*; it does not grant
+ * every thread write access to it. Cross-repository work must be an explicit,
+ * recorded action on the thread (attach / change), so 1000 threads never mean
+ * 1000 holders of a global write grant.
+ */
+const repoName = (fullName: string) => fullName.split("/")[1] ?? fullName;
+
+/**
  * Where a thread's work happens. GitHub threads clone the repo — and once a PR
  * exists, its HEAD BRANCH: the pushed branch is the handoff point across runs
  * (babysitting continues on it; first runs start from the default branch and
@@ -143,7 +158,8 @@ export function sandboxSpecForThread(
   >,
   baseDir: string,
 ): SandboxSpec {
-  if (thread.source === "github") {
+  if (thread.source === "workspace") return {};
+  if (thread.source === "github" || thread.source === "manual") {
     // Clone precedence: the off-machine checkpoint branch carries the LATEST
     // workspace (it is force-pushed every turn), then the PR branch, then the
     // default branch.
@@ -158,6 +174,40 @@ export function sandboxSpecForThread(
   return isUrl(thread.repo)
     ? { repoUrl: thread.repo }
     : { localPath: path.resolve(baseDir, thread.repo) };
+}
+
+/**
+ * Repositories the agent checked out BESIDE the thread's workspace.
+ *
+ * A `git clone` into a sibling directory is invisible to Sailor: no
+ * attach_repository call, no authorization check. We cannot prevent a clone of
+ * public code, but the thread must not pretend the work happened in its own
+ * repository — so the run records what it finds, and the composer shows it.
+ */
+export async function findAdHocCheckouts(
+  sandbox: Sandbox,
+  workspace: string,
+): Promise<Array<{ repository: string; path: string }>> {
+  const found = await sandbox.exec(
+    "for root in /home /workspace /root /tmp; do " +
+      "[ -d \"$root\" ] && find \"$root\" -maxdepth 4 -type d -name .git -prune 2>/dev/null; done | head -20",
+    { cwd: "/", timeoutSecs: 60 },
+  );
+  if (found.exitCode !== 0) return [];
+  const repos = new Map<string, string>();
+  for (const dotGit of found.stdout.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const dir = dotGit.replace(/\/\.git$/, "");
+    if (!dir || dir === workspace.replace(/\/+$/, "")) continue;
+    const remote = await sandbox.exec("git config --get remote.origin.url", {
+      cwd: dir,
+      timeoutSecs: 30,
+    });
+    const match = /github\.com[:/]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(
+      remote.stdout.trim(),
+    );
+    if (remote.exitCode === 0 && match) repos.set(match[1]!, dir);
+  }
+  return [...repos].map(([repository, path]) => ({ repository, path }));
 }
 
 export async function executeRun(
@@ -177,6 +227,17 @@ export async function executeRun(
     .where(eq(schema.threads.id, run.threadId));
   if (!thread)
     throw new Error(`run ${run.id}: thread ${run.threadId} not found`);
+
+  // A token carries the permissions it was minted with, so the repository
+  // toggles a user changed since the last run only take effect on a fresh
+  // mint — invalidate at run start, then re-check access for THIS thread.
+  if (deps.githubApp && thread.installationId != null)
+    deps.githubApp.invalidateTokens(thread.installationId);
+  const repoAccess =
+    thread.installationId == null
+      ? true
+      : await repoEnabled(db, thread.installationId, thread.repo);
+  const gitScopes = [repoName(thread.repo)];
 
   // A dashboard cancel of a QUEUED run flips it before any worker touches it
   // (there is no watcher to notice a flag on a run that never started) — such
@@ -220,6 +281,7 @@ export async function executeRun(
   const live = (payload: Record<string, unknown>) =>
     deps.live?.(thread.id, { runId: run.id, ...payload });
   const projectLive = createLiveProjector(live);
+  let liveSequence = 0;
   const events: AgentEvent[] = [];
   // Live usage: the runs row feeds the trace header, the thread rail and any
   // other reader, so accrue tokens/dollars as calls finish — the run-end
@@ -266,12 +328,21 @@ export async function executeRun(
           timeoutSecs: e.timeoutSecs ?? 3600,
         });
       }
+      if (e.type === "background_completed") {
+        // Anchor 0.1.7 already delivered this result in-run. The fallback
+        // sweep must not enqueue the same completion as another user turn.
+        await db.update(schema.backgroundJobs).set({ status: "done", exitCode: e.exitCode, finishedAt: new Date() })
+          .where(and(eq(schema.backgroundJobs.runId, run.id), eq(schema.backgroundJobs.jobId, e.jobId)));
+      }
       // Every recorded step nudges the dashboard watching this thread.
       if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
         deps.notify?.(thread.id);
     },
   });
   const sink = (e: AgentEvent) => {
+    // Live frames must not wait behind async journal sinks. Keep the same
+    // event order and redaction, but publish synchronously at receipt.
+    projectLive.record({ seq: liveSequence++, ts: new Date().toISOString(), event: redactEvent(e) });
     if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
       events.push(e);
   };
@@ -280,16 +351,16 @@ export async function executeRun(
   // Retain the sandbox while the thread is alive: the next run (interjection,
   // sweep resume, follow-up) adopts it and finds the workspace — branch,
   // edits, and all — exactly as left. Terminal threads are torn down instead.
-  const retain = thread.source === "github" && !isTerminal(thread.state);
+  const retain = ["github", "manual", "workspace"].includes(thread.source) && !isTerminal(thread.state);
   /** A clone candidate: the same run fields, for one ref (null = base). */
   const specWith = (checkpointRef: string | null): SandboxSpec => ({
     ...sandboxSpecForThread({ ...thread, checkpointRef }, baseDir),
     retain,
     ...(deps.gitIdentity ? { gitIdentity: deps.gitIdentity } : {}),
-    ...(deps.githubApp && thread.installationId != null
+    ...(deps.githubApp && thread.installationId != null && repoAccess
       ? {
           git: {
-            token: () => deps.githubApp!.tokenFor(thread.installationId!),
+            token: () => deps.githubApp!.tokenFor(thread.installationId!, gitScopes),
           },
         }
       : {}),
@@ -320,7 +391,7 @@ export async function executeRun(
   try {
     await provider.prepare?.({
       ...(deps.githubApp && thread.installationId != null
-        ? { gitToken: () => deps.githubApp!.tokenFor(thread.installationId!) }
+        ? { gitToken: () => deps.githubApp!.tokenFor(thread.installationId!, gitScopes) }
         : {}),
     });
   } catch (err) {
@@ -372,9 +443,20 @@ export async function executeRun(
   };
 
   let delivered: DeliveredPullRequest | null = null;
+  let questionRequestId: string | undefined;
   let opened: Sandbox | undefined;
   try {
     await ensureThreadState(db, thread.id, "running");
+    if (run.repoAttachment) {
+      const repo = (await enabledRepositories(db, thread.userId)).find((r) => r.fullName === run.repoAttachment);
+      if (!repo) throw new Error("The selected repository is no longer enabled for this account.");
+      if (thread.source !== "workspace" && thread.repo !== repo.fullName)
+        throw new Error("A different repository is already attached. Start a new thread instead of overwriting work.");
+      if (thread.source === "workspace") {
+        const update = { source: "manual", repo: repo.fullName, installationId: repo.installationId, baseRef: repo.defaultBranch ?? "main" };
+        Object.assign(thread, update);
+      }
+    }
     // The store keeps continuity (the thread row's sandbox columns); the
     // package runs the session: adopt the retained handle, clear the stale
     // pointer when it is gone, then try the checkpoint branch, then the base.
@@ -400,6 +482,21 @@ export async function executeRun(
       },
     });
     opened = sandbox;
+    // A repository answer may attach a repo to a retained, initially empty
+    // sandbox. Fresh sandboxes already cloned it via sandboxSpecForThread.
+    if (thread.source === "manual") {
+      await attachRepository({ sandbox, repo: thread.repo, branch: thread.baseRef,
+        ...(deps.githubApp && thread.installationId != null && repoAccess
+          ? { token: await deps.githubApp.tokenFor(thread.installationId, gitScopes) } : {}) });
+      // Only label the thread attached after checkout succeeds. A refused
+      // attachment (existing work, revoked access) leaves its workspace intact.
+      if (run.repoAttachment) await db.update(schema.threads).set({
+        source: "manual", repo: thread.repo, installationId: thread.installationId,
+        baseRef: thread.baseRef, updatedAt: new Date(),
+      }).where(eq(schema.threads.id, thread.id));
+    }
+    const availableRepos = thread.source === "workspace"
+      ? await enabledRepositories(db, thread.userId) : [];
     const initial =
       thread.source === "github"
         ? await sandbox.exec("git rev-parse --verify HEAD", { timeoutSecs: 60 })
@@ -418,12 +515,27 @@ export async function executeRun(
           pullRequest: thread.prNumber,
           headBranch: thread.headRef,
           baseBranch: thread.baseRef,
-          availablePublication: thread.source === "github" && !!deps.githubApp,
+          availablePublication: ["github", "manual"].includes(thread.source) && !!deps.githubApp,
+          publicationAfterRepositoryAttachment: thread.source === "workspace" && !!deps.githubApp,
+          availableRepositories: availableRepos.map((r) => ({ repository: r.fullName, defaultBranch: r.defaultBranch })),
         },
         null,
         2,
       ),
-      thread.source === "github" && deps.githubApp
+      [...questionTools({ db, threadId: thread.id, userId: thread.userId, sandbox,
+        hasRepository: thread.source !== "workspace",
+        ...(deps.githubApp
+          ? {
+              tokenFor: (id: number, repository: string) => {
+                // The attached repository is enabled (checked before the call);
+                // the token is minted for exactly that repository.
+                return deps.githubApp!.tokenFor(id, [repository.split("/")[1] ?? repository]);
+              },
+            }
+          : {}),
+        onQuestions: (id) => { questionRequestId = id; controller.abort("waiting_for_answers"); },
+        notify: () => deps.notify?.(thread.id),
+      }), ...(["github", "manual", "workspace"].includes(thread.source) && deps.githubApp
         ? githubTools({
             db,
             thread,
@@ -431,6 +543,7 @@ export async function executeRun(
             sandbox,
             publicUrl: cfg.server.publicUrl,
             github: githubClientForThread,
+            gitToken: () => deps.githubApp!.tokenFor(thread.installationId!, gitScopes),
             events,
             startRef,
             policy: deps.publicationPolicy ?? cfg.publication,
@@ -438,7 +551,7 @@ export async function executeRun(
               delivered = result;
             },
           })
-        : [],
+        : [])],
     );
     const requestedPhase = deps.startPhase ?? run.startPhase;
     const startPhase = agent.strategy.phases.some(
@@ -497,7 +610,7 @@ export async function executeRun(
         signal: controller.signal,
         // The engine's fanout owns sequencing + redaction and flushes these
         // before the run resolves; the product's sink stays live-only.
-        traceSinks: [jsonl, recorder, projectLive],
+        traceSinks: [jsonl, recorder],
         // Sailor's finish() vocabulary — a consumer schema now, not the engine's.
         handoff: SAILOR_HANDOFF,
         // Long commands detach instead of timing out the turn (decision #70).
@@ -507,10 +620,14 @@ export async function executeRun(
         onEvent: sink,
       },
     );
-    const sailor = readSailorHandoff(outcome.handoff, outcome.ok);
+    // An explicit finish supersedes an old watch even when it omitted the
+    // optional handoff. Plain prose still leaves product intent unset.
+    const sailor = readSailorHandoff(
+      outcome.handoff ?? (outcome.completion === "declared" ? {} : undefined), outcome.ok,
+    );
 
     const status: ExecuteRunOutcome["status"] =
-      outcome.reason === "finished" && outcome.ok
+      questionRequestId ? "paused" : outcome.reason === "finished" && outcome.ok
         ? "succeeded"
         : outcome.reason === "cancelled"
           ? "cancelled"
@@ -541,7 +658,7 @@ export async function executeRun(
         status,
         finishedAt: new Date(),
         phase: outcome.phase ?? null,
-        disposition: sailor.disposition ?? null,
+        disposition: questionRequestId ? "blocked" : sailor.disposition ?? null,
         steps: outcome.steps,
         tokensIn: outcome.usage.promptTokens,
         tokensOut: outcome.usage.completionTokens,
@@ -549,7 +666,7 @@ export async function executeRun(
           outcome.usage.costUsd !== undefined
             ? String(outcome.usage.costUsd)
             : "0",
-        error: outcome.error ?? null,
+        error: questionRequestId ? null : outcome.error ?? null,
         revival: revivalEvidence,
       })
       .where(eq(schema.runs.id, run.id));
@@ -614,6 +731,23 @@ export async function executeRun(
           : "queued"
         : "queued";
     await ensureThreadState(db, thread.id, finalState);
+
+    // Sibling clones are real work Sailor did not authorize or record. Persist
+    // them as an event so the composer shows where the agent actually went.
+    if (opened) {
+      const checkouts = await findAdHocCheckouts(opened, opened.workspace).catch(
+        () => [],
+      );
+      const extra = checkouts.filter((c) => c.repository !== thread.repo);
+      if (extra.length)
+        await db.insert(schema.events).values({
+          threadId: thread.id,
+          kind: "repository_checkout",
+          payload: { repositories: extra, runId: run.id },
+          status: "consumed",
+          consumedAt: new Date(),
+        });
+    }
 
     // Dashboard debugging switch (17b): re-read right before destruction — a
     // flip made while the run was live still wins.

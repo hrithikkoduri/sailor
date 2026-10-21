@@ -84,6 +84,23 @@ export function createOnboardingRoutes(deps: OnboardingDeps): Hono {
     });
   });
 
+  app.post("/api/onboarding/repos/refresh", async (c) => {
+    const user = await deps.getUser(c);
+    if (!user) return c.json({ error: "unauthorized" }, 401);
+    if (!deps.githubApp) return c.json({ error: "The GitHub App is not configured on this server." }, 503);
+    const installs = await deps.db.select().from(schema.installations)
+      .where(and(eq(schema.installations.userId, user.id), eq(schema.installations.suspended, false)));
+    let repositories = 0;
+    try {
+      for (const inst of installs)
+        repositories += await syncRepositories(deps.db, deps.githubApp, inst.id, inst.installationId);
+    } catch {
+      return c.json({ error: "GitHub couldn't refresh all repositories. Check your installation access and try again. Existing enabled choices have been preserved." }, 502);
+    }
+    deps.log?.(`onboarding: refreshed ${repositories} repositories across ${installs.length} installation(s)`);
+    return c.json({ ok: true, repositories, installations: installs.length });
+  });
+
   // The repo gate's control surface (decision #44): only enabled repos trigger runs.
   app.post("/api/onboarding/repos", async (c) => {
     const user = await deps.getUser(c);

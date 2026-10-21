@@ -104,6 +104,7 @@ describe("runBabysitSweep", () => {
   const fakeApp = (github: GitHubClient): GitHubAppService => ({
     clientFor: async () => github,
     tokenFor: async () => "fake-token",
+    invalidateTokens: () => undefined,
     appSlug: async () => undefined,
     botIdentity: async () => undefined,
     getInstallation: async () => {

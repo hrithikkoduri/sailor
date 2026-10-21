@@ -35,6 +35,7 @@ describe("dashboard api", () => {
   let idleThreadId: string;
   let chatThreadId: string;
   const terminalThreadIds: string[] = [];
+  const installationRefs: string[] = [];
   let runOkId: string;
   let runLiveId: string;
   let runQueuedId: string;
@@ -46,7 +47,7 @@ describe("dashboard api", () => {
     pool = createPool(loadConfig().postgres.url);
     db = createDb(pool);
     await runMigrations(db);
-    queues = createQueues(createQueueConnection(loadConfig().redis.url));
+    queues = createQueues(createQueueConnection(loadConfig().redis.url), { prefix: `api-tests-${stamp}` });
     hub = createStreamHub();
     app = createServerApp({
       db,
@@ -281,6 +282,7 @@ describe("dashboard api", () => {
     await db
       .delete(schema.users)
       .where(inArray(schema.users.id, [userId, otherUserId]));
+    if (installationRefs.length) await db.delete(schema.installations).where(inArray(schema.installations.id, installationRefs));
     await queues.close();
     await pool.end();
   });
@@ -288,6 +290,140 @@ describe("dashboard api", () => {
   it("requires a session", async () => {
     expect((await app.request("/api/threads")).status).toBe(401);
     expect((await app.request(`/api/threads/${threadId}`)).status).toBe(401);
+  });
+
+  it("starts a user-owned thread without an issue or repository", async () => {
+    const res = await app.request("/api/threads", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ text: "Build a CSV converter" }) });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { thread: { id: string; source: string; title: string; userId: string }; runId: string };
+    terminalThreadIds.push(body.thread.id);
+    expect(body.thread).toMatchObject({ source: "workspace", title: "Build a CSV converter", userId });
+    const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, body.runId));
+    expect(run).toMatchObject({ status: "queued", trigger: "manual", task: "Build a CSV converter" });
+    const [request] = await db.insert(schema.questionRequests).values({ threadId: body.thread.id, title: "Output format?", questions: [{ id: "format", type: "text", label: "Which format?", required: true }] }).returning();
+    await db.update(schema.runs).set({ status: "paused" }).where(eq(schema.runs.id, body.runId));
+    const answer = () => app.request(`/api/questions/${request!.id}/answers`, {
+      method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ answers: { format: "JSON" } }),
+    });
+    const replies = await Promise.all([answer(), answer()]);
+    expect(replies.map((r) => r.status).sort()).toEqual([200, 409]);
+    const [saved] = await db.select().from(schema.questionRequests).where(eq(schema.questionRequests.id, request!.id));
+    expect(saved).toMatchObject({ status: "answered", answers: { format: "JSON" } });
+    const active = await db.select().from(schema.runs).where(and(eq(schema.runs.threadId, body.thread.id), eq(schema.runs.status, "queued")));
+    expect(active).toHaveLength(1);
+    expect(active[0]!.task).toContain("Which format?\nJSON");
+  });
+
+  it("does not expose another user's manual thread or trace", async () => {
+    const [other] = await db.insert(schema.threads).values({ repo: `workspace:private-${stamp}`, title: "Private work", issueNumber: -1, source: "workspace", userId: otherUserId }).returning();
+    terminalThreadIds.push(other!.id);
+    await db.insert(schema.runs).values({ threadId: other!.id, trigger: "manual", task: "private" });
+    expect((await app.request(`/api/threads/${other!.id}`, { headers: { cookie } })).status).toBe(404);
+    const res = await app.request("/api/traces", { headers: { cookie } });
+    const body = await res.json() as { traces: Array<{ threadId: string }> };
+    expect(body.traces.some((r) => r.threadId === other!.id)).toBe(false);
+  });
+
+  it("rejects an unavailable repo rather than cloning arbitrary URLs", async () => {
+    const res = await app.request("/api/threads", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ text: "fix it", repo: "other/private" }) });
+    expect(res.status).toBe(403);
+  });
+
+  it("accepts an owned enabled repository from the composer or a repository question", async () => {
+    const installationId = 800_000_000 + stamp % 100_000_000;
+    const [installation] = await db.insert(schema.installations).values({ installationId, accountLogin: "workspace-test", accountType: "User", userId }).returning();
+    installationRefs.push(installation!.id);
+    const repo = `workspace-test/project-${stamp}`;
+    await db.insert(schema.repositories).values({ installationRef: installation!.id, fullName: repo, enabled: true, defaultBranch: "develop" });
+    const create = async (attach: boolean) => {
+      const res = await app.request("/api/threads", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ text: "Investigate checkout", ...(attach ? { repo } : {}) }) });
+      expect(res.status).toBe(201);
+      const body = await res.json() as { thread: { id: string; source: string; repo: string; installationId: number }; runId: string };
+      terminalThreadIds.push(body.thread.id);
+      return body;
+    };
+    const explicit = await create(true);
+    expect(explicit.thread).toMatchObject({ source: "manual", repo, installationId });
+    const renamed = await app.request(`/api/threads/${explicit.thread.id}`, { method: "PATCH", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ title: "Checkout retry rules" }) });
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toMatchObject({ title: "Checkout retry rules" });
+    expect((await app.request(`/api/threads/${hiddenThreadId}`, { method: "PATCH", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ title: "Not mine" }) })).status).toBe(404);
+    const inferred = await create(false);
+    await db.update(schema.runs).set({ status: "paused" }).where(eq(schema.runs.id, inferred.runId));
+    const [question] = await db.insert(schema.questionRequests).values({ threadId: inferred.thread.id, title: "Select repository", questions: [{ id: "repository", type: "repository", label: "Which repository?", required: true, options: [{ value: repo, label: repo }] }] }).returning();
+    const answered = await app.request(`/api/questions/${question!.id}/answers`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ answers: { repository: repo } }) });
+    expect(answered.status).toBe(200);
+    const [saved] = await db.select().from(schema.threads).where(eq(schema.threads.id, inferred.thread.id));
+    expect(saved).toMatchObject({ source: "workspace" });
+    const answerRun = await answered.json() as { runId: string };
+    const [planned] = await db.select().from(schema.runs).where(eq(schema.runs.id, answerRun.runId));
+    expect(planned!.repoAttachment).toBe(repo); // checkout happens before its model call
+
+    const later = await create(false);
+    const attachment = await app.request(`/api/threads/${later.thread.id}/repository`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ repository: repo }) });
+    expect(attachment.status).toBe(200);
+    expect(await attachment.json()).toMatchObject({ queued: true, runId: null });
+    const [stillEmpty] = await db.select().from(schema.threads).where(eq(schema.threads.id, later.thread.id));
+    expect(stillEmpty!.source).toBe("workspace"); // not changed under a busy agent
+    await db.update(schema.runs).set({ status: "succeeded" }).where(eq(schema.runs.id, later.runId));
+    const { drainInbox } = await import("../../src/threads/inbox.js");
+    const continuation = await drainInbox({ db, queues }, later.thread.id);
+    expect(continuation?.repoAttachment).toBe(repo);
+  });
+
+  it("switches a thread to another enabled repository, resetting branch and PR state", async () => {
+    const [installation] = await db.select().from(schema.installations)
+      .where(eq(schema.installations.userId, userId));
+    const [firstRepo] = await db.select({ fullName: schema.repositories.fullName })
+      .from(schema.repositories)
+      .innerJoin(schema.installations, eq(schema.repositories.installationRef, schema.installations.id))
+      .where(and(eq(schema.installations.userId, userId), eq(schema.repositories.enabled, true)))
+      .limit(1);
+    const otherRepo = `acme/other-${stamp}`;
+    await db.insert(schema.repositories).values({
+      installationRef: installation!.id, fullName: otherRepo, enabled: true,
+    });
+
+    const makeThread = async () => {
+      const res = await app.request("/api/threads", {
+        method: "POST", headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ text: "Investigate checkout", repo: firstRepo!.fullName }),
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json() as { thread: { id: string }; runId: string };
+      terminalThreadIds.push(body.thread.id);
+      return body;
+    };
+    const first = await makeThread();
+    await db.update(schema.runs).set({ status: "succeeded" }).where(eq(schema.runs.id, first.runId));
+    // Pretend it published: the switch must reset these, not carry them over.
+    await db.update(schema.threads).set({
+      prNumber: 3, prUrl: "https://github.com/acme/old/pull/3", headRef: "sailor/thread-old",
+      checkpointSha: "a".repeat(40), checkpointRef: "sailor/thread-old-checkpoint", state: "pr_open",
+    }).where(eq(schema.threads.id, first.thread.id));
+
+    const switched = await app.request(`/api/threads/${first.thread.id}/repository/switch`, {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ repository: otherRepo }),
+    });
+    expect(switched.status).toBe(200);
+    const body = await switched.json() as { runId: string };
+    const [after] = await db.select().from(schema.threads).where(eq(schema.threads.id, first.thread.id));
+    expect(after).toMatchObject({
+      repo: otherRepo, source: "manual", installationId: installation!.installationId,
+      prNumber: null, prUrl: null, headRef: null, checkpointSha: null, checkpointRef: null, state: "queued",
+    });
+    const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, body.runId));
+    expect(run).toMatchObject({ repoAttachment: otherRepo, trigger: "repository_attachment" });
+    // The old repository is untouched: Sailor moves the thread, not its history.
+
+    const active = await makeThread();
+    const blocked = await app.request(`/api/threads/${active.thread.id}/repository/switch`, {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ repository: otherRepo }),
+    });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ error: expect.stringMatching(/current run/) });
   });
 
   it("lists owned threads with latest run + pending counts, hides other users' threads", async () => {

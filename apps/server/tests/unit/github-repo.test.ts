@@ -2,7 +2,7 @@
  * Repo + ref helpers — including the never-touch-main guard.
  */
 import { describe, expect, it } from "vitest";
-import { assertSafeHeadRef, githubRepoUrl, headRefFor, isGithubSlug } from "../../src/github/repo.js";
+import { assertSafeHeadRef, assertSafeCheckpointRef, githubRepoUrl, headRefFor, headRefForThread, isGithubSlug } from "../../src/github/repo.js";
 
 describe("github repo helpers", () => {
   it("isGithubSlug is a format check only — threads.source decides GitHub-ness", () => {
@@ -20,6 +20,17 @@ describe("github repo helpers", () => {
 
   it("assertSafeHeadRef allows sailor/* off a different base", () => {
     expect(() => assertSafeHeadRef("sailor/issue-42", "main")).not.toThrow();
+  });
+
+  it("uses stable issue-free thread branches and accepts only scoped refs", () => {
+    const id = "11111111-2222-4333-8444-555555555555";
+    const head = headRefForThread({ id, source: "manual", issueNumber: -12, headRef: null });
+    expect(head).toBe(`sailor/thread-${id}`);
+    expect(() => assertSafeHeadRef(head, "main")).not.toThrow();
+    expect(() => assertSafeCheckpointRef(`${head}-checkpoint`)).not.toThrow();
+    expect(() => assertSafeHeadRef(head, head)).toThrow(/base/);
+    for (const bad of ["sailor/thread-../main", "sailor/thread-anything", "sailor/issue--12", `${head}/extra`])
+      expect(() => assertSafeHeadRef(bad, "main")).toThrow(/refusing/);
   });
 
   it("assertSafeHeadRef still allows a pre-rename harness/issue-* branch (babysitting)", () => {

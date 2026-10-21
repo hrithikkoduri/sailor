@@ -11,6 +11,17 @@ function jsonResponse(body: unknown, status = 200): Response {
 const asFetch = (fn: unknown) => fn as typeof fetch;
 
 describe("github client", () => {
+  it("fetches every repository page, not only the first 100", async () => {
+    const first = Array.from({ length: 100 }, (_, i) => ({ full_name: `acme/repo-${i}`, private: false, default_branch: "main" }));
+    const fetchFn = vi.fn(async (url: RequestInfo | URL) => jsonResponse({ repositories: String(url).includes("page=2")
+      ? [{ full_name: "acme/last", private: true, default_branch: "develop" }] : first }));
+    const client = createGitHubClient({ token: "t", fetchFn: asFetch(fetchFn) });
+    expect(await client.listInstallationRepositories()).toHaveLength(101);
+    expect(fetchFn.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.github.com/installation/repositories?per_page=100&page=1",
+      "https://api.github.com/installation/repositories?per_page=100&page=2",
+    ]);
+  });
   it("getIssue hits the REST path with auth + version headers", async () => {
     const fetchFn = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({ number: 7, title: "bug", body: null, html_url: "https://x", state: "open" }),

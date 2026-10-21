@@ -72,6 +72,59 @@ describe("github app service", () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("re-mints after 10 minutes and on demand, so repository toggles take effect", async () => {
+    let nowMs = 1_700_000_000_000;
+    let mints = 0;
+    const fetchFn = (async () => {
+      mints += 1;
+      return new Response(
+        JSON.stringify({ token: `tok-${mints}`, expires_at: new Date(nowMs + 60 * 60_000).toISOString() }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const app = createGitHubApp({ appId: "1", privateKey: privatePem, fetchFn, now: () => nowMs });
+
+    expect(await app.tokenFor(5, ["sailor"])).toBe("tok-1");
+    nowMs += 9 * 60_000;
+    expect(await app.tokenFor(5, ["sailor"])).toBe("tok-1"); // still fresh
+    nowMs += 61_000; // past the 10-minute trust window, token itself still valid
+    expect(await app.tokenFor(5, ["sailor"])).toBe("tok-2");
+    // A run start invalidates cached tokens immediately (toggle changed).
+    app.invalidateTokens(5);
+    expect(await app.tokenFor(5, ["sailor"])).toBe("tok-3");
+    // Other installations keep their cache.
+    expect(await app.tokenFor(6, ["sailor"])).toBe("tok-4");
+    app.invalidateTokens(5);
+    expect(await app.tokenFor(6, ["sailor"])).toBe("tok-4");
+  });
+
+  it("scopes an installation token to one repository and never reuses it for another", async () => {
+    const bodies: unknown[] = [];
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(init?.body ? JSON.parse(String(init.body)) : null);
+      return new Response(
+        JSON.stringify({
+          token: `tok-${bodies.length}`,
+          expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const app = createGitHubApp({ appId: "1", privateKey: privatePem, fetchFn });
+
+    // The token reaches the agent's shell, so it must never be installation-wide.
+    expect(await app.tokenFor(5, ["sailor"])).toBe("tok-1");
+    expect(bodies[0]).toEqual({ repositories: ["sailor"] });
+    // Same scope → cached; different scope → new mint.
+    expect(await app.tokenFor(5, ["sailor"])).toBe("tok-1");
+    expect(bodies).toHaveLength(1);
+    expect(await app.tokenFor(5, ["anchor-ai-sdk"])).toBe("tok-2");
+    expect(bodies[1]).toEqual({ repositories: ["anchor-ai-sdk"] });
+    // An unscoped request cannot be served a scoped cache entry.
+    expect(await app.tokenFor(5)).toBe("tok-3");
+    expect(bodies[2]).toBeNull();
+  });
+
   it("resolves the app slug from GET /app — the rename-proof bot identity", async () => {
     const calls: string[] = [];
     const fetchFn = (async (input: RequestInfo | URL) => {

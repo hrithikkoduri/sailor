@@ -28,9 +28,9 @@ export interface Queues {
   close(): Promise<void>;
 }
 
-export function createQueues(connection: Redis): Queues {
-  const runs = new Queue<RunJobData>("runs", { connection });
-  const babysit = new Queue<BabysitJobData>("babysit", { connection });
+export function createQueues(connection: Redis, options: { prefix?: string } = {}): Queues {
+  const runs = new Queue<RunJobData>("runs", { connection, ...options });
+  const babysit = new Queue<BabysitJobData>("babysit", { connection, ...options });
   return {
     runs,
     babysit,

@@ -32,7 +32,7 @@ const shell = promisify(execFile);
 describe("publication is separate from turn completion", () => {
   let pool: ReturnType<typeof createPool>, db: Db;
   let root: string, bare: string, sandbox: LocalSandbox;
-  let threadId: string, runId: string, installationRowId: string, repo: string;
+  let threadId: string, runId: string, installationRowId: string, repo: string, userId: string;
   let github: GitHubClient, app: GitHubAppService;
   const createPr = vi.fn(
     async (_input: Parameters<GitHubClient["createPullRequest"]>[0]) => ({
@@ -66,6 +66,9 @@ describe("publication is separate from turn completion", () => {
     repo = `test/publication-${randomUUID()}`;
     const seeded = await seedRepo(db, repo);
     installationRowId = seeded.installationRowId;
+    const [user] = await db.insert(schema.users).values({ login: `publication-${randomUUID()}` }).returning();
+    userId = user!.id;
+    await db.update(schema.installations).set({ userId }).where(eq(schema.installations.id, installationRowId));
     const [thread] = await db
       .insert(schema.threads)
       .values({
@@ -89,16 +92,17 @@ describe("publication is separate from turn completion", () => {
     github = {
       createPullRequest: createPr,
       commentOnIssue: comment,
-      getIssue: async () => ({
+      getIssue: vi.fn(async () => ({
         title: "Improve README",
         number: 91,
         body: null,
         html_url: "https://example.test/issue/91",
         state: "open",
-      }),
+      })),
     } as unknown as GitHubClient;
     app = {
       tokenFor: async () => "fake-installation-token",
+      invalidateTokens: () => undefined,
       clientFor: async () => github,
       appSlug: async () => undefined,
       botIdentity: async () => undefined,
@@ -109,6 +113,7 @@ describe("publication is separate from turn completion", () => {
     };
   }, 60_000);
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (sandbox) await sandbox.destroy().catch(() => undefined);
     if (threadId)
       await db.delete(schema.threads).where(eq(schema.threads.id, threadId));
@@ -116,6 +121,7 @@ describe("publication is separate from turn completion", () => {
       await db
         .delete(schema.installations)
         .where(eq(schema.installations.id, installationRowId));
+    if (userId) await db.delete(schema.users).where(eq(schema.users.id, userId));
     if (root)
       await rm(root, {
         recursive: true,
@@ -307,5 +313,107 @@ describe("publication is separate from turn completion", () => {
     });
     expect(createPr).not.toHaveBeenCalled();
     expect(comment).not.toHaveBeenCalled();
+  }, 30_000);
+
+  async function manualThread(source: "manual" | "workspace" = "manual") {
+    await db.update(schema.threads).set({ source, userId, title: "Add Daytona support", issueNumber: -91,
+      ...(source === "workspace" ? { repo: `workspace:${threadId}`, installationId: null } : {}),
+    }).where(eq(schema.threads.id, threadId));
+    await db.update(schema.runs).set({ keepSandbox: true, task: "Make the requested changes and open a PR." })
+      .where(eq(schema.runs.id, runId));
+    // Only the local bare fixture receives pushes; no network or model calls.
+    expect((await sandbox.exec("git push origin HEAD:refs/heads/main")).exitCode).toBe(0);
+    const exec = sandbox.exec.bind(sandbox);
+    vi.spyOn(sandbox, "exec").mockImplementation((command, options) =>
+      command === "git remote get-url origin"
+        ? Promise.resolve({ exitCode: 0, stdout: `https://github.com/${repo}.git\n`, stderr: "", output: `https://github.com/${repo}.git\n`, timedOut: false, durationMs: 0 })
+        : exec(command, options));
+  }
+
+  it("publishes an on-demand thread without an issue and keeps scratch off the delivered branch", async () => {
+    await manualThread();
+    const llm = scriptedLLM([
+      { tools: [{ name: "edit_file", arguments: '{"path":"README.md","old_string":"# Before","new_string":"# On-demand changes"}' }] },
+      { tools: [{ name: "bash", arguments: '{"command":"mkdir -p .anchor && echo private > .anchor/notes.md"}' }] },
+      { tools: [{ name: "publish_changes", arguments: '{"summary":"Add requested repository changes"}' }] },
+      { text: "Published for review." },
+    ]);
+    const result = await executeRun({ db, runId, sandboxFactory: () => sandbox, githubApp: app, llm });
+    expect(result.status).toBe("succeeded");
+    expect(createPr).toHaveBeenCalledTimes(1);
+    expect(createPr.mock.calls[0]![0]).toMatchObject({ title: "Add Daytona support", head: `sailor/thread-${threadId}`, base: "main" });
+    expect(createPr.mock.calls[0]![0].body).not.toContain("Fixes #");
+    expect(github.getIssue).not.toHaveBeenCalled();
+    expect(JSON.stringify(llm.seen[0]!.tools)).toContain("ask_questions");
+    const tree = (await shell("git", ["--git-dir", bare, "ls-tree", "-r", "--name-only", `refs/heads/sailor/thread-${threadId}`])).stdout;
+    expect(tree).not.toContain(".anchor");
+    expect((await shell("git", ["--git-dir", bare, "show", "main:README.md"])).stdout).toBe("# Before\n");
+    const [saved] = await db.select().from(schema.threads).where(eq(schema.threads.id, threadId));
+    expect(saved).toMatchObject({ prNumber: 99, state: "pr_open" });
+  }, 30_000);
+
+  it("can publish checkpointed work from an earlier turn without requiring new edits", async () => {
+    await manualThread();
+    await sandbox.exec("echo '# Previous turn changes' > README.md");
+    await sandbox.checkpoint("previous turn finished without publication");
+    await executeRun({ db, runId, sandboxFactory: () => sandbox, githubApp: app, llm: scriptedLLM([
+      { tools: [{ name: "publish_changes", arguments: '{"summary":"Publish the earlier requested changes"}' }] },
+      { text: "Published existing work." },
+    ]) });
+    expect(createPr).toHaveBeenCalledTimes(1);
+    expect((await shell("git", ["--git-dir", bare, "show", `sailor/thread-${threadId}:README.md`])).stdout).toContain("Previous turn changes");
+  }, 30_000);
+
+  it("attachment unlocks publication during the same workspace run", async () => {
+    await manualThread("workspace");
+    await executeRun({ db, runId, sandboxFactory: () => sandbox, githubApp: app, llm: scriptedLLM([
+      { tools: [{ name: "attach_repository", arguments: JSON.stringify({ repository: repo }) }] },
+      { tools: [{ name: "edit_file", arguments: '{"path":"README.md","old_string":"# Before","new_string":"# Attached repo work"}' }] },
+      { tools: [{ name: "publish_changes", arguments: '{"summary":"Publish after attaching the repository"}' }] },
+      { text: "Published." },
+    ]) });
+    expect(createPr).toHaveBeenCalledTimes(1);
+    expect(github.getIssue).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it.each(["disabled", "other-owner"])("manual publication rejects %s access", async (restriction) => {
+    await manualThread();
+    await sandbox.exec("echo '# Unpublished work' > README.md");
+    if (restriction === "disabled") await db.update(schema.repositories).set({ enabled: false }).where(eq(schema.repositories.fullName, repo));
+    else await db.update(schema.installations).set({ userId: null }).where(eq(schema.installations.id, installationRowId));
+    await executeRun({ db, runId, sandboxFactory: () => sandbox, githubApp: app, llm: scriptedLLM([
+      { tools: [{ name: "publish_changes", arguments: '{"summary":"Do not publish without access"}' }] },
+      { text: "Access is unavailable." },
+    ]) });
+    expect(createPr).not.toHaveBeenCalled();
+    expect(comment).not.toHaveBeenCalled();
+    expect((await shell("git", ["--git-dir", bare, "for-each-ref", "--format=%(refname)", "refs/heads/sailor/thread-*"])).stdout.trim()).toBe("");
+  }, 30_000);
+
+  it("manual threads do not post replies to a placeholder issue", async () => {
+    await manualThread();
+    await executeRun({ db, runId, sandboxFactory: () => sandbox, githubApp: app, llm: scriptedLLM([
+      { tools: [{ name: "reply_on_github", arguments: '{"body":"There is no issue to reply to."}' }] },
+      { text: "No GitHub discussion exists yet." },
+    ]) });
+    expect(comment).not.toHaveBeenCalled();
+    expect(createPr).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("on-demand repository threads can ask a structured question and pause before later tools", async () => {
+    await manualThread();
+    const llm = scriptedLLM([{ tools: [
+      { name: "ask_questions", arguments: JSON.stringify({ title: "Resolve the SDK dependency", questions: [
+        { id: "scope", label: "Implement the adapter or only preparatory wiring?", type: "text", required: true },
+      ] }) },
+      { name: "publish_changes", arguments: '{"summary":"Must not publish before the answer"}' },
+    ] }]);
+    const result = await executeRun({ db, runId, sandboxFactory: () => sandbox, githubApp: app, llm });
+    expect(result.status).toBe("paused");
+    const forms = await db.select().from(schema.questionRequests).where(eq(schema.questionRequests.threadId, threadId));
+    expect(forms).toHaveLength(1);
+    expect(forms[0]).toMatchObject({ status: "pending", title: "Resolve the SDK dependency" });
+    expect(createPr).not.toHaveBeenCalled();
+    expect(llm.seen).toHaveLength(1);
   }, 30_000);
 });
