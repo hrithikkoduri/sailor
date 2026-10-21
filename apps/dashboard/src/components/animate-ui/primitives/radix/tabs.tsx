@@ -5,6 +5,7 @@ import { Tabs as TabsPrimitive } from 'radix-ui';
 import {
   motion,
   AnimatePresence,
+  useReducedMotion,
   type HTMLMotionProps,
   type Transition,
 } from 'motion/react';
@@ -16,6 +17,7 @@ import {
   type HighlightItemProps,
 } from '@/components/animate-ui/primitives/effects/highlight';
 import { getStrictContext } from '@/utils/get-strict-context';
+import { controlSpring, panelTransition } from '@/utils/motion';
 import { useControlledState } from '@/hooks/use-controlled-state';
 import {
   AutoHeight,
@@ -44,6 +46,7 @@ function Tabs(props: TabsProps) {
       <TabsPrimitive.Root
         data-slot="tabs"
         {...props}
+        value={value}
         onValueChange={setValue}
       />
     </TabsProvider>
@@ -53,17 +56,18 @@ function Tabs(props: TabsProps) {
 type TabsHighlightProps = Omit<HighlightProps, 'controlledItems' | 'value'>;
 
 function TabsHighlight({
-  transition = { type: 'spring', stiffness: 200, damping: 25 },
+  transition = controlSpring,
   ...props
 }: TabsHighlightProps) {
   const { value } = useTabs();
+  const reduce = useReducedMotion();
 
   return (
     <Highlight
       data-slot="tabs-highlight"
       controlledItems
       value={value}
-      transition={transition}
+      transition={reduce ? { duration: 0 } : transition}
       click={false}
       {...props}
     />
@@ -96,23 +100,25 @@ type TabsContentProps = React.ComponentProps<typeof TabsPrimitive.Content> &
 function TabsContent({
   value,
   forceMount,
-  transition = { duration: 0.5, ease: 'easeInOut' },
+  transition = panelTransition,
   ...props
 }: TabsContentProps) {
+  const { value: activeValue } = useTabs();
+  const reduce = useReducedMotion();
   return (
-    <AnimatePresence mode="wait">
-      <TabsPrimitive.Content asChild forceMount={forceMount} value={value}>
+    <AnimatePresence mode="popLayout" initial={false}>
+      {(forceMount || activeValue === value) && <TabsPrimitive.Content key={value} asChild forceMount value={value}>
         <motion.div
           data-slot="tabs-content"
-          layout
-          layoutDependency={value}
-          initial={{ opacity: 0, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, filter: 'blur(4px)' }}
-          transition={transition}
+          aria-hidden={activeValue !== value || undefined}
+          inert={activeValue !== value || undefined}
+          initial={{ opacity: 0, y: reduce ? 0 : 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.1 } }}
+          transition={reduce ? { duration: 0 } : transition}
           {...props}
         />
-      </TabsPrimitive.Content>
+      </TabsPrimitive.Content>}
     </AnimatePresence>
   );
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowUpRight, Monitor, Moon, Sun } from "lucide-react";
-import { getGate, type GateData } from "@/features/repos/api";
+import { getGate, refreshRepos, type GateData } from "@/features/repos/api";
 import { RepoPicker } from "@/features/repos/components/repo-picker";
 import { AppShell } from "@/features/shell/app-shell";
 import { GithubMark } from "@/elements/brand";
@@ -135,7 +135,10 @@ export function SettingsPage() {
               </p>
               {data ? (
                 data.installations.length ? (
-                  <RepoPicker data={data} onSaved={load} />
+                  <RepoPicker data={data} onSaved={load} onRefresh={async () => {
+                    await refreshRepos();
+                    setData(await getGate());
+                  }} />
                 ) : (
                   <p className="py-4 text-sm text-muted-foreground">
                     Connect GitHub above to choose repositories.
@@ -146,6 +149,12 @@ export function SettingsPage() {
                   Loading repositories…
                 </p>
               )}
+              <p className="mt-5 border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground">
+                Still missing a repository after refreshing?{" "}
+                <a href="https://github.com/settings/installations" target="_blank" rel="noreferrer"
+                  className="font-medium text-foreground underline underline-offset-4">Manage GitHub App access</a>{" "}
+                and grant Sailor access to that repository, then refresh again. Only repositories your GitHub App installation can access will appear here.
+              </p>
             </div>
           </SettingsSection>
         </div>

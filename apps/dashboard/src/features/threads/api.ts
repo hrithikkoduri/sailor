@@ -25,6 +25,7 @@ export interface ThreadRun extends RunSummary {
 
 export interface ThreadSummary {
   id: string;
+  title?: string | null;
   repo: string;
   issueNumber: number;
   state: string;
@@ -74,6 +75,44 @@ export interface ThreadDetail {
   runs: ThreadRun[];
   events: ThreadEventRow[];
   pendingEvents: PendingEvent[];
+  questions?: QuestionRequest[];
+}
+
+export interface QuestionRequest {
+  id: string;
+  title: string;
+  status: string;
+  questions: Array<{ id: string; label: string; description?: string; required: boolean;
+    type: "text" | "single_select" | "multi_select" | "repository";
+    options?: Array<{ value: string; label: string }>; recommended?: string }>;
+  answers: Record<string, string | string[]> | null;
+  createdAt: string;
+}
+
+export const createThread = (text: string, repo?: string) =>
+  api<{ thread: ThreadSummary; runId: string }>("/api/threads", { method: "POST", body: JSON.stringify({ text, repo }) });
+export const renameThread = (id: string, title: string) =>
+  api<{ ok: boolean; title: string }>(`/api/threads/${id}`, { method: "PATCH", body: JSON.stringify({ title }) });
+export const attachThreadRepository = (id: string, repository: string) =>
+  api<{ ok: boolean; queued: boolean; runId: string | null }>(`/api/threads/${id}/repository`, { method: "POST", body: JSON.stringify({ repository }) });
+export const switchThreadRepository = (id: string, repository: string) =>
+  api<{ ok: boolean; runId: string }>(`/api/threads/${id}/repository/switch`, { method: "POST", body: JSON.stringify({ repository }) });
+export const answerQuestions = (id: string, answers: Record<string, string | string[]>) =>
+  api<{ ok: boolean; runId: string }>(`/api/questions/${id}/answers`, { method: "POST", body: JSON.stringify({ answers }) });
+
+export interface TraceRow {
+  id: string; threadId: string; title: string | null; repo: string; task: string | null;
+  status: string; steps: number; tokensIn: number; tokensOut: number; usd: string;
+  createdAt: string; startedAt: string | null; finishedAt: string | null;
+}
+export const getTraces = (page = 0) => api<{ traces: TraceRow[]; hasMore: boolean; page: number }>(`/api/traces?page=${page}`);
+
+export function threadTitle(thread: ThreadListItem | ThreadSummary): string {
+  return thread.title ?? ("latestRun" in thread ? thread.latestRun?.task?.match(/^Fix GitHub issue #\d+: ([^\n]+)/)?.[1] : undefined)
+    ?? (thread.source === "github" ? `Issue #${thread.issueNumber}` : "Untitled thread");
+}
+export function repositoryLabel(repo: string): string {
+  return repo.startsWith("workspace:") ? "Fresh workspace" : repo;
 }
 
 export const getThreads = () =>

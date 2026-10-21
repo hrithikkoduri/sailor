@@ -30,6 +30,9 @@ export interface GateData {
 }
 
 export const getGate = () => api<GateData>("/api/onboarding");
+export const refreshRepos = () => api<{ ok: boolean; repositories: number; installations: number }>(
+  "/api/onboarding/repos/refresh", { method: "POST" },
+);
 
 /** Replaces the enabled set for one installation (server-side: one transaction). */
 export const saveRepos = (installationId: number, enabled: string[]) =>

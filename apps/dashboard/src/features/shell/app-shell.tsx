@@ -1,5 +1,7 @@
 /** Persistent visual vocabulary for every workspace view. */
 import type { CSSProperties, ReactNode } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { panelTransition } from "@/utils/motion";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -9,6 +11,11 @@ import {
   Moon,
   Settings2,
   Sun,
+  House,
+  CircleDot,
+  GitPullRequest,
+  Activity,
+  Plus,
 } from "lucide-react";
 import { logout } from "@/features/auth/api";
 import { useUser } from "@/hooks/use-user";
@@ -18,6 +25,7 @@ import { IconButton } from "@/elements/icon-button";
 import { Button } from "@/elements/button";
 import { useDebugMode } from "@/features/debug/debug-provider";
 import { cn } from "@/utils/cn";
+import { ThreadDock } from "@/features/thread-tabs/thread-dock";
 import {
   Sidebar,
   SidebarContent,
@@ -46,9 +54,11 @@ import {
 export function AppShell({
   children,
   topbar,
+  customThreadHeader = false,
 }: {
   children: ReactNode;
   topbar?: ReactNode;
+  customThreadHeader?: boolean;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -56,6 +66,7 @@ export function AppShell({
   const { theme, setTheme } = useTheme();
   const { enabled: debug, toggle: toggleDebug } = useDebugMode();
   const name = user?.name ?? user?.login ?? user?.email ?? "Your workspace";
+  const reduce = useReducedMotion();
   return (
     <SidebarProvider
       className="h-svh min-h-0 overflow-hidden"
@@ -95,13 +106,17 @@ export function AppShell({
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
                 {[
+                  { to: "/", label: "Home", icon: House, active: pathname === "/" },
                   {
-                    to: "/",
+                    to: "/threads",
                     label: "Threads",
                     icon: MessageSquare,
                     active:
-                      pathname === "/" || pathname.startsWith("/threads/"),
+                      pathname === "/threads" || pathname.startsWith("/threads/"),
                   },
+                  { to: "/issues", label: "Issues", icon: CircleDot, active: pathname === "/issues" },
+                  { to: "/pull-requests", label: "Pull requests", icon: GitPullRequest, active: pathname === "/pull-requests" },
+                  { to: "/traces", label: "Traces", icon: Activity, active: pathname === "/traces" },
                   {
                     to: "/settings",
                     label: "Settings",
@@ -131,13 +146,18 @@ export function AppShell({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <SidebarGroup className="px-3 group-data-[collapsible=icon]:px-2">
+            <SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild tooltip="New thread" className="h-10 rounded-lg border border-input bg-card shadow-xs">
+              <NavLink to="/threads/new"><Plus className="size-4" /><span data-sidebar-label>New thread</span></NavLink>
+            </SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+          </SidebarGroup>
           <div
             data-sidebar-label
             className="mt-auto px-5 pb-6 group-data-[collapsible=icon]:hidden"
           >
             <p className="text-xs font-medium">A little less busywork.</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              From an issue to a reviewed fix.
+              From an idea to shipped work.
               <br />
               With every step accounted for.
             </p>
@@ -220,7 +240,8 @@ export function AppShell({
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 md:px-6">
           <SidebarTrigger className="size-8 text-muted-foreground" />
           <div className="h-4 w-px bg-border" />
-          <div className="flex min-w-0 flex-1 items-center gap-2">{topbar}</div>
+          <div className={cn("flex min-w-0 items-center gap-2", customThreadHeader ? "flex-1" : "shrink-0")}>{topbar}</div>
+          {!customThreadHeader && <ThreadDock />}
           {debug && (
             <Button
               variant="secondary"
@@ -244,7 +265,10 @@ export function AppShell({
             {theme === "light" ? <Moon /> : <Sun />}
           </IconButton>
         </header>
-        <div className={cn("flex min-h-0 flex-1 flex-col")}>{children}</div>
+        <motion.div key={pathname} data-workspace-content className="relative flex min-h-0 flex-1 flex-col"
+          initial={{ y: reduce ? 0 : 6 }} animate={{ y: 0 }} transition={reduce ? { duration: 0 } : panelTransition}>
+          {children}
+        </motion.div>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, GitBranch, Loader2, Search } from "lucide-react";
+import { Check, GitBranch, Loader2, Search, RefreshCw } from "lucide-react";
 import { saveRepos, type GateData } from "../api";
 import { Switch } from "@/components/animate-ui/components/radix/switch";
 import { Input } from "@/components/ui/input";
@@ -17,11 +17,13 @@ const selectionFrom = (data: GateData) =>
 export function RepoPicker({
   data,
   onSaved,
+  onRefresh,
   saveLabel,
   requireSelection = false,
 }: {
   data: GateData;
   onSaved?: () => void | Promise<void>;
+  onRefresh?: () => Promise<void>;
   saveLabel?: string | ((count: number) => string);
   requireSelection?: boolean;
 }) {
@@ -32,6 +34,8 @@ export function RepoPicker({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
   useEffect(() => {
     setSelected(selectionFrom(data));
   }, [data]);
@@ -79,9 +83,17 @@ export function RepoPicker({
       setSaving(false);
     }
   };
+  const refresh = async () => {
+    if (!onRefresh || dirty || saving || refreshing) return;
+    setRefreshing(true); setRefreshed(false); setError("");
+    try { await onRefresh(); setRefreshed(true); }
+    catch (err) { setError(err instanceof Error ? err.message : "Could not refresh repositories. Try again."); }
+    finally { setRefreshing(false); }
+  };
   return (
     <div>
-      <div className="relative mb-5">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+      <div className="relative min-w-48 flex-1">
         <Search className="pointer-events-none absolute top-3 left-3 size-3.5 text-muted-foreground" />
         <Input
           aria-label="Search repositories"
@@ -91,6 +103,13 @@ export function RepoPicker({
           className="h-10 rounded-lg bg-background pl-9 text-xs shadow-none"
         />
       </div>
+      {onRefresh && <Button variant="outline" size="sm" className="h-10" onClick={() => void refresh()}
+        disabled={dirty || saving || refreshing} title={dirty ? "Save or discard your changes before refreshing" : undefined}>
+        <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />{refreshing ? "Refreshing…" : "Refresh from GitHub"}
+      </Button>}
+      </div>
+      {onRefresh && dirty && <p className="mb-4 text-xs text-muted-foreground">Save or discard your changes before refreshing.</p>}
+      {refreshed && <p role="status" className="mb-4 text-xs text-muted-foreground">Repository list refreshed. Existing choices were kept; new repositories start disabled.</p>}
       {data.installations.map((inst) => (
         <section key={inst.installationId} className="mb-5">
           <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
@@ -133,7 +152,7 @@ export function RepoPicker({
                       id={controlId}
                       aria-label={`Enable ${repo.fullName}`}
                       checked={on}
-                      disabled={saving || inst.suspended}
+                      disabled={saving || refreshing || inst.suspended}
                       onCheckedChange={() =>
                         toggle(inst.installationId, repo.fullName)
                       }
@@ -185,7 +204,7 @@ export function RepoPicker({
           )}
           <Button
             size="sm"
-            disabled={saving || !dirty || (requireSelection && enabled === 0)}
+              disabled={saving || refreshing || !dirty || (requireSelection && enabled === 0)}
             onClick={() => void save()}
           >
             {saving && <Loader2 className="size-3.5 animate-spin" />}

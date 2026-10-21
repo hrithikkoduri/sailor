@@ -13,7 +13,7 @@ test("thread list: search, filter, accessible navigation and theme persistence",
   page,
 }, info) => {
   const errors = await mockWorkspace(page);
-  await page.goto("/");
+  await page.goto("/threads");
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
     "href",
     "/favicon.svg",
@@ -73,6 +73,8 @@ test("thread list: search, filter, accessible navigation and theme persistence",
     page.getByRole("heading", { name: "Handle empty batches gracefully" }),
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath("threads-dark.png") });
+  // The list fades in after loading; audit its final colors, not blended text.
+  await expect(page.getByRole("tabpanel")).toHaveCSS("opacity", "1");
   const audit = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();
@@ -280,7 +282,7 @@ test("busy chat: queued messages stack as bubbles, interject, and land animated"
   await page
     .getByRole("textbox", { name: "Message the agent" })
     .fill("Please pause and explain the plan.");
-  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.getByRole("textbox", { name: "Message the agent" }).press("Enter");
   // Queued messages show as themselves — user bubbles in a stack on the phase
   // row — and are NOT feed messages yet.
   const stack = page.getByTestId("queued-bubbles");
@@ -292,7 +294,7 @@ test("busy chat: queued messages stack as bubbles, interject, and land animated"
   await page
     .getByRole("textbox", { name: "Message the agent" })
     .fill("Also check the Watch runs.");
-  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.getByRole("textbox", { name: "Message the agent" }).press("Enter");
   await expect(stack).toContainText("Also check the Watch runs.");
   await stack.hover();
   const queuedList = page.getByTestId("queued-list");
@@ -319,7 +321,7 @@ test("busy chat: queued messages stack as bubbles, interject, and land animated"
   await page
     .getByRole("textbox", { name: "Message the agent" })
     .fill("One more note.");
-  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.getByRole("textbox", { name: "Message the agent" }).press("Enter");
   await expect(page.locator('[data-message-id="e4"]')).toHaveClass(
     /message-land/,
   );

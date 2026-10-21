@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/features/shell/app-shell";
 import { Conversation } from "@/features/chat/conversation";
+import { QuestionForm } from "@/features/chat/components/question-form";
 import { ChatComposer } from "@/features/chat/components/composer";
 import { PhaseTrail } from "@/features/chat/components/phase-trail";
 import { QueuedBubbles } from "@/features/chat/components/queued-bubbles";
@@ -31,6 +32,10 @@ import { useThreadStream } from "@/features/chat/use-thread-stream";
 import { emptyLive, mergeConversation } from "@/features/chat/live";
 import { cancelEvent, interjectEvent, postMessage } from "@/features/chat/api";
 import { cancelRun, getThread, keepSandbox, type ThreadDetail } from "./api";
+import { repositoryLabel } from "./api";
+import { useThreadTabs } from "@/features/thread-tabs/thread-tabs-provider";
+import { ThreadDock } from "@/features/thread-tabs/thread-dock";
+import { ThreadRepositoryControl } from "./components/thread-repository-control";
 import { StatusPill } from "@/elements/status-pill";
 import { Button } from "@/elements/button";
 import { IconButton } from "@/elements/icon-button";
@@ -67,11 +72,12 @@ const TERMINAL = new Set(["merged", "closed", "abandoned"]);
 
 export function ThreadDetailPage() {
   const { id = "" } = useParams();
+  const { getDetail, remember } = useThreadTabs();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const runParam = params.get("run");
   const traceOpen = !!runParam || params.get("view") === "trace";
-  const [detail, setDetail] = useState<ThreadDetail | null>(null);
+  const [detail, setDetail] = useState<ThreadDetail | null>(() => getDetail(id) ?? null);
   const [traceVersion, setTraceVersion] = useState(0);
   const [loadError, setLoadError] = useState("");
   const { busy, error, run } = useAction();
@@ -119,6 +125,7 @@ export function ThreadDetailPage() {
   useEffect(() => {
     void refetch();
   }, [refetch]);
+  useEffect(() => { if (detail) remember(detail); }, [detail, remember]);
   useEffect(() => {
     if (!detail || live) return;
     const active = detail.runs.find((r) => r.status === "running");
@@ -174,59 +181,55 @@ export function ThreadDetailPage() {
     (phaseTrail?.phases?.length ?? 0) > 1;
   const initial = detail.events.find((e) => e.kind === "issue_labeled");
   const title =
-    typeof initial?.payload.title === "string"
+    thread.title ?? (typeof initial?.payload.title === "string"
       ? initial.payload.title
-      : `Issue #${thread.issueNumber}`;
+      : thread.source === "github" ? `Issue #${thread.issueNumber}` : "Thread");
+  const awaitingAnswers = detail.questions?.some((q) => q.status === "pending") ?? false;
+  const pendingQuestion = detail.questions?.find((q) => q.status === "pending") ?? null;
+  // The agent can attach (or be queued to attach) a repository during a run;
+  // the composer must show the repository the work is actually happening in.
+  const attachmentEvent = [...detail.events]
+    .reverse()
+    .find((e) => e.kind === "repository_attachment");
+  const attachedRepository =
+    typeof attachmentEvent?.payload.repository === "string" ? attachmentEvent.payload.repository : undefined;
+  // Sibling clones the agent made outside the thread's repository.
+  const adHocRepositories = [
+    ...new Set(
+      detail.events
+        .filter((e) => e.kind === "repository_checkout")
+        .flatMap((e) => (Array.isArray(e.payload.repositories) ? e.payload.repositories : []))
+        .map((r) => (r as { repository?: unknown }).repository)
+        .filter((r): r is string => typeof r === "string" && r !== thread.repo),
+    ),
+  ];
 
   return (
-    <AppShell
-      topbar={
-        <>
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" />
-            <span className="hidden sm:inline">Threads</span>
-          </Link>
-          <span className="mx-1 text-input">/</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {thread.repo}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            #{thread.issueNumber}
-          </span>
-        </>
-      }
-    >
       <Tabs
         value={traceOpen ? "trace" : "chat"}
         onValueChange={(view) =>
           setParams(view === "trace" ? { view: "trace" } : {})
         }
-        className="min-h-0 flex-1 gap-0"
+        className="flex h-svh min-h-0 flex-col gap-0"
       >
+      <AppShell customThreadHeader topbar={
         <div
           data-thread-toolbar
-          className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2 md:px-6"
+          className="flex min-w-0 flex-1 items-center gap-2"
         >
-          <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-auto">
-            <h1 className="min-w-0 truncate text-sm font-medium tracking-tight">
-              {title}
-            </h1>
-            <StatusPill status={thread.state} />
-          </div>
+          <h1 className="sr-only">{title}</h1>
+          <ThreadDock />
           <TabsList
             aria-label="Thread views"
             className="h-8 shrink-0 bg-muted/60"
           >
             <TabsTrigger value="chat" className="gap-2 px-3 text-xs">
               <MessageSquare className="size-3.5" />
-              Conversation
+              <span className="hidden md:inline">Conversation</span><span className="sr-only md:hidden">Conversation</span>
             </TabsTrigger>
             <TabsTrigger value="trace" className="gap-2 px-3 text-xs">
               <Workflow className="size-3.5" />
-              Trace
+              <span className="hidden md:inline">Trace</span><span className="sr-only md:hidden">Trace</span>
             </TabsTrigger>
           </TabsList>
           <div className="ml-auto flex items-center gap-1.5 sm:ml-0">
@@ -307,23 +310,6 @@ export function ThreadDetailPage() {
             )}
             {active && (
               <>
-                <span className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
-                  <span className="size-1.5 animate-pulse rounded-full bg-success" />
-                  {active.status === "queued"
-                    ? "Queued"
-                    : active.agent === "chat"
-                      ? "Responding"
-                      : "Working"}
-                </span>
-                <IconButton
-                  label="Stop current run"
-                  disabled={busy !== null}
-                  onClick={() =>
-                    void act(active.id, () => cancelRun(active.id))
-                  }
-                >
-                  <Square className="size-3" />
-                </IconButton>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -349,6 +335,7 @@ export function ThreadDetailPage() {
             )}
           </div>
         </div>
+      }>
         {(error || loadError) && (
           <p
             role="alert"
@@ -362,11 +349,12 @@ export function ThreadDetailPage() {
           transition={{ duration: 0.15 }}
           className="mt-0 flex min-h-0 flex-1 flex-col"
         >
-          <Conversation
+            <Conversation
             detail={detail}
             live={live}
             landedEventId={landedEventId}
             onOpenRun={(runId) => setParams({ run: runId })}
+            onAnswered={() => void refetch()}
           />
           {(showPhaseTrail || queuedChat.length > 0) && (
             <div className="mx-auto flex w-full max-w-[800px] items-end justify-between gap-3 px-5 pt-3 sm:px-8">
@@ -394,9 +382,29 @@ export function ThreadDetailPage() {
               />
             </div>
           )}
+          {pendingQuestion && (
+            <div className="relative z-20 mx-auto w-full max-w-[800px] px-5 pt-3 sm:px-8">
+              <QuestionForm
+                request={pendingQuestion}
+                paused={!active}
+                overlay
+                onAnswered={() => void refetch()}
+              />
+            </div>
+          )}
           <ChatComposer
+            draftKey={id}
             busy={!!active}
-            disabled={TERMINAL.has(thread.state)}
+            onStop={active ? () => act(active.id, () => cancelRun(active.id)) : undefined}
+            stopping={busy !== null}
+            accessory={<ThreadRepositoryControl thread={thread} active={!!active}
+              blocked={awaitingAnswers || TERMINAL.has(thread.state)}
+              queued={pendingEvents.some((e) => e.kind === "repository_attachment")}
+              {...(attachedRepository ? { repository: attachedRepository } : {})}
+              additional={adHocRepositories}
+              onAttached={() => void refetch()} />}
+            disabled={TERMINAL.has(thread.state) || awaitingAnswers}
+            placeholder={awaitingAnswers ? "Answer Sailor’s questions above to continue." : undefined}
             queuedEventId={queued?.id ?? null}
             onInterject={() => {
               if (queued) void interjectQueued(queued.id);
@@ -426,7 +434,7 @@ export function ThreadDetailPage() {
             />
           </Suspense>
         </TabsContent>
-      </Tabs>
     </AppShell>
+      </Tabs>
   );
 }

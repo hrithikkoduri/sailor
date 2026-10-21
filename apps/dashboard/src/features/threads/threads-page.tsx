@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Inbox, RefreshCw, Search, ArrowUpRight } from "lucide-react";
+import { Inbox, RefreshCw, Search, Plus } from "lucide-react";
 import { getThreads, type ThreadListItem } from "@/features/threads/api";
 import { ThreadRow } from "./components/thread-row";
 import { AppShell } from "@/features/shell/app-shell";
@@ -41,7 +41,7 @@ export function ThreadsPage() {
         (t) =>
           (filter !== "active" || active(t)) &&
           (filter !== "prs" || !!t.prUrl) &&
-          `${t.repo} ${t.issueNumber} ${t.latestRun?.task ?? ""}`
+          `${t.title ?? ""} ${t.repo} ${t.issueNumber} ${t.latestRun?.task ?? ""}`
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
@@ -62,16 +62,16 @@ export function ThreadsPage() {
           <div className="mb-9 flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="eyebrow mb-2">Your agent workspace</p>
-              <h1 className="page-heading">A place for every fix.</h1>
+              <h1 className="page-heading">A thread for every idea.</h1>
               <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
                 Follow the work, join the conversation, and see exactly how your
                 agent got there.
               </p>
             </div>
             <Button variant="outline" asChild>
-              <Link to="/settings">
-                Manage repositories
-                <ArrowUpRight className="size-3.5" />
+              <Link to="/threads/new">
+                New thread
+                <Plus className="size-3.5" />
               </Link>
             </Button>
           </div>
@@ -154,17 +154,14 @@ export function ThreadsPage() {
                       "Try another search or choose a different view."
                     ) : (
                       <>
-                        Enable a repository, then label an issue{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                          agent:fix
-                        </code>
-                        . We’ll take it from there.
+                        Start with a message and optionally attach a repository.
+                        GitHub issues labeled <code className="rounded bg-muted px-1 py-0.5 text-xs">agent:fix</code> appear here too.
                       </>
                     )}
                   </p>
                   {!query && filter === "all" && (
                     <Button className="mt-6" asChild>
-                      <Link to="/settings">Connect a repository</Link>
+                      <Link to="/threads/new">Start a thread</Link>
                     </Button>
                   )}
                 </div>
@@ -172,8 +169,7 @@ export function ThreadsPage() {
             </TabsContent>
           </Tabs>
           <p className="mt-5 text-xs text-muted-foreground">
-            Updates automatically · Only your enabled repositories can start new
-            work.
+            Updates automatically · Start from a message, a repository, or a GitHub issue.
           </p>
         </div>
       </div>

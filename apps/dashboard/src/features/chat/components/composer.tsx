@@ -1,6 +1,7 @@
-import { useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, CornerDownLeft, Loader2 } from "lucide-react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ArrowUp, CornerDownLeft, Loader2, Square } from "lucide-react";
 import { Button } from "@/elements/button";
+import { useThreadTabs } from "@/features/thread-tabs/thread-tabs-provider";
 
 /**
  * The composer writes and sends; it owns no queue state. The queued message,
@@ -14,6 +15,10 @@ export function ChatComposer({
   queuedEventId,
   onInterject,
   onSend,
+  draftKey,
+  onStop,
+  stopping = false,
+  accessory,
 }: {
   busy: boolean;
   disabled?: boolean;
@@ -22,8 +27,13 @@ export function ChatComposer({
   queuedEventId?: string | null;
   onInterject?: () => void;
   onSend: (text: string) => Promise<void>;
+  draftKey?: string;
+  onStop?: () => Promise<void>;
+  stopping?: boolean;
+  accessory?: ReactNode;
 }) {
-  const [text, setText] = useState("");
+  const { getDraft, saveDraft } = useThreadTabs();
+  const [text, setText] = useState(() => draftKey ? getDraft(draftKey) : "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -33,7 +43,9 @@ export function ChatComposer({
     setSending(true);
     setError("");
     try {
+      const sentDraft = text;
       await onSend(text.trim());
+      if (draftKey && getDraft(draftKey) === sentDraft) saveDraft(draftKey, "");
       setText("");
       if (textarea.current) textarea.current.style.height = "auto";
     } catch (err) {
@@ -73,24 +85,29 @@ export function ChatComposer({
           onKeyDown={keyDown}
           placeholder={
             disabled
-              ? "This thread is closed."
+              ? (placeholder ?? "This thread is closed.")
               : (placeholder ??
                 "Ask a question, share context, or give direction…")
           }
           onChange={(e) => {
             setText(e.target.value);
+            if (draftKey) saveDraft(draftKey, e.target.value);
             e.target.style.height = "auto";
             e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
           }}
           className="block min-h-10 w-full resize-none bg-transparent px-1.5 py-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none"
         />
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="px-1.5 text-[11px] text-muted-foreground">
+          {accessory ?? <span className="px-1.5 text-[11px] text-muted-foreground">
             {busy
               ? "Agent working — your message will queue"
               : "A conversation with your agent"}
-          </span>
-          <Button
+          </span>}
+          {busy && onStop ? <Button type="button" size="icon-sm" aria-label="Stop current run"
+            title="Stop the agent; your draft stays here" className="rounded-lg" disabled={stopping}
+            onClick={() => void onStop()}>
+            {stopping ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-3.5 fill-current" />}
+          </Button> : <Button
             size="icon-sm"
             aria-label="Send message"
             className="rounded-lg"
@@ -102,7 +119,7 @@ export function ChatComposer({
             ) : (
               <ArrowUp className="size-4" />
             )}
-          </Button>
+          </Button>}
         </div>
       </div>
       {error ? (

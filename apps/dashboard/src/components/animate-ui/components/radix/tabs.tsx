@@ -21,7 +21,7 @@ type TabsProps = TabsPrimitiveProps;
 function Tabs({ className, ...props }: TabsProps) {
   return (
     <TabsPrimitive
-      className={cn('flex flex-col gap-2', className)}
+      className={cn('relative flex flex-col gap-2', className)}
       {...props}
     />
   );

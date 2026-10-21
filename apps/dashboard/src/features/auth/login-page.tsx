@@ -38,7 +38,7 @@ export function LoginPage() {
             with a conversation.
           </h1>
           <p className="mt-6 max-w-sm text-base leading-relaxed text-muted-foreground">
-            Turn issues into thoughtful fixes. Guide your agent, follow the
+            Turn ideas into shipped work. Guide your agent, follow the
             work, and review every step.
           </p>
         </div>

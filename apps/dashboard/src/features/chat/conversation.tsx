@@ -5,13 +5,14 @@
  * text, system notes for label/CI/push (consecutive pushes merge). While a
  * run works, the live bubble streams in via `useThreadStream`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, MessageSquare } from "lucide-react";
 import { Button } from "@/elements/button";
 import type {
   ThreadDetail,
   ThreadEventRow,
   ThreadRun,
+  QuestionRequest,
 } from "@/features/threads/api";
 import {
   AgentMessage,
@@ -23,8 +24,11 @@ import { presentationFor } from "@/features/chat/presentation";
 import { useDebugMode } from "@/features/debug/debug-provider";
 import { payloadNum, payloadStr } from "@/utils/events";
 import { cn } from "@/utils/cn";
+import { QuestionForm } from "./components/question-form";
+import { useThreadTabs } from "@/features/thread-tabs/thread-tabs-provider";
 
 type FeedItem =
+  | { kind: "question"; id: string; at: string; request: QuestionRequest }
   | {
       kind: "human";
       id: string;
@@ -61,18 +65,21 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
 
   // Only messages written in OUR chat are user bubbles by default; every
   // external event arrives as a system receipt (presentation.ts chooses).
-  if (presentation.role === "user") {
+  if (presentation.role === "user" || e.kind === "question_answers" || e.kind === "repository_attachment") {
     return {
       kind: "human",
       id: `e${e.id}`,
       at,
       author: str(p, "author") ?? "you",
       body: str(p, "body") ?? "",
-      label: e.kind === "chat_message" ? "dashboard" : "comment",
+      label: e.kind === "question_answers" ? "answers" : e.kind === "chat_message" ? "dashboard" : "comment",
     };
   }
 
   switch (e.kind) {
+    // Internal bookkeeping: shown in the composer, not as a transcript note.
+    case "repository_checkout":
+      return null;
     case "pull_request_review":
     case "pull_request_review_comment": {
       const author = str(p, "author") ?? "reviewer";
@@ -165,6 +172,7 @@ function eventToFeedItem(e: ThreadEventRow): FeedItem | null {
 
 function buildFeed(detail: ThreadDetail, debug: boolean): FeedItem[] {
   const feed: FeedItem[] = [];
+  for (const request of detail.questions ?? []) feed.push({ kind: "question", id: request.id, at: request.createdAt, request });
   for (const e of detail.events) {
     const item = eventToFeedItem(e);
     // "hidden" kinds exist only in debug mode — strictly invisible otherwise.
@@ -217,14 +225,17 @@ export function Conversation({
   live,
   landedEventId,
   onOpenRun,
+  onAnswered,
 }: {
   detail: ThreadDetail;
   live: LiveState | null;
   /** A message just interjected — animate it as it lands in the thread. */
   landedEventId?: string | null;
   onOpenRun: (runId: string) => void;
+  onAnswered?: () => void;
 }) {
   const { enabled: debug } = useDebugMode();
+  const { getPosition, savePosition } = useThreadTabs();
   const items = useMemo(() => buildFeed(detail, debug), [detail, debug]);
   // Messages that just landed (drained from the queue or interjected) rise
   // into place; the first render never animates a whole history.
@@ -245,14 +256,24 @@ export function Conversation({
   }, [items]);
   const streaming = live && !live.finished;
   const scroller = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
+  const initialPosition = useRef(getPosition(detail.thread.id));
+  const following = useRef(initialPosition.current?.following ?? true);
+  const restored = useRef(false);
   const [showJump, setShowJump] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
+    if (!restored.current) {
+      restored.current = true;
+      if (initialPosition.current && !initialPosition.current.following) {
+        el.scrollTop = initialPosition.current.top;
+        setShowJump(true);
+        return;
+      }
+    }
     if (following.current) el.scrollTop = el.scrollHeight;
-  }, [items.length, live?.sequence, streaming]);
+  }, [items.length, live?.sequence, streaming, detail.questions]);
 
   useEffect(() => {
     if (!landedEventId) return;
@@ -276,11 +297,7 @@ export function Conversation({
           A conversation about the work.
         </h2>
         <p className="max-w-sm text-xs text-muted-foreground/80">
-          Label the issue{" "}
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
-            agent:fix
-          </span>{" "}
-          on GitHub — or just write a message below.
+          Start with a goal or a question below. Attach a repository whenever the work needs one.
         </p>
       </div>
     );
@@ -297,12 +314,19 @@ export function Conversation({
           if (!el) return;
           following.current =
             el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+          savePosition(detail.thread.id, { top: el.scrollTop, following: following.current });
           setShowJump(!following.current);
         }}
         className="min-h-0 flex-1 overflow-y-auto"
       >
         <div className="mx-auto flex w-full max-w-[800px] flex-col gap-8 px-5 py-10 sm:px-8">
           {items.map((item) => {
+            // Pending forms float above the composer (thread view) so they are
+            // never buried in the transcript; answered ones stay as history.
+            if (item.kind === "question")
+              return item.request.status === "pending" ? null : (
+                <QuestionForm key={item.id} request={item.request} paused={false} onAnswered={() => onAnswered?.()} />
+              );
             if (item.kind === "note") {
               return (
                 <SystemNote

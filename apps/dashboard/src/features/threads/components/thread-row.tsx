@@ -1,14 +1,13 @@
 import { Link } from "react-router-dom";
 import { ChevronRight, GitPullRequest, MessageSquare } from "lucide-react";
 import type { ThreadListItem } from "@/features/threads/api";
+import { threadTitle, repositoryLabel } from "@/features/threads/api";
 import { StatusPill } from "@/elements/status-pill";
 import { timeAgo } from "@/utils/format";
 
 export function ThreadRow({ thread }: { thread: ThreadListItem }) {
-  const repo = thread.repo.split("/").pop() ?? thread.repo;
-  const title =
-    thread.latestRun?.task?.match(/^Fix GitHub issue #\d+: ([^\n]+)/)?.[1] ??
-    `Issue #${thread.issueNumber}`;
+  const repo = repositoryLabel(thread.repo);
+  const title = threadTitle(thread);
   return (
     <div className="group flex min-w-0 items-center gap-3 border-b border-border px-4 py-4 transition-colors last:border-b-0 hover:bg-muted/40 sm:px-5">
       <span className="hidden size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background sm:flex">
@@ -31,7 +30,7 @@ export function ThreadRow({ thread }: { thread: ThreadListItem }) {
         <p className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <span className="truncate">{repo}</span>
           <span>·</span>
-          <span>#{thread.issueNumber}</span>
+           <span>{thread.source === "github" ? `#${thread.issueNumber}` : "Manual thread"}</span>
           <span className="hidden sm:inline">
             · {timeAgo(thread.updatedAt)}
           </span>
@@ -39,7 +38,8 @@ export function ThreadRow({ thread }: { thread: ThreadListItem }) {
       </Link>
       <StatusPill
         status={
-          thread.latestRun?.status === "running" ? "running" : thread.state
+          thread.latestRun?.status === "paused" && thread.latestRun.disposition === "blocked" ? "waiting_for_input"
+            : thread.latestRun?.status === "running" ? "running" : thread.state
         }
       />
       {thread.prUrl && (

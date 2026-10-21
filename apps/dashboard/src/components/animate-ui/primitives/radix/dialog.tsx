@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
-import { AnimatePresence, motion, type HTMLMotionProps } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion, type HTMLMotionProps } from 'motion/react';
+import { controlSpring } from '@/utils/motion';
 
 import { useControlledState } from '@/hooks/use-controlled-state';
 import { getStrictContext } from '@/utils/get-strict-context';
@@ -72,14 +73,15 @@ function DialogOverlay({
   transition = { duration: 0.2, ease: 'easeInOut' },
   ...props
 }: DialogOverlayProps) {
+  const reduce = useReducedMotion();
   return (
     <DialogPrimitive.Overlay data-slot="dialog-overlay" asChild forceMount>
       <motion.div
         key="dialog-overlay"
-        initial={{ opacity: 0, filter: 'blur(4px)' }}
-        animate={{ opacity: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, filter: 'blur(4px)' }}
-        transition={transition}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={reduce ? { duration: 0 } : transition}
         {...props}
       />
     </DialogPrimitive.Overlay>
@@ -103,13 +105,12 @@ function DialogContent({
   onEscapeKeyDown,
   onPointerDownOutside,
   onInteractOutside,
-  transition = { type: 'spring', stiffness: 150, damping: 25 },
+  transition = controlSpring,
   ...props
 }: DialogContentProps) {
-  const initialRotation =
-    from === 'bottom' || from === 'left' ? '20deg' : '-20deg';
+  const reduce = useReducedMotion();
   const isVertical = from === 'top' || from === 'bottom';
-  const rotateAxis = isVertical ? 'rotateX' : 'rotateY';
+  const offset = reduce ? 0 : (from === 'top' || from === 'left' ? -10 : 10);
 
   return (
     <DialogPrimitive.Content
@@ -126,20 +127,24 @@ function DialogContent({
         data-slot="dialog-content"
         initial={{
           opacity: 0,
-          filter: 'blur(4px)',
-          transform: `perspective(500px) ${rotateAxis}(${initialRotation}) scale(0.8)`,
+          x: isVertical ? 0 : offset,
+          y: isVertical ? offset : 0,
+          scale: reduce ? 1 : 0.98,
         }}
         animate={{
           opacity: 1,
-          filter: 'blur(0px)',
-          transform: `perspective(500px) ${rotateAxis}(0deg) scale(1)`,
+          x: 0,
+          y: 0,
+          scale: 1,
         }}
         exit={{
           opacity: 0,
-          filter: 'blur(4px)',
-          transform: `perspective(500px) ${rotateAxis}(${initialRotation}) scale(0.8)`,
+          x: isVertical ? 0 : offset / 2,
+          y: isVertical ? offset / 2 : 0,
+          scale: reduce ? 1 : 0.99,
+          transition: { duration: reduce ? 0 : 0.12 },
         }}
-        transition={transition}
+        transition={reduce ? { duration: 0 } : transition}
         {...props}
       />
     </DialogPrimitive.Content>

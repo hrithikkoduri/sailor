@@ -5,6 +5,7 @@ const LABELS: Record<string, string> = {
   waiting_ci: "Waiting for checks",
   addressing_comments: "In review",
   budget_exhausted: "Budget reached",
+  waiting_for_input: "Waiting for you",
 };
 export function StatusPill({
   status,

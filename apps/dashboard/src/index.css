@@ -1,6 +1,6 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
-@import "tailwindcss";
+@import "tailwindcss" source("./");
 @import "tw-animate-css";
 
 @custom-variant dark (&:where(.dark, .dark *));

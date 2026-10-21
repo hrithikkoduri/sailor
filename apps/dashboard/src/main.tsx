@@ -5,6 +5,7 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "./app/theme-provider";
 import { DebugProvider } from "./features/debug/debug-provider";
 import App from "./app/App";
+import { ThreadTabsProvider } from "./features/thread-tabs/thread-tabs-provider";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -13,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
       <ThemeProvider>
         <DebugProvider>
           <BrowserRouter>
-            <App />
+            <ThreadTabsProvider><App /></ThreadTabsProvider>
           </BrowserRouter>
         </DebugProvider>
       </ThemeProvider>
