@@ -2,7 +2,7 @@
   "name": "@sailor/server",
   "version": "0.1.0",
   "private": true,
-  "description": "The Sailor product: issue-to-PR pipeline around anchor-ai-sdk.",
+  "description": "The Sailor engineering workspace, built on anchor-ai-sdk.",
   "type": "module",
   "bin": {
     "sailor": "./dist/cli.js"
@@ -11,8 +11,8 @@
     "dev": "tsx src/cli.ts",
     "cli": "tsx src/cli.ts",
     "serve": "tsx src/cli.ts serve",
-    "serve:watch": "tsx watch --clear-screen=false src/cli.ts serve",
-    "worker:watch": "tsx watch --clear-screen=false src/cli.ts worker",
+    "serve:watch": "tsx watch --clear-screen=false --exclude \"**/node_modules/**\" --exclude \"**/.anchor/**\" --exclude \"**/traces/**\" src/cli.ts serve",
+    "worker:watch": "tsx watch --clear-screen=false --exclude \"**/node_modules/**\" --exclude \"**/.anchor/**\" --exclude \"**/traces/**\" src/cli.ts worker",
     "doctor": "tsx src/cli.ts doctor",
     "migrate": "tsx src/cli.ts migrate",
     "repair:history": "tsx scripts/repair-thread-history.ts",

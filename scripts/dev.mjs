@@ -10,7 +10,7 @@
  * it's account-owned infrastructure, and the URL is configured on the App.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
@@ -119,7 +119,53 @@ start("serve", ["run", "serve:watch", "-w", "apps/server"]);
 start("worker", ["run", "worker:watch", "-w", "apps/server"]);
 start("web", ["run", "dev", "-w", "apps/dashboard"]);
 
-log("stack", "dashboard → http://localhost:5173  ·  webhooks → :8787 (tunnel: ngrok)");
+// --- 4. optional public tunnel (ngrok) -------------------------------------------
+// GitHub needs a public HTTPS URL for webhooks. Starting it here means the URL
+// is printed with the rest of the stack instead of a second terminal — and the
+// URL is written to .tunnel-url for scripts that need it.
+const tunnelEnabled =
+  process.env.SAILOR_TUNNEL === "1" || !!process.env.NGROK_AUTHTOKEN;
+
+async function publicUrl() {
+  try {
+    const res = await fetch("http://127.0.0.1:4040/api/tunnels");
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return data.tunnels?.find((t) => t.public_url?.startsWith("https://"))?.public_url;
+  } catch {
+    return undefined;
+  }
+}
+
+async function startTunnel() {
+  if (!tunnelEnabled) {
+    log("tunnel", "off (set SAILOR_TUNNEL=1 to expose webhooks with ngrok)");
+    return;
+  }
+  const child = spawn("ngrok", ["http", "8787", "--log", "stdout"], {
+    cwd: root,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.on("error", () => log("tunnel", "ngrok not found — install it or unset SAILOR_TUNNEL"));
+  child.on("exit", (code) => log("tunnel", `exited (code ${code})`));
+  children.push(child);
+
+  for (let i = 0; i < 20; i++) {
+    const url = await publicUrl();
+    if (url) {
+      writeFileSync(`${root}.tunnel-url`, `${url}\n`);
+      log("tunnel", `public → ${url}`);
+      log("tunnel", `set the GitHub App webhook to ${url}/webhooks/github`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  log("tunnel", "ngrok started but no public URL appeared (is :4040 in use?)");
+}
+
+void startTunnel();
+
+log("stack", "dashboard → http://localhost:5173  ·  webhooks → :8787");
 log("stack", "watch mode: edits restart serve + worker (a worker restart mid-run = the sweep resumes it)");
 
 let shuttingDown = false;

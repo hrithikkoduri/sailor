@@ -11,3 +11,5 @@ playwright-report/
 .opencode/
 image/.build/
 BUILD_PLAN.md
+PRODUCTION.md
+.tunnel-url

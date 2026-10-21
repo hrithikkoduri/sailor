@@ -28,5 +28,26 @@ services:
       timeout: 3s
       retries: 15
 
+  # Local emulation of AWS Secrets Manager, so the production adapter can be
+  # exercised without an AWS account: same SDK, endpoint overridden to :4566.
+  # Seed it with `npm run secrets:local`. Not used unless
+  # SAILOR_SECRETS_BACKEND=aws.
+  localstack:
+    image: localstack/localstack:stable
+    environment:
+      SERVICES: secretsmanager
+      DEBUG: "0"
+      PERSISTENCE: "1"
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
 volumes:
   pgdata:
+  localstack:

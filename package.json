@@ -2,7 +2,7 @@
   "name": "sailor",
   "version": "0.1.0",
   "private": true,
-  "description": "Sailor — label a GitHub issue and get a fix PR with tests and a full trace, running in an isolated Firecracker microVM. Built on Anchor (anchor-ai-sdk).",
+  "description": "Sailor — an engineering workspace for conversations, repository work, and explicit PR delivery with a full agent trace. Built on Anchor (anchor-ai-sdk).",
   "type": "module",
   "workspaces": [
     "apps/*"
@@ -15,7 +15,8 @@
     "dev": "node scripts/dev.mjs",
     "sailor": "npm run cli -w apps/server --",
     "doctor": "npm run doctor -w apps/server --",
-    "migrate": "npm run migrate -w apps/server --"
+    "migrate": "npm run migrate -w apps/server --",
+    "secrets:local": "node scripts/seed-local-secrets.mjs"
   },
   "engines": {
     "node": ">=20"

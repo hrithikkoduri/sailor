@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * sailor — label a GitHub issue, get a fix PR with tests and a full trace,
- * run inside an isolated Firecracker microVM.
+ * sailor — engineering conversations, repository work, and explicit PR delivery
+ * inside isolated sandboxes, with a full trace. Issues are optional intake.
  *
  * This is the command router. Each command lives in its own module; this file
  * only parses argv and dispatches. Commands not built yet print the step in
