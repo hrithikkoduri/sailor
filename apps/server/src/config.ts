@@ -219,7 +219,43 @@ function optionalNumber(value: string | undefined): number | undefined {
  * Build the typed config from an environment map. Pure: no file access, no
  * mutation — tests can pass a plain object.
  */
+/**
+ * Production-only boot check.
+ *
+ * Configuration errors are cheap to catch at startup and expensive to discover
+ * mid-run (a missing webhook secret silently rejects every delivery; an http
+ * public URL silently drops the Secure flag from session cookies). Development
+ * stays permissive: local defaults are the point.
+ */
+export function assertProductionEnv(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.NODE_ENV !== "production") return;
+  const problems: string[] = [];
+  const required = (key: string, test?: (value: string) => boolean, hint?: string) => {
+    const value = env[key]?.trim();
+    if (!value) problems.push(`${key} is required${hint ? ` (${hint})` : ""}`);
+    else if (test && !test(value)) problems.push(`${key} is invalid${hint ? ` (${hint})` : ""}`);
+  };
+  const isUrl = (value: string) => {
+    try { new URL(value); return true; } catch { return false; }
+  };
+  required("DATABASE_URL", isUrl, "postgres connection string");
+  required("REDIS_URL", isUrl, "redis connection string");
+  required("SAILOR_PUBLIC_URL", (v) => isUrl(v) && v.startsWith("https://"), "must be the public https URL — cookies are only Secure over TLS");
+  required("GITHUB_APP_ID");
+  required("GITHUB_PRIVATE_KEY");
+  required("GITHUB_WEBHOOK_SECRET");
+  required("SAILOR_SECRET_KEY", (v) => Buffer.from(v, "base64").length === 32, "32 bytes, base64 — encrypts account secrets");
+  if (env.SAILOR_SANDBOX === "heyo") required("HEYO_TOKEN");
+  if (env.SAILOR_SANDBOX === "e2b") required("E2B_API_KEY");
+  if (env.SAILOR_SANDBOX === "daytona") required("DAYTONA_API_KEY");
+  if (problems.length)
+    throw new Error(
+      "Refusing to start in production:\n  - " + problems.join("\n  - "),
+    );
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
+  assertProductionEnv(env);
   return {
     publication: {
       requirePassingTests: env.SAILOR_REQUIRE_PASSING_TESTS === "1",
