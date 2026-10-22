@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Sandbox } from "anchor-ai-sdk";
-import { redactValue } from "../../src/agents/secret-tools.js";
+import { redactValue } from "../../src/services/agents/tools/secret.js";
 
 describe("secret redaction", () => {
   it("replaces every literal occurrence, including repeats and partial lines", () => {
@@ -26,7 +26,7 @@ function fakeSandbox(output: string, exitCode = 0) {
 
 describe("run_with_secret", () => {
   it("injects the value into that command and returns a scrubbed observation", async () => {
-    const { secretTools } = await import("../../src/agents/secret-tools.js");
+    const { secretTools } = await import("../../src/services/agents/tools/secret.js");
     const { sandbox, calls } = fakeSandbox("using sk-live-9 now\nsk-live-9\n");
     const db = {
       select: () => ({
@@ -47,39 +47,39 @@ describe("run_with_secret", () => {
     // The store decrypts real ciphertext; here we only prove the tool's
     // plumbing and redaction, so stub the lookup to a known value.
     vi.resetModules();
-    vi.doMock("../../src/secrets/store.js", () => ({
+    vi.doMock("../../src/services/secrets/store.js", () => ({
       getSecretValue: async () => ({ envVar: "DAYTONA_API_KEY", value: "sk-live-9" }),
       secretCatalog: async () => [{ name: "daytona", envVar: "DAYTONA_API_KEY" }],
     }));
-    const mod = await import("../../src/agents/secret-tools.js");
+    const mod = await import("../../src/services/agents/tools/secret.js");
     const [tool] = mod.secretTools({ db, threadId: "t1", userId: "u1", sandbox });
     const result = await tool!.run({ secret: "daytona", command: "curl -H $DAYTONA_API_KEY" }, { sandbox });
     expect(calls[0]?.env).toEqual({ DAYTONA_API_KEY: "sk-live-9" });
     expect(result.content).not.toContain("sk-live-9");
     expect(result.content).toContain("[REDACTED]");
     expect(JSON.stringify(result)).not.toContain("sk-live-9");
-    vi.doUnmock("../../src/secrets/store.js");
+    vi.doUnmock("../../src/services/secrets/store.js");
   });
 
   it("tells the agent to have the user add a missing secret, without inventing one", async () => {
     vi.resetModules();
-    vi.doMock("../../src/secrets/store.js", () => ({
+    vi.doMock("../../src/services/secrets/store.js", () => ({
       getSecretValue: async () => undefined,
       secretCatalog: async () => [],
     }));
-    const { secretTools } = await import("../../src/agents/secret-tools.js");
+    const { secretTools } = await import("../../src/services/agents/tools/secret.js");
     const { sandbox, calls } = fakeSandbox("");
     const [tool] = secretTools({ db: {} as never, threadId: "t", userId: "u", sandbox });
     const result = await tool!.run({ secret: "daytona", command: "echo hi" }, { sandbox });
     expect(result.ok).toBe(false);
     expect(result.content).toMatch(/Settings → Secrets/);
     expect(calls).toHaveLength(0); // never runs with an empty/placeholder key
-    vi.doUnmock("../../src/secrets/store.js");
+    vi.doUnmock("../../src/services/secrets/store.js");
   });
 
   it("refuses a thread with no owner", async () => {
     vi.resetModules();
-    const { secretTools } = await import("../../src/agents/secret-tools.js");
+    const { secretTools } = await import("../../src/services/agents/tools/secret.js");
     const { sandbox, calls } = fakeSandbox("");
     const [tool] = secretTools({ db: {} as never, threadId: "t", userId: null, sandbox });
     const result = await tool!.run({ secret: "x", command: "echo hi" }, { sandbox });

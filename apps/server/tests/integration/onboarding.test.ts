@@ -13,10 +13,10 @@ import {
   createQueues,
   type Queues,
 } from "../../src/queue/index.js";
-import { createServerApp } from "../../src/server/app.js";
-import { createSession, SESSION_COOKIE } from "../../src/auth/session.js";
-import type { GitHubAppService } from "../../src/github/app.js";
-import type { GitHubClient } from "../../src/github/client.js";
+import { createServerApp } from "../../src/http/app.js";
+import { createSession, SESSION_COOKIE } from "../../src/services/auth/session.js";
+import type { GitHubAppService } from "../../src/services/github/app.js";
+import type { GitHubClient } from "../../src/services/github/client.js";
 import { loadConfig } from "../../src/config.js";
 
 const SECRET = "test-webhook-secret";

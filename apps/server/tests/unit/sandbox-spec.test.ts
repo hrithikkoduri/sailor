@@ -5,7 +5,7 @@
  * workspace state, force-pushed every turn.
  */
 import { describe, expect, it } from "vitest";
-import { sandboxSpecForThread } from "../../src/runs/execute.js";
+import { sandboxSpecForThread } from "../../src/services/runs/execute.js";
 
 const base = "/base";
 

@@ -14,8 +14,8 @@ import type { Pool } from "pg";
 import { LocalSandbox } from "anchor-ai-sdk/sandbox/local";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { deliverPullRequest, traceUrl } from "../../src/github/pr.js";
-import type { GitHubClient } from "../../src/github/client.js";
+import { deliverPullRequest, traceUrl } from "../../src/services/github/pr.js";
+import type { GitHubClient } from "../../src/services/github/client.js";
 import { loadConfig } from "../../src/config.js";
 
 const FIXTURE = fileURLToPath(

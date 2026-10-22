@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { heartbeatRun, sweepStaleRuns } from "../../src/runs/lease.js";
+import { heartbeatRun, sweepStaleRuns } from "../../src/services/runs/lease.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("run leases", () => {

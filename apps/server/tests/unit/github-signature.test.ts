@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { verifyWebhookSignature } from "../../src/github/signature.js";
+import { verifyWebhookSignature } from "../../src/services/github/signature.js";
 
 const SECRET = "s3cret";
 const sign = (body: string, secret = SECRET) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;

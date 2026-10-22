@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Sandbox } from "anchor-ai-sdk";
-import { findAdHocCheckouts } from "../../src/runs/execute.js";
+import { findAdHocCheckouts } from "../../src/services/runs/execute.js";
 
 /** A sandbox that answers only the two probes the scanner makes. */
 function fakeSandbox(files: Record<string, string>, workspace = "/home/user/repo"): Sandbox {

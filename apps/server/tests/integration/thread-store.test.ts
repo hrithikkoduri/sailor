@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { PostgresThreadStore } from "../../src/threads/thread-store.js";
+import { PostgresThreadStore } from "../../src/services/threads/thread-store.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("PostgresThreadStore", () => {

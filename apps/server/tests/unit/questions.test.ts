@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseQuestions, validateAnswers } from "../../src/threads/questions.js";
+import { parseQuestions, validateAnswers } from "../../src/services/threads/questions.js";
 
 const form = [{ id: "repo", type: "repository", label: "Which repository?", options: [{ value: "acme/web", label: "Web app" }], recommended: "acme/web" },
   { id: "behavior", type: "text", label: "What should happen?" },

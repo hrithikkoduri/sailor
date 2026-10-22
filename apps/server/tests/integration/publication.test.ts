@@ -22,9 +22,9 @@ import { LocalSandbox } from "anchor-ai-sdk/sandbox/local";
 import { createPool, createDb, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { loadConfig } from "../../src/config.js";
-import { executeRun } from "../../src/runs/execute.js";
-import type { GitHubClient } from "../../src/github/client.js";
-import type { GitHubAppService } from "../../src/github/app.js";
+import { executeRun } from "../../src/services/runs/execute.js";
+import type { GitHubClient } from "../../src/services/github/client.js";
+import type { GitHubAppService } from "../../src/services/github/app.js";
 import { seedRepo } from "../helpers/github-fixtures.js";
 import { scriptedLLM } from "../helpers/scripted-llm.js";
 

@@ -2,7 +2,7 @@
  * Event → task rendering (the decision #28 voice). Pure tests.
  */
 import { describe, expect, it } from "vitest";
-import { renderGithubTask } from "../../src/github/render.js";
+import { renderGithubTask } from "../../src/services/github/render.js";
 
 describe("renderGithubTask", () => {
   it("reviews carry the author, state, body and the act instruction", () => {

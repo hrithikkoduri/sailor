@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSailorPrompt } from "../../src/agents/prompts.js";
+import { buildSailorPrompt } from "../../src/services/agents/prompts.js";
 
 describe("Sailor interaction contract", () => {
   it("routes every actual user question through the structured tool, including changed scope", () => {

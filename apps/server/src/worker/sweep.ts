@@ -8,7 +8,7 @@
 import type { Queues } from "../queue/index.js";
 import { RUN_JOB_OPTIONS } from "../queue/index.js";
 import type { Db } from "../db/index.js";
-import { sweepStaleRuns, type SweepResult } from "../runs/lease.js";
+import { sweepStaleRuns, type SweepResult } from "../services/runs/lease.js";
 
 export async function handleSweep(
   deps: { db: Db; queues: Queues },

@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { loadConfig } from "../config.js";
 import { createDb, createPool, schema } from "../db/index.js";
 import { createQueueConnection, createQueues } from "../queue/index.js";
-import { createRun } from "../runs/create.js";
+import { createRun } from "../services/runs/create.js";
 
 const USAGE = `Usage: sailor runs enqueue --repo <url-or-path> --task "<text>" [options]
 

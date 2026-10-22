@@ -20,8 +20,8 @@ import {
   type Queues,
   type RunJobData,
 } from "../../src/queue/index.js";
-import { executeRun } from "../../src/runs/execute.js";
-import { PostgresThreadStore } from "../../src/threads/thread-store.js";
+import { executeRun } from "../../src/services/runs/execute.js";
+import { PostgresThreadStore } from "../../src/services/threads/thread-store.js";
 import { handleSweep } from "../../src/worker/sweep.js";
 import { loadConfig } from "../../src/config.js";
 import { scriptedLLM, type Scripted } from "../helpers/scripted-llm.js";

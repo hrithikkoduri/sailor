@@ -2,7 +2,7 @@
  * GitHub client — request shapes verified against a mocked fetch. No network.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubClient } from "../../src/github/client.js";
+import { createGitHubClient } from "../../src/services/github/client.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

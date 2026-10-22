@@ -2,7 +2,7 @@
  * Repo + ref helpers — including the never-touch-main guard.
  */
 import { describe, expect, it } from "vitest";
-import { assertSafeHeadRef, assertSafeCheckpointRef, githubRepoUrl, headRefFor, headRefForThread, isGithubSlug } from "../../src/github/repo.js";
+import { assertSafeHeadRef, assertSafeCheckpointRef, githubRepoUrl, headRefFor, headRefForThread, isGithubSlug } from "../../src/services/github/repo.js";
 
 describe("github repo helpers", () => {
   it("isGithubSlug is a format check only — threads.source decides GitHub-ness", () => {

@@ -10,7 +10,7 @@
 import { describe } from "vitest";
 import { runSandboxConformance } from "anchor-ai-sdk/testing";
 import { loadConfig, loadDotEnv } from "../../src/config.js";
-import { heyoProvider } from "../../src/heyo-provider.js";
+import { heyoProvider } from "../../src/sandbox/heyo.js";
 
 const live = process.env.RUN_LIVE_HEYO_TESTS === "1";
 if (live) loadDotEnv();

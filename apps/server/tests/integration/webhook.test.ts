@@ -9,7 +9,7 @@ import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
-import { createServerApp } from "../../src/server/app.js";
+import { createServerApp } from "../../src/http/app.js";
 import { loadConfig } from "../../src/config.js";
 import { seedRepo } from "../helpers/github-fixtures.js";
 

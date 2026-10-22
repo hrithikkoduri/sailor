@@ -2,7 +2,7 @@
  * Auth rate limiting — fixed window per key, bounded memory, Retry-After hints.
  */
 import { describe, expect, it } from "vitest";
-import { createLimiter, clientAddress } from "../../src/server/rate-limit.js";
+import { createLimiter, clientAddress } from "../../src/http/rate-limit.js";
 
 describe("createLimiter", () => {
   it("allows up to the limit, then refuses until the window rolls over", () => {

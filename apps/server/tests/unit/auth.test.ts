@@ -2,8 +2,8 @@
  * Auth primitives (decision #41): argon2id hashing and session-token hashing.
  */
 import { describe, expect, it } from "vitest";
-import { hashPassword, verifyPassword, passwordProblem, normalizeEmail } from "../../src/auth/password.js";
-import { hashToken } from "../../src/auth/session.js";
+import { hashPassword, verifyPassword, passwordProblem, normalizeEmail } from "../../src/services/auth/password.js";
+import { hashToken } from "../../src/services/auth/session.js";
 
 describe("passwords (argon2id)", () => {
   it("hashes and verifies; the wrong password fails", async () => {

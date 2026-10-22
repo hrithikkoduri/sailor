@@ -33,7 +33,7 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
   receipt shipped for reviews. Remaining: `issue_comment` context (no hunk
   exists — resolve file/line from the comment API), reply threading via
   `in_reply_to_id`, "outdated" comment state. _Where:_
-  `apps/server/src/server/app.ts`, `apps/server/src/github/render.ts`.
+  `apps/server/src/http/routes/`, `apps/server/src/services/github/render.ts`.
   _Trigger:_ next review-thread complaint. _Size:_ S.
 - **"Queue instead of interject" affordance** — UI to downgrade an
   interjection back to queued (design decision #28 deferred this). _Where:_
@@ -42,7 +42,7 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
   `disposition: "blocked"` + summary (the engine only transports the opaque
   handoff — decision #64); Sailor posts it as a comment + `agent:needs-input`
   label and the human reply becomes the next event. _Where:_
-  `apps/server/src/github/`, `apps/server/src/agents/sailor-handoff.ts`.
+  `apps/server/src/services/github/`, `apps/server/src/services/agents/sailor-handoff.ts`.
   _Trigger:_ step 13 client wiring. _Size:_ S.
 - **Agent teams in the pipeline** — once Anchor ships delegation (package
   decision #71, "Agent teams" in its roadmap), a run declares a roster instead
@@ -55,7 +55,7 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
   completion signal — `finish()` and the disposition path are unchanged
   (Anchor #64/#71). Policy that stays here: the roster, each role's tool
   subset, the budget split, and what a verdict gates. _Where:_
-  `apps/server/src/agents/`, `apps/server/src/runs/execute.ts`. _Trigger:_
+  `apps/server/src/services/agents/`, `apps/server/src/services/runs/execute.ts`. _Trigger:_
   Anchor's delegation lands; the verifier is the first delegation.
   _Size:_ M.
 

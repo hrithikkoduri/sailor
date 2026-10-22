@@ -22,14 +22,14 @@ import {
   type BabysitJobData,
   type RunJobData,
 } from "../queue/index.js";
-import { createGitHubApp } from "../github/app.js";
-import { executeRun } from "../runs/execute.js";
-import { handleBudgetAftermath } from "../runs/revival.js";
-import { drainInbox } from "../threads/inbox.js";
-import { createLivePublisher, createThreadNotifier } from "../server/stream.js";
+import { createGitHubApp } from "../services/github/app.js";
+import { executeRun } from "../services/runs/execute.js";
+import { handleBudgetAftermath } from "../services/runs/revival.js";
+import { drainInbox } from "../services/threads/inbox.js";
+import { createLivePublisher, createThreadNotifier } from "../http/stream.js";
 import { handleSweep } from "./sweep.js";
 import { runBabysitSweep } from "./babysit.js";
-import { sweepBackgroundJobs } from "../runs/background.js";
+import { sweepBackgroundJobs } from "../services/runs/background.js";
 
 const USAGE = `Usage: sailor worker [options]
 

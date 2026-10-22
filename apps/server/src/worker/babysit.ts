@@ -16,14 +16,14 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { schema, type Db } from "../db/index.js";
 import type { Queues } from "../queue/index.js";
-import type { GitHubClient } from "../github/client.js";
-import type { GitHubAppService } from "../github/app.js";
-import { failedCheckNames, prIsConflicted, unansweredComments } from "../github/checks.js";
-import { renderGithubTask } from "../github/render.js";
-import { appendEvent, consumeEvents, pendingEvents } from "../threads/inbox.js";
-import { canTransition } from "../threads/state.js";
-import { wakeThread } from "../threads/wake.js";
-import { requestCancel } from "../runs/lease.js";
+import type { GitHubClient } from "../services/github/client.js";
+import type { GitHubAppService } from "../services/github/app.js";
+import { failedCheckNames, prIsConflicted, unansweredComments } from "../services/github/checks.js";
+import { renderGithubTask } from "../services/github/render.js";
+import { appendEvent, consumeEvents, pendingEvents } from "../services/threads/inbox.js";
+import { canTransition } from "../services/threads/state.js";
+import { wakeThread } from "../services/threads/wake.js";
+import { requestCancel } from "../services/runs/lease.js";
 
 export interface BabysitDeps {
   db: Db;

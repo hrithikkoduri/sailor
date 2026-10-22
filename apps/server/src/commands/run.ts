@@ -22,7 +22,7 @@ import {
   type AgentEvent,
   type Sandbox,
 } from "anchor-ai-sdk";
-import { sandboxProvider } from "../sandbox-provider.js";
+import { sandboxProvider } from "../sandbox/index.js";
 import { local } from "anchor-ai-sdk/sandbox/local";
 
 const USAGE = `Usage: sailor run <repo> <issue> [options]

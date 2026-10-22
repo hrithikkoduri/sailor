@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decryptSecret, encryptSecret, encryptionKey } from "../../src/secrets/store.js";
+import { decryptSecret, encryptSecret, encryptionKey } from "../../src/services/secrets/store.js";
 
 const key = Buffer.alloc(32, 7);
 

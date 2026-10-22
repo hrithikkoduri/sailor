@@ -8,7 +8,7 @@
 import { loadConfig } from "../config.js";
 import { type Sandbox } from "anchor-ai-sdk";
 import { local } from "anchor-ai-sdk/sandbox/local";
-import { sandboxProvider } from "../sandbox-provider.js";
+import { sandboxProvider } from "../sandbox/index.js";
 
 interface SmokeArgs {
   repo: string;

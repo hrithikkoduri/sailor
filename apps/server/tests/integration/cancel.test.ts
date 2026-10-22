@@ -13,8 +13,8 @@ import type { Pool } from "pg";
 import type { LLMClient } from "anchor-ai-sdk";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { executeRun } from "../../src/runs/execute.js";
-import { requestCancel } from "../../src/runs/lease.js";
+import { executeRun } from "../../src/services/runs/execute.js";
+import { requestCancel } from "../../src/services/runs/lease.js";
 import { loadConfig } from "../../src/config.js";
 
 const FIXTURE = fileURLToPath(new URL("../../../../fixtures/buggy-lib", import.meta.url));

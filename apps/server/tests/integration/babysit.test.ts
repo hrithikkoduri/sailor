@@ -14,14 +14,14 @@ import {
   type Queues,
 } from "../../src/queue/index.js";
 import { runBabysitSweep } from "../../src/worker/babysit.js";
-import { appendEvent } from "../../src/threads/inbox.js";
-import type { GitHubAppService } from "../../src/github/app.js";
+import { appendEvent } from "../../src/services/threads/inbox.js";
+import type { GitHubAppService } from "../../src/services/github/app.js";
 import type {
   GitHubClient,
   GithubCheckRun,
   GithubComment,
   GithubPullRequestState,
-} from "../../src/github/client.js";
+} from "../../src/services/github/client.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("runBabysitSweep", () => {

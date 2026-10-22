@@ -8,9 +8,9 @@ import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { createQueueConnection, createQueues, type Queues } from "../../src/queue/index.js";
-import { appendEvent, consumeEvents, drainInbox, pendingEvents } from "../../src/threads/inbox.js";
-import { transitionThread } from "../../src/threads/state.js";
-import { wakeThread } from "../../src/threads/wake.js";
+import { appendEvent, consumeEvents, drainInbox, pendingEvents } from "../../src/services/threads/inbox.js";
+import { transitionThread } from "../../src/services/threads/state.js";
+import { wakeThread } from "../../src/services/threads/wake.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("threads: inbox + wake lock + state machine", () => {

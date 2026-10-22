@@ -10,7 +10,7 @@ import type { Pool } from "pg";
 import type { LLMClient } from "anchor-ai-sdk";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { executeRun } from "../../src/runs/execute.js";
+import { executeRun } from "../../src/services/runs/execute.js";
 import { loadConfig } from "../../src/config.js";
 import { scriptedLLM, type Scripted } from "../helpers/scripted-llm.js";
 

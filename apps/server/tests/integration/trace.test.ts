@@ -10,7 +10,7 @@ import type { AgentEvent } from "anchor-ai-sdk";
 import { TraceFanout } from "anchor-ai-sdk";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { TraceRecorder } from "../../src/trace/store.js";
+import { TraceRecorder } from "../../src/services/trace/store.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("trace persistence (db)", () => {

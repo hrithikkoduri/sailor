@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { codingAgent, codingPhases, buildCodingPrompt } from "anchor-ai-sdk";
-import { createSailorAgent } from "../../src/agents/sailor.js";
+import { createSailorAgent } from "../../src/services/agents/sailor.js";
 import { repairThreadHistory } from "../../scripts/repair-thread-history.js";
 
 describe("Sailor agent composition", () => {

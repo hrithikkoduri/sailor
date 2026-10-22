@@ -15,10 +15,10 @@ import {
   createQueues,
   type Queues,
 } from "../../src/queue/index.js";
-import { createServerApp } from "../../src/server/app.js";
-import { createStreamHub } from "../../src/server/stream.js";
-import { createSession, SESSION_COOKIE } from "../../src/auth/session.js";
-import { appendEvent } from "../../src/threads/inbox.js";
+import { createServerApp } from "../../src/http/app.js";
+import { createStreamHub } from "../../src/http/stream.js";
+import { createSession, SESSION_COOKIE } from "../../src/services/auth/session.js";
+import { appendEvent } from "../../src/services/threads/inbox.js";
 import { loadConfig } from "../../src/config.js";
 
 describe("dashboard api", () => {
@@ -366,7 +366,7 @@ describe("dashboard api", () => {
     const [stillEmpty] = await db.select().from(schema.threads).where(eq(schema.threads.id, later.thread.id));
     expect(stillEmpty!.source).toBe("workspace"); // not changed under a busy agent
     await db.update(schema.runs).set({ status: "succeeded" }).where(eq(schema.runs.id, later.runId));
-    const { drainInbox } = await import("../../src/threads/inbox.js");
+    const { drainInbox } = await import("../../src/services/threads/inbox.js");
     const continuation = await drainInbox({ db, queues }, later.thread.id);
     expect(continuation?.repoAttachment).toBe(repo);
   });

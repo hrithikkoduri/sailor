@@ -104,7 +104,7 @@ async function main(): Promise<number> {
     }
 
     case "serve": {
-      const { serveCommand } = await import("./server/serve.js");
+      const { serveCommand } = await import("./http/serve.js");
       return serveCommand(args);
     }
 

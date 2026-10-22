@@ -2,7 +2,7 @@
  * Thread state machine — pure tests, no services needed.
  */
 import { describe, expect, it } from "vitest";
-import { canTransition, isTerminal, THREAD_STATES } from "../../src/threads/state.js";
+import { canTransition, isTerminal, THREAD_STATES } from "../../src/services/threads/state.js";
 
 describe("thread state machine", () => {
   it("allows the lifecycle's happy path", () => {

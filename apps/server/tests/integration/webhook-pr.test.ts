@@ -13,7 +13,7 @@ import {
   createQueues,
   type Queues,
 } from "../../src/queue/index.js";
-import { createServerApp } from "../../src/server/app.js";
+import { createServerApp } from "../../src/http/app.js";
 import { loadConfig } from "../../src/config.js";
 import { seedRepo } from "../helpers/github-fixtures.js";
 

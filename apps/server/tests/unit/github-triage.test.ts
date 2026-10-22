@@ -2,7 +2,7 @@
  * Triage (decision #28) — self vs external + semantics. Pure tests.
  */
 import { describe, expect, it } from "vitest";
-import { classifyGithubEvent } from "../../src/github/triage.js";
+import { classifyGithubEvent } from "../../src/services/github/triage.js";
 
 describe("classifyGithubEvent", () => {
   it("self-authored events queue — not suppressed, rendered as acknowledge", () => {

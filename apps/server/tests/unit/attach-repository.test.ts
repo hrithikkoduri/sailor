@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attachRepository } from "../../src/agents/questions-tools.js";
+import { attachRepository } from "../../src/services/agents/tools/questions.js";
 import type { Sandbox } from "anchor-ai-sdk";
 
 describe("attachRepository", () => {

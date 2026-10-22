@@ -4,7 +4,7 @@
  */
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createGitHubApp, signAppJwt } from "../../src/github/app.js";
+import { createGitHubApp, signAppJwt } from "../../src/services/github/app.js";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048,

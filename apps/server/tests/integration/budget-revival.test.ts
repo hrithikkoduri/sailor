@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import { createDb, createPool, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
-import { executeRun } from "../../src/runs/execute.js";
-import { handleBudgetAftermath } from "../../src/runs/revival.js";
-import { sweepStaleRuns } from "../../src/runs/lease.js";
+import { executeRun } from "../../src/services/runs/execute.js";
+import { handleBudgetAftermath } from "../../src/services/runs/revival.js";
+import { sweepStaleRuns } from "../../src/services/runs/lease.js";
 import { loadConfig } from "../../src/config.js";
 import { scriptedLLM, type Scripted } from "../helpers/scripted-llm.js";
 
