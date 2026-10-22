@@ -1,9 +1,23 @@
 {
   "name": "@sailor/contracts",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Shared API contracts for Sailor: zod schemas and their inferred types.",
+  "keywords": [
+    "sailor",
+    "contracts",
+    "zod",
+    "schemas"
+  ],
+  "homepage": "https://github.com/hrithikkoduri/sailor/tree/main/packages/contracts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hrithikkoduri/sailor.git",
+    "directory": "packages/contracts"
+  },
+  "bugs": {
+    "url": "https://github.com/hrithikkoduri/sailor/issues"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -12,16 +26,24 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "dependencies": {
-    "zod": "^3.25.76"
-  },
   "main": "./dist/index.js",
+  "sideEffects": false,
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
   },
   "license": "Apache-2.0"
 }
