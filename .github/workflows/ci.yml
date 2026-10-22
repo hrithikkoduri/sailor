@@ -1,6 +1,5 @@
-# CI gates. Deployment is intentionally not here yet: the first deploy is a
-# reviewed `terraform apply` (see infra/terraform/README.md). Once that exists,
-# add a deploy job keyed on a tag.
+# CI gates. Deployment is not a core concern; the private sailor-cloud repo owns
+# infrastructure and release automation.
 name: ci
 
 on:
