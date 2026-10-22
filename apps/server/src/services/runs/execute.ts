@@ -557,6 +557,7 @@ export async function executeRun(
         userId: thread.userId,
         sandbox,
         redactor,
+        signal: controller.signal,
         onQuestions: (id) => { questionRequestId = id; controller.abort("waiting_for_answers"); },
         notify: () => deps.notify?.(thread.id),
       }),

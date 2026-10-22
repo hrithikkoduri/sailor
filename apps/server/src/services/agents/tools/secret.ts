@@ -26,6 +26,18 @@ export function redactValue(text: string, value: string): string {
   return text.split(value).join(REDACTED);
 }
 
+/** A secret command is synchronous: long jobs belong in a script the agent polls. */
+const DEFAULT_TIMEOUT_SECS = 120;
+const MAX_TIMEOUT_SECS = 600;
+
+/** Resolves when the run is cancelled, so a blocked command never holds the run. */
+function untilAborted(signal: AbortSignal): Promise<"aborted"> {
+  return new Promise((resolve) => {
+    if (signal.aborted) resolve("aborted");
+    else signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+  });
+}
+
 function envVarFor(name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64) || "SECRET";
 }
@@ -36,6 +48,8 @@ export function secretTools(args: {
   userId: string | null;
   sandbox: Sandbox;
   redactor?: SecretRedactor;
+  /** The run's cancel signal: a stop or interject returns from use_secret at once. */
+  signal?: AbortSignal;
   /** Pause this run and surface the form; the engine aborts at the tool boundary. */
   onQuestions?: (requestId: string) => void;
   notify?: () => void;
@@ -76,7 +90,7 @@ export function secretTools(args: {
             },
             timeout_secs: {
               type: "number",
-              description: "Optional use_secret timeout; defaults to 600.",
+              description: `Optional use_secret timeout in seconds; default ${DEFAULT_TIMEOUT_SECS}, max ${MAX_TIMEOUT_SECS}.`,
             },
           },
           required: ["mode"],
@@ -169,11 +183,23 @@ export function secretTools(args: {
         }
 
         args.redactor?.add(found.value);
-        const timeoutSecs = Math.min(3600, Math.max(5, Number(input.timeout_secs) || 600));
-        const result = await args.sandbox.exec(command, {
+        const timeoutSecs = Math.min(
+          MAX_TIMEOUT_SECS,
+          Math.max(5, Number(input.timeout_secs) || DEFAULT_TIMEOUT_SECS),
+        );
+        const execution = args.sandbox.exec(command, {
           timeoutSecs,
           env: { [found.envVar]: found.value },
         });
+        const result = args.signal
+          ? await Promise.race([execution, untilAborted(args.signal)])
+          : await execution;
+        if (result === "aborted") {
+          // The sandbox command may still finish on its own deadline; the run
+          // must not wait for it to honour a stop or an interjection.
+          execution.catch(() => undefined);
+          return { ok: false, content: "Stopped: the run was interrupted before the command finished." };
+        }
         return {
           ok: result.exitCode === 0,
           content: redactValue(result.output, found.value).slice(0, 8000),

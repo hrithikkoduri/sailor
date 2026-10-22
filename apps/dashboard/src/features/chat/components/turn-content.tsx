@@ -11,6 +11,7 @@ import { Markdown } from "@/elements/markdown";
 import { cn } from "@/utils/cn";
 import type { ConversationPart } from "../types";
 import { useDebugMode } from "@/features/debug/debug-provider";
+import { useSmoothText } from "../use-smooth-text";
 
 type Block =
   | { kind: "part"; part: ConversationPart }
@@ -93,12 +94,7 @@ export function TurnContent({
         ) : block.part.kind === "compaction" ? (
           <Compaction key={block.part.id} part={block.part} />
         ) : (
-          <div key={block.part.id}>
-            <Markdown text={block.part.text ?? ""} />
-            {!block.part.complete && running && (
-              <span className="streaming-caret" />
-            )}
-          </div>
+          <TextPart key={block.part.id} part={block.part} running={running} />
         ),
       )}
       {thinking && (
@@ -108,6 +104,18 @@ export function TurnContent({
           <span className="streaming-caret" />
         </p>
       )}
+    </div>
+  );
+}
+
+/** Assistant text. Only a part that is still streaming is paced. */
+function TextPart({ part, running }: { part: ConversationPart; running: boolean }) {
+  const streaming = running && !part.complete;
+  const text = useSmoothText(part.text ?? "", streaming);
+  return (
+    <div>
+      <Markdown text={text} />
+      {streaming && <span className="streaming-caret" />}
     </div>
   );
 }

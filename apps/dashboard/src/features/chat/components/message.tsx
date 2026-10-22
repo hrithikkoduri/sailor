@@ -6,6 +6,7 @@ import { Button } from "@/elements/button";
 import { CopyButton } from "@/components/animate-ui/components/buttons/copy";
 import { timeAgo } from "@/utils/format";
 import { TurnContent } from "./turn-content";
+import { useSmoothText } from "../use-smooth-text";
 import type { ConversationPart } from "../types";
 
 export function HumanMessage({
@@ -62,10 +63,7 @@ export function AgentMessage({
       {parts?.length ? (
         <TurnContent parts={parts} running={streaming} />
       ) : text ? (
-        <div className="text-[14px]">
-          <Markdown text={text} />
-          {streaming && <span className="streaming-caret" />}
-        </div>
+        <StreamingMarkdown text={text} streaming={streaming} />
       ) : (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           {streaming && <Helm size={16} className="helm-spin" />}
@@ -101,6 +99,16 @@ export function AgentMessage({
         </div>
       )}
     </article>
+  );
+}
+
+function StreamingMarkdown({ text, streaming }: { text: string; streaming: boolean }) {
+  const shown = useSmoothText(text, streaming);
+  return (
+    <div className="text-[14px]">
+      <Markdown text={shown} />
+      {streaming && <span className="streaming-caret" />}
+    </div>
   );
 }
 

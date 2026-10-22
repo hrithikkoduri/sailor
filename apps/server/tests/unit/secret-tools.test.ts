@@ -104,6 +104,32 @@ describe("secrets tool", () => {
     vi.doUnmock("../../src/services/secrets/store.js");
   });
 
+  it("returns at once when the run is stopped, and caps the timeout", async () => {
+    vi.resetModules();
+    vi.doMock("../../src/services/secrets/store.js", () => ({
+      getSecretValue: async () => ({ envVar: "DAYTONA_API_KEY", value: "sk-live-9" }),
+      secretCatalog: async () => [{ name: "daytona", envVar: "DAYTONA_API_KEY" }],
+    }));
+    const { secretTools } = await import("../../src/services/agents/tools/secret.js");
+    let timeoutSecs = 0;
+    // A command that never finishes on its own.
+    const sandbox = {
+      exec: vi.fn((_command: string, opts?: { timeoutSecs?: number }) => {
+        timeoutSecs = opts?.timeoutSecs ?? 0;
+        return new Promise(() => undefined);
+      }),
+    } as unknown as Sandbox;
+    const controller = new AbortController();
+    const [tool] = secretTools({ db: {} as never, threadId: "t", userId: "u", sandbox, signal: controller.signal });
+    const running = tool!.run({ mode: "use_secret", secret: "daytona", command: "sleep 9999", timeout_secs: 3000 }, { sandbox });
+    controller.abort();
+    const result = await running;
+    expect(result.ok).toBe(false);
+    expect(result.content).toMatch(/interrupted/);
+    expect(timeoutSecs).toBe(600);
+    vi.doUnmock("../../src/services/secrets/store.js");
+  });
+
   it("refuses a thread with no owner", async () => {
     vi.resetModules();
     const { secretTools } = await import("../../src/services/agents/tools/secret.js");
