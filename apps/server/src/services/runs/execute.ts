@@ -35,6 +35,7 @@ import { local } from "anchor-ai-sdk/sandbox/local";
 import { redactEvent } from "anchor-ai-sdk";
 import { attachRepository, questionTools } from "../agents/tools/questions.js";
 import { secretTools } from "../agents/tools/secret.js";
+import { abortableTool } from "./abortable.js";
 import { SecretRedactor } from "../secrets/redactor.js";
 import { secretCatalog, secretValues } from "../secrets/store.js";
 import { enabledRepositories } from "../threads/repositories.js";
@@ -596,7 +597,10 @@ export async function executeRun(
     // observation or a trace event. This covers built-in bash/read_file as
     // well as Sailor's product tools; `secrets use_secret` additionally registers
     // the value as soon as it is read.
-    const redactedAgent = { ...agent, tools: agent.tools.map((tool) => redactor.wrap(tool)) };
+    const redactedAgent = {
+      ...agent,
+      tools: agent.tools.map((tool) => abortableTool(redactor.wrap(tool), controller.signal)),
+    };
     const requestedPhase = deps.startPhase ?? run.startPhase;
     const startPhase = agent.strategy.phases.some(
       (item) => item.id === requestedPhase,

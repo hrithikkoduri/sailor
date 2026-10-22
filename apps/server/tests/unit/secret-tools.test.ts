@@ -104,7 +104,7 @@ describe("secrets tool", () => {
     vi.doUnmock("../../src/services/secrets/store.js");
   });
 
-  it("returns at once when the run is stopped, and caps the timeout", async () => {
+  it("returns at once when the run is stopped, honoring the sandbox ceiling", async () => {
     vi.resetModules();
     vi.doMock("../../src/services/secrets/store.js", () => ({
       getSecretValue: async () => ({ envVar: "DAYTONA_API_KEY", value: "sk-live-9" }),
@@ -121,12 +121,12 @@ describe("secrets tool", () => {
     } as unknown as Sandbox;
     const controller = new AbortController();
     const [tool] = secretTools({ db: {} as never, threadId: "t", userId: "u", sandbox, signal: controller.signal });
-    const running = tool!.run({ mode: "use_secret", secret: "daytona", command: "sleep 9999", timeout_secs: 3000 }, { sandbox });
+    const running = tool!.run({ mode: "use_secret", secret: "daytona", command: "sleep 9999", timeout_secs: 9999 }, { sandbox });
     controller.abort();
     const result = await running;
     expect(result.ok).toBe(false);
     expect(result.content).toMatch(/interrupted/);
-    expect(timeoutSecs).toBe(600);
+    expect(timeoutSecs).toBe(3600);
     vi.doUnmock("../../src/services/secrets/store.js");
   });
 

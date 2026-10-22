@@ -26,9 +26,9 @@ export function redactValue(text: string, value: string): string {
   return text.split(value).join(REDACTED);
 }
 
-/** A secret command is synchronous: long jobs belong in a script the agent polls. */
-const DEFAULT_TIMEOUT_SECS = 120;
-const MAX_TIMEOUT_SECS = 600;
+/** The sandbox's own ceiling; interruption comes from the run signal, not a cap. */
+const DEFAULT_TIMEOUT_SECS = 600;
+const MAX_TIMEOUT_SECS = 3600;
 
 /** Resolves when the run is cancelled, so a blocked command never holds the run. */
 function untilAborted(signal: AbortSignal): Promise<"aborted"> {
