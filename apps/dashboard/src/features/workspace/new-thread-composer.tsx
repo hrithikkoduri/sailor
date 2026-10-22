@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/elements/select";
 import { ApiError } from "@/utils/api-client";
+import { primaryModifier } from "@/utils/platform";
 import { insertAtSelection } from "@/utils/text";
 
 const NO_REPO = "__no_repository__";
@@ -26,7 +27,7 @@ export function NewThreadComposer() {
   const [repoError, setRepoError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const newlineShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ + Enter" : "Ctrl + Enter";
+  const newlineShortcut = `${primaryModifier()} + Enter`;
   useEffect(() => {
     let alive = true;
     getGate().then((data) => {

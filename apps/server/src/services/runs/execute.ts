@@ -291,8 +291,7 @@ export async function executeRun(
   // Traces: NDJSON file + trace_events rows + the live stream — the sinks are
   // handed to the engine, whose fanout owns the sequence number and redaction
   // and flushes them before the run resolves.
-  const traceDir = path.join(process.env.INIT_CWD ?? process.cwd(), "traces");
-  const jsonl = new JsonlTrace(path.join(traceDir, `${run.id}.jsonl`));
+  const jsonl = new JsonlTrace(path.join(cfg.paths.traceDir, `${run.id}.jsonl`));
   const jsonlSink = redactor.wrapSink(jsonl);
 
   // Live projections for the chat stream (step 18): cumulative assistant text
@@ -367,7 +366,7 @@ export async function executeRun(
       events.push(event);
   };
 
-  const baseDir = process.env.INIT_CWD ?? process.cwd();
+  const baseDir = cfg.paths.baseDir;
   // Retain the sandbox while the thread is alive: the next run (interjection,
   // sweep resume, follow-up) adopts it and finds the workspace — branch,
   // edits, and all — exactly as left. Terminal threads are torn down instead.

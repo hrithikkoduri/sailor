@@ -175,7 +175,7 @@ export async function runCommand(argv: string[]): Promise<number> {
 
   // npm runs workspace scripts with cwd=apps/server; INIT_CWD is where the
   // user actually typed the command — resolve relative repo paths from there.
-  const baseDir = process.env.INIT_CWD ?? process.cwd();
+  const baseDir = cfg.paths.baseDir;
   const localPath = isUrl(args.repo)
     ? undefined
     : path.resolve(baseDir, args.repo);

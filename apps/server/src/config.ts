@@ -110,6 +110,15 @@ export interface SailorConfig {
     /** Budget revival (A): continue out-of-budget runs while the thread has budget. */
     revival: boolean;
   };
+  /** Filesystem paths resolved once from the process environment. */
+  paths: {
+    /** Where relative repo paths and the trace folder resolve (npm's INIT_CWD). */
+    baseDir: string;
+    /** NDJSON trace directory; the database remains the trace of record. */
+    traceDir: string;
+    /** Optional built dashboard directory (the image sets this). */
+    dashboardDist: string | undefined;
+  };
   /** Postgres — threads, runs, events, traces (full stack from step 2). */
   postgres: { url: string };
   /** Redis — BullMQ queues (runs + babysit timers). */
@@ -357,6 +366,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SailorConfig {
        * SAILOR_BUDGET_REVIVAL=0 turns it off.
        */
       revival: env.SAILOR_BUDGET_REVIVAL !== "0",
+    },
+    paths: {
+      baseDir: env.INIT_CWD ?? process.cwd(),
+      traceDir: path.join(env.INIT_CWD ?? process.cwd(), "traces"),
+      dashboardDist: env.SAILOR_DASHBOARD_DIST || undefined,
     },
     postgres: {
       url: env.DATABASE_URL ?? "postgres://sailor:sailor@localhost:5432/sailor",

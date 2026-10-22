@@ -77,7 +77,7 @@ export async function serveCommand(args: string[]): Promise<number> {
   // The image bakes the dashboard next to the server; `npm run dev` does not,
   // so the directory is optional and the check keeps dev from serving stale UI.
   const dashboardDir =
-    process.env.SAILOR_DASHBOARD_DIST ??
+    cfg.paths.dashboardDist ??
     path.resolve(import.meta.dirname, "../../../dashboard/dist");
   const hasDashboard = existsSync(path.join(dashboardDir, "index.html"));
 

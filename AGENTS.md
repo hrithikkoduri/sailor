@@ -32,8 +32,10 @@ apps/
   dashboard/     React SPA (Vite)
     src/
       app/           routing, providers
-      features/      one folder per product area, colocated api.ts
-      elements/      design-system primitives
+      features/      one folder per product area, colocated api.ts + hooks
+      elements/      design-system primitives (the product's UI vocabulary)
+      hooks/         shared client-only hooks
+      utils/         pure helpers (format, platform, text, api-client)
       components/    generated/vendored UI (animate-ui, shadcn)
 packages/
   contracts/     shared API types + zod schemas (server and dashboard both import)
@@ -77,6 +79,74 @@ A rule implemented in one must not be duplicated in the other.
 - **One use-case module per aggregate**, split when it passes ~300 lines or
   starts serving two domains (for example `threads/commands.ts` →
   `threads/create.ts`, `threads/messages.ts`, `threads/repository.ts`).
+
+## Code hygiene
+
+These rules apply to every change, not just new files. A green build does not
+excuse a 600-line component or a second copy of a policy.
+
+### Both sides
+
+- **One responsibility per module.** Split before a file becomes hard to scan.
+  A useful trigger is ~300 lines, or two reasons to change names in the same
+  file; `executeRun` is the orchestration exception, not a precedent.
+- **Extract pure functions.** Filtering, formatting, validation, and state
+  transitions live outside components and route handlers, where they can be
+  read on their own and tested without a renderer or a database.
+- **No duplicated policy.** If two screens or two routes need the same rule,
+  it belongs in one exported function/hook/service. Copying it is a bug
+  waiting for one side to drift.
+- **No `any` without a comment.** Narrow types or `unknown` + a guard instead.
+- **No dead paths or commented-out code.** Delete it; git remembers.
+- Comments explain intent and invariants, not what the next line does.
+
+### Frontend
+
+- **Design system first.** Reusable primitives live in `elements/`. Do not use
+  a native control where the design system has a primitive (`select`, menu,
+  dialog, button, input). Do not invent a one-off button or popover inside a
+  feature; add the primitive once and compose it.
+- **Compose, don't nest.** A page is a small composition of named sections.
+  When JSX develops several unrelated blocks, extract components instead of
+  adding another level of nesting. Keep presentational components narrow and
+  free of fetch logic.
+- **No prop plumbing.** Do not thread a value through three layers that only
+  pass it along. Use composition (`children`, slots), a feature-scoped hook, or
+  a provider at the boundary that actually owns the state. Context is for a
+  genuinely shared concern, not for avoiding a clear prop.
+- **State stays local and minimal.** Derive values during render; do not mirror
+  props into state. `useEffect` is for external synchronisation only (fetch,
+  subscription, DOM), never for computing derived state or reacting to a value
+  that should be derived. One effect should do one thing.
+- **One fetch layer.** Features call `utils/api-client.ts`; never `fetch`
+  directly and never import server code. Colocate API functions in the
+  feature's `api.ts`.
+- **Avoid speculative memoisation.** `memo`/`useMemo`/`useCallback` only after
+  a measured problem, or where referential stability is required by a
+  dependency. Stable list keys; avoid recreating large option arrays on every
+  render.
+- **Heavy views split and lazy-load.** Trace explorer and other expensive
+  panels stay behind `lazy`/`Suspense`; pages should not become the bundle.
+- **Accessible by construction.** Use semantic elements, labels, keyboard
+  handling, and focus management from the primitives. Never replace a control
+  with a clickable `div`.
+
+### Backend
+
+- **Respect the layering.** `http/` parses and shapes; `services/` owns SQL and
+  business rules; `db/` owns schema. No SQL in routes, no Hono in services, no
+  worker-only policy duplicated in HTTP.
+- **Transactions belong to the use case.** Open them in `services/`, never in a
+  route or a helper that wraps one query.
+- **Configuration is typed and central.** Read environment variables in
+  `config.ts`; pass values down. Explicit test seams may take an injected env,
+  but new runtime code should not sprinkle `process.env` through services.
+- **Failures are values.** A service returns its result or `{ error, status }`;
+  the route maps that to HTTP. Do not throw for expected user errors.
+- **Split by aggregate, not by layer.** One use-case module per aggregate; when
+  it serves two domains, split the file rather than adding branches.
+- **Pure core, thin edges.** Keep protocol/transport concerns at the edge and
+  deterministic rules in plain functions that tests can call directly.
 
 ## Where new code goes
 
@@ -142,20 +212,19 @@ Gates before any commit: `npm run typecheck`, unit + integration for the server,
 
 ## Core vs cloud
 
-This repo is **Sailor core** (open source).
-The paid layer lives in a private `sailor-cloud` package that consumes core.
+This repo is **Sailor core**, the public, self-hostable edition.
+The private `sailor-cloud` repo is a **downstream fork** that owns hosting,
+operations, and private product work.
 
-- Stays in core: threads, runs, traces, sandbox adapters, checklist/UI,
-  questions, repository attachment, publication, CLI, auth, and enough to run
-  locally (Dockerfile, dev compose, CI merge gates).
-- Goes to `sailor-cloud`: multi-agent orchestration, browser sessions,
-  flow-state UX extras, billing/entitlements, orgs, SSO/SAML, audit export, and
-  hosting operations.
-
-Public code must expose the **seams** those features need (agent/tool registries,
-an extension list, dashboard slots) — but not the features themselves. Never
-gate a paid feature with a flag inside public code; put the code in the private
-package.
+- Core must stay usable on its own: threads, runs, traces, sandbox adapters,
+  checklist/UI, questions, repository attachment, publication, CLI, and auth.
+- Cloud may diverge; it is not automatically synced back. Do not assume a
+  private feature exists here.
+- Never move private code or credentials into this public repo. If a change is
+  genuinely public, make it here as its own change; the cloud fork can choose
+  to carry it later.
+- Do not build paid features behind a public flag. They belong in the private
+  fork, not in a conditional branch here.
 
 ## Conventions
 

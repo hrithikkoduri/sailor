@@ -7,6 +7,7 @@ import { Button } from "@/elements/button";
 import { IconButton } from "@/elements/icon-button";
 import { getThreads, renameThread, threadTitle, repositoryLabel, type ThreadListItem } from "@/features/threads/api";
 import { cn } from "@/utils/cn";
+import { primaryModifier } from "@/utils/platform";
 import { motion, useReducedMotion } from "motion/react";
 import { Highlight, HighlightItem } from "@/components/animate-ui/primitives/effects/highlight";
 import { controlSpring } from "@/utils/motion";
@@ -80,7 +81,7 @@ export function ThreadDock() {
   ].filter((t) => `${t.title} ${repositoryLabel(t.repo)}`.toLowerCase().includes(match));
   const selectedIndex = Math.min(selected, Math.max(0, candidates.length - 1));
   const choose = (href: string) => { setOpen(false); navigate(href); };
-  const shortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
+  const shortcutLabel = `${primaryModifier()} K`;
   return <>
     <div className="flex h-9 min-w-0 flex-1 items-center gap-1">
       <button type="button" onClick={() => { setOpen(true); setQuery(""); setSelected(0); }}
