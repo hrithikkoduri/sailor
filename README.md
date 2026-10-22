@@ -136,5 +136,5 @@ Then pick a way in:
 Early, and honest about it: the whole pipeline runs end-to-end on
 real issues — webhook to reviewed PR, with traces — and every architectural
 piece below it (durable turns, revival, evidence gates) is exercised by the
-package's own conformance and evaluation suites. Next: production deployment,
-the docs site (`anchor-sdk.dev`), and the benchmark rounds.
+package's own conformance and evaluation suites. Next: the docs site
+(`anchor-sdk.dev`) and the benchmark rounds.

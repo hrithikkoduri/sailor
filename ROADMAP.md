@@ -81,7 +81,7 @@ history. **Package-side work lives in the Anchor repo's `ROADMAP.md`.**
   re-pushing the toolchain image (`image/build.sh`), then swapping
   `HEYO_IMAGE`/`HEYO_NAMESPACE`. _Trigger:_ the next image rebuild, or before
   any public launch. _Size:_ S (+ one image build).
-- **Pin the toolchain tag by digest** — the deployment names
+- **Pin the toolchain tag by digest** — the sandbox configuration names
   `harness/sailor-toolchain:latest`, so an image rebuild silently changes what
   every new VM boots. `heyctl set artifact --ref <digest>` pins it; do that
   once the image stops moving. _Size:_ S.

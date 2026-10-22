@@ -41,13 +41,8 @@ scripts/         dev stack, seed tooling
 image/           sandbox toolchain images
 fixtures/        fixture repositories for tests
 docs/            public documentation
-infra/           deployment (Terraform, CI-adjacent)
 docs/design-notes/  design references (no primitives; UI lives in elements/)
 ```
-
-`PRODUCTION.md` is a **local scratchpad** (gitignored): deployment checklist and
-decision log that is not ready to publish. Public decisions go to `DECISIONS.md`
-when they ship.
 
 ## The layering rule
 
@@ -148,7 +143,7 @@ Gates before any commit: `npm run typecheck`, unit + integration for the server,
 
 ## Core vs cloud
 
-This repo is **Sailor core** (open source, FSL/AGPL — see `PRODUCTION.md` §7).
+This repo is **Sailor core** (open source).
 The paid layer lives in a private `sailor-cloud` package that consumes core.
 
 - Stays in core: threads, runs, traces, sandbox adapters, checklist/UI,
@@ -156,8 +151,7 @@ The paid layer lives in a private `sailor-cloud` package that consumes core.
   locally (Dockerfile, dev compose, CI merge gates).
 - Goes to `sailor-cloud`: multi-agent orchestration, browser sessions,
   flow-state UX extras, billing/entitlements, orgs, SSO/SAML, audit export, and
-  **deployment plumbing** — Terraform, deploy workflows, account setup, and
-  runbooks for the hosted environment.
+  hosting operations.
 
 Public code must expose the **seams** those features need (agent/tool registries,
 an extension list, dashboard slots) — but not the features themselves. Never

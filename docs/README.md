@@ -1,8 +1,6 @@
 # Sailor documentation
 
-Public documentation lives here. Deployment notes that are still being decided
-live in the gitignored `PRODUCTION.md` at the repository root and move here once
-they are settled.
+Public documentation lives here.
 
 | Document | What it covers |
 |---|---|
@@ -11,7 +9,6 @@ they are settled.
 | [`../AGENTS.md`](../AGENTS.md) | Repository map, layering rule, invariants, conventions |
 | [`../DECISIONS.md`](../DECISIONS.md) | Architecture decisions with rationale |
 | [`../ROADMAP.md`](../ROADMAP.md) | Deferred work and its triggers |
-| [`../PRODUCTION.md`](../PRODUCTION.md) | Local-only: path to production, security checklist, open design notes |
 
 Reading order for a new contributor: `AGENTS.md` → `README.md` →
 `DECISIONS.md` (skim the table) → the feature folder you are touching.
