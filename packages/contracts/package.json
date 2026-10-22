@@ -6,12 +6,21 @@
   "description": "Shared API contracts for Sailor: zod schemas and their inferred types.",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "dependencies": {
     "zod": "^3.25.76"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
   }
 }

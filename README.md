@@ -145,7 +145,7 @@ Then, by task:
 | Apply migrations | `npm run migrate` |
 | Generate a migration after editing `db/schema.ts` | `npm run db:generate` |
 | Typecheck both workspaces | `npm run typecheck` |
-| Build (typecheck + dashboard bundle) | `npm run build` |
+| Build (typecheck · contracts · server · dashboard) | `npm run build` |
 | Unit / integration / UI tests | `npm test`, `npm run test:integration`, `npm run test:ui` |
 | CLI directly (one run, no webhooks) | `npm run sailor -- run <repo> <issue>` |
 

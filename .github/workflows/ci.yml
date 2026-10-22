@@ -22,6 +22,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Build shared contracts
+        run: npm run build:contracts
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
@@ -55,6 +57,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Build shared contracts
+        run: npm run build:contracts
       - name: Integration tests
         env:
           DATABASE_URL: postgres://sailor:sailor@localhost:5432/sailor_test

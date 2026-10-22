@@ -8,6 +8,7 @@
     "sailor": "./dist/cli.js"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
     "cli": "tsx src/cli.ts",
     "serve": "tsx src/cli.ts serve",
