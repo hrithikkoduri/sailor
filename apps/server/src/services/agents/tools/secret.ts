@@ -26,12 +26,10 @@ export function redactValue(text: string, value: string): string {
   return text.split(value).join(REDACTED);
 }
 
-/**
- * The sandbox's hard ceiling. This is not a policy timeout: a secret command
- * runs until it finishes or the run is stopped/interjected. There is no
- * model-chosen timeout, so the agent can't kill its own command early.
- */
-const SECRET_COMMAND_CEILING_SECS = 3600;
+/** The sandbox's own limits. The agent may pick a shorter deadline when it
+ * knows the job; a timeout is reported back and the run continues. */
+const DEFAULT_TIMEOUT_SECS = 600;
+const MAX_TIMEOUT_SECS = 3600;
 
 /** Resolves when the run is cancelled, so a blocked command never holds the run. */
 function untilAborted(signal: AbortSignal): Promise<"aborted"> {
@@ -90,6 +88,10 @@ export function secretTools(args: {
             description: {
               type: "string",
               description: "How to create/fetch the key for ask_user (link or short instructions).",
+            },
+            timeout_secs: {
+              type: "number",
+              description: `Optional use_secret deadline in seconds; default ${DEFAULT_TIMEOUT_SECS}, max ${MAX_TIMEOUT_SECS}. A timeout is returned to you as a tool result, not a failed run.`,
             },
           },
           required: ["mode"],
@@ -182,7 +184,10 @@ export function secretTools(args: {
         }
 
         args.redactor?.add(found.value);
-        const timeoutSecs = SECRET_COMMAND_CEILING_SECS;
+        const timeoutSecs = Math.min(
+          MAX_TIMEOUT_SECS,
+          Math.max(5, Number(input.timeout_secs) || DEFAULT_TIMEOUT_SECS),
+        );
         const execution = args.sandbox.exec(command, {
           timeoutSecs,
           env: { [found.envVar]: found.value },
@@ -196,10 +201,22 @@ export function secretTools(args: {
           execution.catch(() => undefined);
           return { ok: false, content: "Stopped: the run was interrupted before the command finished." };
         }
+        const output = redactValue(result.output, found.value).slice(0, 8000);
+        if (result.timedOut) {
+          return {
+            ok: false,
+            // A timeout is a normal tool outcome: tell the model exactly what
+            // happened so it can retry with a larger deadline or split the work.
+            content: `Command timed out after ${timeoutSecs}s and was stopped. ${
+              output ? `Partial output:\n${output}` : "No output before the deadline."
+            }\nIf it legitimately needs longer, retry with a larger timeout_secs or split the command.`,
+            meta: { exitCode: result.exitCode, secret: name, timedOut: true, timeoutSecs, durationMs: result.durationMs },
+          };
+        }
         return {
           ok: result.exitCode === 0,
-          content: redactValue(result.output, found.value).slice(0, 8000),
-          meta: { exitCode: result.exitCode, secret: name },
+          content: output,
+          meta: { exitCode: result.exitCode, secret: name, timedOut: false, timeoutSecs, durationMs: result.durationMs },
         };
       },
       { verb: "Using an account secret" },

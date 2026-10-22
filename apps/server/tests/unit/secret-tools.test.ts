@@ -104,7 +104,7 @@ describe("secrets tool", () => {
     vi.doUnmock("../../src/services/secrets/store.js");
   });
 
-  it("returns at once when the run is stopped; the model cannot impose a short timeout", async () => {
+  it("returns at once when the run is stopped", async () => {
     vi.resetModules();
     vi.doMock("../../src/services/secrets/store.js", () => ({
       getSecretValue: async () => ({ envVar: "DAYTONA_API_KEY", value: "sk-live-9" }),
@@ -121,12 +121,34 @@ describe("secrets tool", () => {
     } as unknown as Sandbox;
     const controller = new AbortController();
     const [tool] = secretTools({ db: {} as never, threadId: "t", userId: "u", sandbox, signal: controller.signal });
-    const running = tool!.run({ mode: "use_secret", secret: "daytona", command: "sleep 9999", timeout_secs: 5 }, { sandbox });
+    const running = tool!.run({ mode: "use_secret", secret: "daytona", command: "sleep 9999", timeout_secs: 3000 }, { sandbox });
     controller.abort();
     const result = await running;
     expect(result.ok).toBe(false);
     expect(result.content).toMatch(/interrupted/);
-    expect(timeoutSecs).toBe(3600);
+    expect(timeoutSecs).toBe(3000);
+    vi.doUnmock("../../src/services/secrets/store.js");
+  });
+
+  it("reports a timeout back to the model so the run can self-heal", async () => {
+    vi.resetModules();
+    vi.doMock("../../src/services/secrets/store.js", () => ({
+      getSecretValue: async () => ({ envVar: "DAYTONA_API_KEY", value: "sk-live-9" }),
+      secretCatalog: async () => [{ name: "daytona", envVar: "DAYTONA_API_KEY" }],
+    }));
+    const { secretTools } = await import("../../src/services/agents/tools/secret.js");
+    const sandbox = {
+      exec: vi.fn(async () => ({
+        exitCode: 124, stdout: "partial", stderr: "", output: "partial",
+        timedOut: true, durationMs: 1000,
+      })),
+    } as unknown as Sandbox;
+    const [tool] = secretTools({ db: {} as never, threadId: "t", userId: "u", sandbox });
+    const result = await tool!.run({ mode: "use_secret", secret: "daytona", command: "sleep 20", timeout_secs: 5 }, { sandbox });
+    expect(result.ok).toBe(false);
+    expect(result.content).toMatch(/timed out after 5s/);
+    expect(result.content).toContain("partial");
+    expect(result.meta).toMatchObject({ timedOut: true, timeoutSecs: 5 });
     vi.doUnmock("../../src/services/secrets/store.js");
   });
 
