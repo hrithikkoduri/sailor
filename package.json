@@ -32,7 +32,8 @@
     "presailor": "npm run build:contracts",
     "pretest": "npm run build:contracts",
     "pretest:integration": "npm run build:contracts",
-    "pretest:ui": "npm run build:contracts"
+    "pretest:ui": "npm run build:contracts",
+    "contracts:pack": "node scripts/pack-contracts.mjs"
   },
   "engines": {
     "node": ">=20"

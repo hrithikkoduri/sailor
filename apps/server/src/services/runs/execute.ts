@@ -35,6 +35,8 @@ import { local } from "anchor-ai-sdk/sandbox/local";
 import { redactEvent } from "anchor-ai-sdk";
 import { attachRepository, questionTools } from "../agents/tools/questions.js";
 import { secretTools } from "../agents/tools/secret.js";
+import { SecretRedactor } from "../secrets/redactor.js";
+import { secretValues } from "../secrets/store.js";
 import { enabledRepositories } from "../threads/repositories.js";
 import { repoEnabled } from "../github/installations.js";
 import {
@@ -255,6 +257,21 @@ export async function executeRun(
   const controller = new AbortController();
   activeControllers.set(run.id, controller);
 
+  // Secrets are known values, not patterns: load them once so every tool
+  // result and trace event is scrubbed, including a later read of a file a
+  // secret was accidentally written to. Best-effort: a missing key must not
+  // break non-secret runs, but a secret run will fail at its own boundary.
+  const redactor = new SecretRedactor();
+  if (thread.userId) {
+    try {
+      for (const value of await secretValues(db, thread.userId)) redactor.add(value);
+    } catch (err) {
+      process.stdout.write(
+        `[run ${run.id}] secret preload failed: ${err instanceof Error ? err.message : String(err)} — continuing without value redaction\n`,
+      );
+    }
+  }
+
   await db
     .update(schema.runs)
     .set({ status: "running", startedAt: new Date(), error: null })
@@ -276,6 +293,7 @@ export async function executeRun(
   // and flushes them before the run resolves.
   const traceDir = path.join(process.env.INIT_CWD ?? process.cwd(), "traces");
   const jsonl = new JsonlTrace(path.join(traceDir, `${run.id}.jsonl`));
+  const jsonlSink = redactor.wrapSink(jsonl);
 
   // Live projections for the chat stream (step 18): cumulative assistant text
   // at ~10/s + activity markers. Fire-and-forget; the trace is the truth.
@@ -343,9 +361,10 @@ export async function executeRun(
   const sink = (e: AgentEvent) => {
     // Live frames must not wait behind async journal sinks. Keep the same
     // event order and redaction, but publish synchronously at receipt.
-    projectLive.record({ seq: liveSequence++, ts: new Date().toISOString(), event: redactEvent(e) });
+    const event = redactor.redactDeep(redactEvent(e));
+    projectLive.record({ seq: liveSequence++, ts: new Date().toISOString(), event });
     if (e.type !== "llm_text_delta" && e.type !== "llm_reasoning_delta")
-      events.push(e);
+      events.push(event);
   };
 
   const baseDir = process.env.INIT_CWD ?? process.cwd();
@@ -523,7 +542,7 @@ export async function executeRun(
         null,
         2,
       ),
-      [...secretTools({ db, threadId: thread.id, userId: thread.userId, sandbox }),
+      [...secretTools({ db, threadId: thread.id, userId: thread.userId, sandbox, redactor }),
        ...questionTools({ db, threadId: thread.id, userId: thread.userId, sandbox,
         hasRepository: thread.source !== "workspace",
         ...(deps.githubApp
@@ -555,6 +574,11 @@ export async function executeRun(
           })
         : [])],
     );
+    // Every tool result passes through the redactor before it becomes a model
+    // observation or a trace event. This covers built-in bash/read_file as
+    // well as Sailor's product tools; `run_with_secret` additionally registers
+    // the value as soon as it is read.
+    const redactedAgent = { ...agent, tools: agent.tools.map((tool) => redactor.wrap(tool)) };
     const requestedPhase = deps.startPhase ?? run.startPhase;
     const startPhase = agent.strategy.phases.some(
       (item) => item.id === requestedPhase,
@@ -575,7 +599,7 @@ export async function executeRun(
       {
         llm,
         sandbox,
-        agent,
+        agent: redactedAgent,
         startPhase,
         thread: { store: new PostgresThreadStore(db), id: thread.id },
         compaction,
@@ -612,7 +636,7 @@ export async function executeRun(
         signal: controller.signal,
         // The engine's fanout owns sequencing + redaction and flushes these
         // before the run resolves; the product's sink stays live-only.
-        traceSinks: [jsonl, recorder],
+        traceSinks: [jsonlSink, redactor.wrapSink(recorder)],
         // Sailor's finish() vocabulary — a consumer schema now, not the engine's.
         handoff: SAILOR_HANDOFF,
         // Long commands detach instead of timing out the turn (decision #70).

@@ -15,3 +15,6 @@ BUILD_PLAN.md
 
 # Local agent/tool config
 opencode.jsonc
+
+# Generated @sailor/contracts tarballs (see scripts/pack-contracts.mjs)
+artifacts/

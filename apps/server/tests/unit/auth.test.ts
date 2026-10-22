@@ -2,7 +2,7 @@
  * Auth primitives (decision #41): argon2id hashing and session-token hashing.
  */
 import { describe, expect, it } from "vitest";
-import { hashPassword, verifyPassword, passwordProblem, normalizeEmail } from "../../src/services/auth/password.js";
+import { emailProblem, hashPassword, verifyPassword, passwordProblem, normalizeEmail } from "../../src/services/auth/password.js";
 import { hashToken } from "../../src/services/auth/session.js";
 
 describe("passwords (argon2id)", () => {
@@ -18,6 +18,14 @@ describe("passwords (argon2id)", () => {
     expect(passwordProblem("longenough")).toBeUndefined();
     expect(normalizeEmail(" Foo@Bar.COM ")).toBe("foo@bar.com");
     expect(normalizeEmail("nope")).toBeUndefined();
+  });
+
+  it("rejects placeholder and disposable email domains without an external check", () => {
+    expect(emailProblem("dev@example.com")).toMatch(/real email/);
+    expect(emailProblem("dev@mailinator.com")).toMatch(/disposable/);
+    expect(emailProblem("dev@sub.yopmail.com")).toMatch(/disposable/);
+    expect(emailProblem("dev@1.2.3.4")).toMatch(/valid email/);
+    expect(emailProblem("alice@test.dev")).toBeUndefined();
   });
 });
 

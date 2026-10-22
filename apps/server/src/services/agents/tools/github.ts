@@ -13,6 +13,8 @@ import type { GitHubClient } from "../../github/client.js";
 import { deliverPullRequest, type DeliveredPullRequest } from "../../github/pr.js";
 import { repoEnabled } from "../../github/installations.js";
 import { enabledRepositories } from "../../threads/repositories.js";
+import { secretValues } from "../../secrets/store.js";
+import { containsSecret, scanWorkspaceForSecrets } from "../../secrets/scan.js";
 
 export interface PublicationPolicy {
   requirePassingTests?: boolean;
@@ -102,6 +104,45 @@ export function githubTools(deps: {
             content:
               "No unpublished repository changes were found. Nothing was published.",
             meta: { published: false },
+          };
+        }
+        // Publication is where a secret could leave the account: scan both the
+        // summary (PR body/title) and the deliverable tree before checkpointing.
+        let values: string[] = [];
+        try {
+          values = deps.thread.userId ? await secretValues(deps.db, deps.thread.userId) : [];
+        } catch (err) {
+          return {
+            ok: false,
+            content:
+              "Publication was withheld: stored secrets could not be read for the pre-publication scan. " +
+              (err instanceof Error ? err.message : String(err)),
+            meta: { published: false },
+          };
+        }
+        if (containsSecret(input.summary, values)) {
+          return {
+            ok: false,
+            content:
+              "Publication was withheld: the summary contains a stored secret value. Remove it and retry.",
+            meta: { published: false },
+          };
+        }
+        const scan = await scanWorkspaceForSecrets({
+          db: deps.db,
+          userId: deps.thread.userId ?? "",
+          sandbox: deps.sandbox,
+          ref: comparisonRef,
+          values,
+        });
+        if (!scan.ok) {
+          const files = scan.matches.slice(0, 10).join(", ");
+          return {
+            ok: false,
+            content: scan.error
+              ? `Publication was withheld: the secret scan could not run (${scan.error}).`
+              : `Publication was withheld: a stored secret value appears in ${files}. Remove it before publishing.`,
+            meta: { published: false, secretScan: "blocked" },
           };
         }
         // What does the LATEST executed test run vouch for on THIS exact tree?

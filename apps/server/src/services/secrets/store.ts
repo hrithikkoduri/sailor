@@ -141,6 +141,18 @@ export async function getSecretValue(
   return { envVar: row.envVar, value };
 }
 
+/** Server-side only: every plaintext value, for redaction and publication scans.
+ *
+ * This does not mark `lastUsedAt` — no tool ran. It decrypts only rows that
+ * exist; a deployment with no secrets never needs the key for this path.
+ */
+export async function secretValues(db: Db, userId: string): Promise<string[]> {
+  const rows = await db.select().from(schema.secrets).where(eq(schema.secrets.userId, userId));
+  if (rows.length === 0) return [];
+  const key = encryptionKey();
+  return rows.map((row) => decryptSecret(key, userId, row.name, row));
+}
+
 /** Names and env vars only — for prompts and the approval UI. */
 export async function secretCatalog(
   db: Db,

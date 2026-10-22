@@ -7,11 +7,13 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { serve } from "@hono/node-server";
+import { Redis } from "ioredis";
 import { loadConfig } from "../config.js";
 import { createDb, createPool } from "../db/index.js";
 import { createQueueConnection, createQueues } from "../queue/index.js";
 import { createGitHubApp } from "../services/github/app.js";
 import { createServerApp } from "./app.js";
+import { createRedisLimiter } from "./rate-limit.js";
 import { createStreamHub, LIVE_CHANNEL, UPDATES_CHANNEL } from "./stream.js";
 
 export async function serveCommand(args: string[]): Promise<number> {
@@ -27,6 +29,14 @@ export async function serveCommand(args: string[]): Promise<number> {
   const pool = createPool(cfg.postgres.url);
   const db = createDb(pool);
   const queues = createQueues(createQueueConnection(cfg.redis.url));
+  // Auth counters are shared by every API task. A separate connection because
+  // the updates connection below enters subscriber mode and cannot run INCR,
+  // and a bounded retry policy so a Redis outage fails open instead of hanging
+  // every login in the offline queue.
+  const limiterRedis = new Redis(cfg.redis.url, {
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+  });
 
   // The GitHub App (decision #42) — app id + private key are deployment secrets.
   const githubApp =
@@ -79,6 +89,10 @@ export async function serveCommand(args: string[]): Promise<number> {
     skipSignatureVerification: skipVerify,
     ...(githubApp ? { githubApp } : {}),
     authConfig: cfg.auth,
+    authLimiters: {
+      login: createRedisLimiter(limiterRedis, { limit: 10, windowMs: 5 * 60_000 }),
+      signup: createRedisLimiter(limiterRedis, { limit: 5, windowMs: 60 * 60_000 }),
+    },
     publicUrl: cfg.server.publicUrl,
     hub,
     ...(hasDashboard ? { dashboardDir } : {}),
@@ -141,6 +155,7 @@ export async function serveCommand(args: string[]): Promise<number> {
     process.stdout.write("\nsailor serve — shutting down\n");
     server.close();
     updates.disconnect();
+    limiterRedis.disconnect();
     await queues.close().catch(() => undefined);
     await pool.end().catch(() => undefined);
     process.exit(0);

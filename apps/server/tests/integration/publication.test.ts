@@ -23,6 +23,7 @@ import { createPool, createDb, schema, type Db } from "../../src/db/index.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { loadConfig } from "../../src/config.js";
 import { executeRun } from "../../src/services/runs/execute.js";
+import { putSecret } from "../../src/services/secrets/store.js";
 import type { GitHubClient } from "../../src/services/github/client.js";
 import type { GitHubAppService } from "../../src/services/github/app.js";
 import { seedRepo } from "../helpers/github-fixtures.js";
@@ -76,6 +77,7 @@ describe("publication is separate from turn completion", () => {
         source: "github",
         issueNumber: 91,
         installationId: seeded.installationId,
+        userId,
       })
       .returning();
     threadId = thread!.id;
@@ -214,6 +216,52 @@ describe("publication is separate from turn completion", () => {
       ).stdout,
     ).toContain("Clear project documentation");
     expect(comment).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("withholds publication when a stored secret reaches the deliverable or the trace", async () => {
+    process.env.SAILOR_SECRET_KEY ??= Buffer.alloc(32, 7).toString("base64");
+    const secret = "sailor-test-secret-value-1234567890";
+    await putSecret(db, userId, { name: "deploy", envVar: "DEPLOY_TOKEN", value: secret });
+    const outcome = await executeRun({
+      db,
+      runId,
+      sandboxFactory: () => sandbox,
+      githubApp: app,
+      llm: scriptedLLM([
+        {
+          tools: [
+            {
+              name: "bash",
+              arguments: JSON.stringify({
+                command: `printf '%s\n' ${shq(secret)} > leaked.txt`,
+              }),
+            },
+          ],
+        },
+        {
+          tools: [
+            {
+              name: "publish_changes",
+              arguments: JSON.stringify({ summary: "Publish the requested changes" }),
+            },
+          ],
+        },
+        { text: "Publication was withheld because the scan found a stored secret." },
+      ]),
+    });
+    expect(outcome.status).toBe("succeeded");
+    expect(createPr).not.toHaveBeenCalled();
+    // The tool call carried the value; the trace must not.
+    const rows = await db
+      .select()
+      .from(schema.traceEvents)
+      .where(eq(schema.traceEvents.runId, runId));
+    expect(JSON.stringify(rows, (_key, value) => typeof value === "bigint" ? value.toString() : value)).not.toContain(secret);
+    const [thread] = await db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, threadId));
+    expect(thread!.prNumber).toBeNull();
   }, 30_000);
 
   it("publication policy can withhold a push without preventing the agent from answering", async () => {

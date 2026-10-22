@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import type { Db } from "../../db/index.js";
 import type { User } from "../../db/schema.js";
 import { createSession, deleteSession, SESSION_COOKIE } from "../../services/auth/session.js";
-import { hashPassword, normalizeEmail, passwordProblem, verifyPassword } from "../../services/auth/password.js";
+import { emailProblem, hashPassword, normalizeEmail, passwordProblem, verifyPassword } from "../../services/auth/password.js";
 import { createEmailUser, findUserByEmail, publicUser, upsertGithubUser } from "../../services/auth/users.js";
 import { exchangeCodeForToken, fetchGithubIdentity } from "../../services/auth/github-oauth.js";
 import { rateLimit, type Limiter } from "../rate-limit.js";
@@ -54,6 +54,8 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     const email = normalizeEmail(body.email);
     const problem = passwordProblem(body.password);
     if (!email) return c.json({ error: "enter a valid email address" }, 400);
+    const emailIssue = emailProblem(email);
+    if (emailIssue) return c.json({ error: emailIssue }, 400);
     if (problem) return c.json({ error: problem }, 400);
     if (await findUserByEmail(deps.db, email)) return c.json({ error: "that email is already registered" }, 409);
 

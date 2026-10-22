@@ -30,3 +30,60 @@ export function normalizeEmail(email: unknown): string | undefined {
   const normalized = email.trim().toLowerCase();
   return EMAIL_RE.test(normalized) ? normalized : undefined;
 }
+
+/**
+ * Cheap signup heuristics — no SMTP, no DNS, no third-party service.
+ *
+ * This is not ownership verification: it only rejects placeholder and
+ * throwaway domains that are almost certainly not a real account. A real
+ * "click the link" flow needs an email provider; that is deliberately out of
+ * core for now. GitHub sign-in already carries GitHub's verified email.
+ */
+const PLACEHOLDER_DOMAINS = new Set([
+  "example.com",
+  "example.org",
+  "example.net",
+  "example.edu",
+  "localhost",
+  "invalid",
+  "test",
+]);
+
+const DISPOSABLE_DOMAINS = new Set([
+  "10minutemail.com",
+  "dispostable.com",
+  "fakeinbox.com",
+  "getnada.com",
+  "guerrillamail.com",
+  "maildrop.cc",
+  "mailinator.com",
+  "mytemp.email",
+  "sharklasers.com",
+  "spam4.me",
+  "temp-mail.org",
+  "tempmail.com",
+  "throwawaymail.com",
+  "trashmail.com",
+  "yopmail.com",
+]);
+
+export function emailProblem(email: string): string | undefined {
+  const at = email.lastIndexOf("@");
+  if (at <= 0 || at === email.length - 1) return "enter a valid email address";
+  const domain = email.slice(at + 1);
+  if (domain.includes("..") || /^[0-9.]+$/.test(domain))
+    return "enter a valid email address";
+  if (
+    PLACEHOLDER_DOMAINS.has(domain) ||
+    domain.endsWith(".test") ||
+    domain.endsWith(".invalid") ||
+    domain.endsWith(".localhost")
+  )
+    return "use a real email address";
+  if (
+    DISPOSABLE_DOMAINS.has(domain) ||
+    [...DISPOSABLE_DOMAINS].some((d) => domain.endsWith(`.${d}`))
+  )
+    return "use a permanent email address instead of a disposable one";
+  return undefined;
+}

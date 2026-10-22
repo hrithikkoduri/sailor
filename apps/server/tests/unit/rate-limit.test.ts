@@ -2,7 +2,7 @@
  * Auth rate limiting — fixed window per key, bounded memory, Retry-After hints.
  */
 import { describe, expect, it } from "vitest";
-import { createLimiter, clientAddress } from "../../src/http/rate-limit.js";
+import { createLimiter, createRedisLimiter, clientAddress } from "../../src/http/rate-limit.js";
 
 describe("createLimiter", () => {
   it("allows up to the limit, then refuses until the window rolls over", () => {
@@ -50,6 +50,31 @@ describe("createLimiter", () => {
     // The newest key is tracked; old ones may have been evicted, never grown
     // without limit. Sampling the most recent key proves the map still works.
     expect(limiter.check("ip-24999").allowed).toBe(false);
+  });
+});
+
+describe("createRedisLimiter", () => {
+  it("uses the shared counter and reports the window's remaining seconds", async () => {
+    let count = 0;
+    const redis = {
+      async eval(_script: string, _keys: number, _key: string | number, _window: string | number) {
+        count += 1;
+        return [count, 1_200];
+      },
+    };
+    const limiter = createRedisLimiter(redis, { limit: 2, windowMs: 5_000 });
+
+    expect(await limiter.check("login:1.2.3.4")).toEqual({ allowed: true, retryAfterSecs: 0 });
+    expect(await limiter.check("login:1.2.3.4")).toEqual({ allowed: true, retryAfterSecs: 0 });
+    expect(await limiter.check("login:1.2.3.4")).toEqual({ allowed: false, retryAfterSecs: 2 });
+  });
+
+  it("propagates Redis errors so the middleware can fail open", async () => {
+    const limiter = createRedisLimiter(
+      { async eval() { throw new Error("redis down"); } },
+      { limit: 1, windowMs: 1_000 },
+    );
+    await expect(limiter.check("login:ip")).rejects.toThrow("redis down");
   });
 });
 

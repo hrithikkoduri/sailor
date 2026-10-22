@@ -6,15 +6,16 @@
  * engine records or streams it. Nothing is returned to the model, so the value
  * never enters the conversation, the trace, or a published diff.
  *
- * Honest limit: a shell can transform a value (`base64`, hashing, splitting),
- * so this cannot make exfiltration impossible — it makes accidental exposure
- * (echo, stack traces, `env`) safe, which is the common case. The real boundary
- * is the account-level allowlist and the approval implied by adding the secret
- * in Settings.
+ * The run executor also registers every stored value with a `SecretRedactor`
+ * that wraps all tools and trace sinks, so a later `cat` of a file the secret
+ * was written to is scrubbed too. Honest limit: a shell can transform a value
+ * (`base64`, hashing, splitting), so this cannot make exfiltration impossible;
+ * it makes accidental exposure (echo, stack traces, `env`) safe.
  */
 import { defineTool, type Sandbox } from "anchor-ai-sdk";
 import type { Db } from "../../../db/index.js";
 import { getSecretValue, secretCatalog } from "../../secrets/store.js";
+import type { SecretRedactor } from "../../secrets/redactor.js";
 
 const REDACTED = "[REDACTED]";
 
@@ -29,6 +30,7 @@ export function secretTools(args: {
   threadId: string;
   userId: string | null;
   sandbox: Sandbox;
+  redactor?: SecretRedactor;
 }) {
   return [
     defineTool(
@@ -80,6 +82,9 @@ export function secretTools(args: {
           };
         }
 
+        // Register before the command runs: any output the shell produces is
+        // then covered by the global tool/trace wrapper, not just this result.
+        args.redactor?.add(found.value);
         const timeoutSecs = Math.min(
           3600,
           Math.max(5, Number(input.timeout_secs) || 600),

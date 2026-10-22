@@ -31,9 +31,6 @@
   "files": [
     "dist"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
     "node": ">=20"
   },
@@ -45,5 +42,6 @@
   "dependencies": {
     "zod": "^3.25.76"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "private": true
 }

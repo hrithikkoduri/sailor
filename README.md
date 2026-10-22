@@ -40,11 +40,11 @@ consumed from npm.
 | **Threads, not prompts** | Start from a goal or a labeled GitHub issue. Optionally attach a repository; publish when you are ready. |
 | **Isolation by default** | Every run boots a Heyo Firecracker microVM. E2B is supported; the local backend is for development. |
 | **Durable runs** | Postgres is the truth. Leases and heartbeats detect dead workers and resume; checkpoints go to a side branch. |
-| **Evidence-gated delivery** | `publish_changes` refuses to ship unless a green `run_tests` matches the exact tree being delivered. |
+| **Evidence-gated delivery** | `publish_changes` is an explicit, access-checked boundary; an optional policy can require a green `run_tests` on the exact tree being delivered. |
 | **Traces, not guesses** | Each run writes an NDJSON journal with steps, tokens, cost, and duration. The PR links straight to it. |
 | **Questions that pause** | `ask_questions` stops the run and resumes the same conversation and sandbox when you answer. |
 | **GitHub when you want it** | Issues are one entry point, not the definition. CI failures and review comments wake the same thread. |
-| **Secrets stay server-side** | `run_with_secret` decrypts one value for one command and strips it from the observation. |
+| **Secrets stay server-side** | `run_with_secret` decrypts one value for one command; known values are scrubbed from every tool observation, trace, and publication scan. |
 
 ## How it works
 
