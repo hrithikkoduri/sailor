@@ -1,0 +1,64 @@
+# CI gates. Deployment is intentionally not here yet: the first deploy is a
+# reviewed `terraform apply` (see infra/terraform/README.md). Once that exists,
+# add a deploy job keyed on a tag.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test -w apps/server
+      - name: Dashboard build
+        run: npm run build -w apps/dashboard
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sailor
+          POSTGRES_PASSWORD: sailor
+          POSTGRES_DB: sailor_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sailor"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Integration tests
+        env:
+          DATABASE_URL: postgres://sailor:sailor@localhost:5432/sailor_test
+          REDIS_URL: redis://localhost:6379/15
+          SAILOR_SECRET_KEY: ${{ secrets.CI_SECRET_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }}
+          RUN_LIVE_HEYO_TESTS: "0"
+        run: npm run test:integration -w apps/server
