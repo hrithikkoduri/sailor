@@ -26,9 +26,12 @@ export function redactValue(text: string, value: string): string {
   return text.split(value).join(REDACTED);
 }
 
-/** The sandbox's own ceiling; interruption comes from the run signal, not a cap. */
-const DEFAULT_TIMEOUT_SECS = 600;
-const MAX_TIMEOUT_SECS = 3600;
+/**
+ * The sandbox's hard ceiling. This is not a policy timeout: a secret command
+ * runs until it finishes or the run is stopped/interjected. There is no
+ * model-chosen timeout, so the agent can't kill its own command early.
+ */
+const SECRET_COMMAND_CEILING_SECS = 3600;
 
 /** Resolves when the run is cancelled, so a blocked command never holds the run. */
 function untilAborted(signal: AbortSignal): Promise<"aborted"> {
@@ -87,10 +90,6 @@ export function secretTools(args: {
             description: {
               type: "string",
               description: "How to create/fetch the key for ask_user (link or short instructions).",
-            },
-            timeout_secs: {
-              type: "number",
-              description: `Optional use_secret timeout in seconds; default ${DEFAULT_TIMEOUT_SECS}, max ${MAX_TIMEOUT_SECS}.`,
             },
           },
           required: ["mode"],
@@ -183,10 +182,7 @@ export function secretTools(args: {
         }
 
         args.redactor?.add(found.value);
-        const timeoutSecs = Math.min(
-          MAX_TIMEOUT_SECS,
-          Math.max(5, Number(input.timeout_secs) || DEFAULT_TIMEOUT_SECS),
-        );
+        const timeoutSecs = SECRET_COMMAND_CEILING_SECS;
         const execution = args.sandbox.exec(command, {
           timeoutSecs,
           env: { [found.envVar]: found.value },
