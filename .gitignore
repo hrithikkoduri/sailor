@@ -13,3 +13,6 @@ image/.build/
 BUILD_PLAN.md
 PRODUCTION.md
 .tunnel-url
+
+# Local agent/tool config
+opencode.jsonc
