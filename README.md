@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--ALv2-0f1115?style=flat-square" alt="FSL-1.1-ALv2" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0f1115?style=flat-square" alt="Apache-2.0" /></a>
   <a href="https://github.com/hrithikkoduri/anchor-ai-sdk"><img src="https://img.shields.io/badge/runtime-anchor--ai--sdk-0f1115?style=flat-square" alt="runtime: anchor-ai-sdk" /></a>
   <img src="https://img.shields.io/badge/sandbox-Firecracker%20microVMs-0f1115?style=flat-square" alt="Firecracker microVMs" />
   <img src="https://img.shields.io/badge/status-early%20alpha-0f1115?style=flat-square" alt="early alpha" />
@@ -146,6 +146,6 @@ evidence gates are exercised by the package's conformance and evaluation suites.
 
 ## License
 
-Sailor core is **FSL-1.1-ALv2** ([Functional Source License](LICENSE)): use,
-modify, and self-host it for anything except offering a competing commercial
-product. Each version converts to Apache 2.0 two years after release.
+Sailor core is **Apache 2.0** ([LICENSE](LICENSE)): use, modify, and distribute
+it for any purpose, including commercial, with an explicit patent grant and no
+copyleft. The hosted layer lives in `sailor-cloud`.

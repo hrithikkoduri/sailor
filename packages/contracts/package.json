@@ -23,5 +23,5 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit"
   },
-  "license": "FSL-1.1-ALv2"
+  "license": "Apache-2.0"
 }
