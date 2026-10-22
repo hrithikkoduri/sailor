@@ -33,14 +33,7 @@ export function SettingsPage() {
     void load();
   }, [load]);
   return (
-    <AppShell
-      topbar={
-        <span className="text-sm text-muted-foreground">
-          Workspace <span className="mx-2 text-input">/</span>{" "}
-          <span className="text-foreground">Settings</span>
-        </span>
-      }
-    >
+    <AppShell>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-5 py-9 md:px-10 md:py-12">
           <header className="mb-10">

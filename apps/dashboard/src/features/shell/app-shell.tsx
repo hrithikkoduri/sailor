@@ -78,25 +78,28 @@ export function AppShell({
         className="border-r border-border"
       >
         <SidebarHeader className="px-3 pt-4 pb-4 group-data-[collapsible=icon]:px-2">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                size="lg"
-                asChild
-                className="h-11 hover:bg-transparent"
-              >
-                <NavLink to="/" aria-label="Sailor home">
-                  <Logo size={32} />
-                  <span
-                    data-sidebar-label
-                    className="text-base font-semibold tracking-[-.04em]"
-                  >
-                    sailor<span className="text-muted-foreground">.</span>
-                  </span>
-                </NavLink>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <div className="flex items-center gap-2">
+            <SidebarMenu className="min-w-0 flex-1">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="lg"
+                  asChild
+                  className="h-11 hover:bg-transparent"
+                >
+                  <NavLink to="/" aria-label="Sailor home">
+                    <Logo size={32} />
+                    <span
+                      data-sidebar-label
+                      className="text-base font-semibold tracking-[-.04em]"
+                    >
+                      sailor<span className="text-muted-foreground">.</span>
+                    </span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+            <SidebarTrigger className="shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup className="px-3 group-data-[collapsible=icon]:px-2">
@@ -164,6 +167,16 @@ export function AppShell({
           </div>
         </SidebarContent>
         <SidebarFooter className="border-t border-border p-3 group-data-[collapsible=icon]:p-2">
+          {/* Expanding from the collapsed icon state needs a visible,
+              keyboard-reachable control; the edge rail alone is mouse-only. */}
+          <SidebarMenu className="mb-2 group-data-[collapsible=icon]:mb-1">
+            <SidebarMenuItem>
+              <SidebarTrigger
+                title="Expand sidebar"
+                className="mx-auto hidden size-8 text-muted-foreground group-data-[collapsible=icon]:flex"
+              />
+            </SidebarMenuItem>
+          </SidebarMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
@@ -238,9 +251,12 @@ export function AppShell({
       </Sidebar>
       <SidebarInset className="min-w-0 overflow-hidden bg-background">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 md:px-6">
-          <SidebarTrigger className="size-8 text-muted-foreground" />
-          <div className="h-4 w-px bg-border" />
-          <div className={cn("flex min-w-0 items-center gap-2", customThreadHeader ? "flex-1" : "shrink-0")}>{topbar}</div>
+          {/* Desktop collapses from the sidebar rail; this is the mobile-only
+              way to open the off-canvas sidebar. */}
+          <SidebarTrigger className="size-8 text-muted-foreground sm:hidden" />
+          {topbar !== undefined && (
+            <div className={cn("flex min-w-0 items-center gap-2", customThreadHeader ? "flex-1" : "shrink-0")}>{topbar}</div>
+          )}
           {!customThreadHeader && <ThreadDock />}
           {debug && (
             <Button

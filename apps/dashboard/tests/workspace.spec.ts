@@ -33,10 +33,7 @@ test("thread list: search, filter, accessible navigation and theme persistence",
   await expect(page.getByText("No matching threads")).toBeVisible();
   await page.getByRole("tab", { name: /All threads/ }).click();
   await page.screenshot({ path: info.outputPath("threads-light.png") });
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Toggle Sidebar" })
-    .click();
+  await page.locator('[data-slot="sidebar-header"] [data-slot="sidebar-trigger"]').click();
   await expect(
     page.locator('[data-slot="sidebar"][data-state="collapsed"]'),
   ).toBeVisible();
@@ -51,10 +48,9 @@ test("thread list: search, filter, accessible navigation and theme persistence",
     rail!.x + rail!.width,
   );
   await page.screenshot({ path: info.outputPath("threads-collapsed.png") });
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Toggle Sidebar" })
-    .click();
+  // The header trigger collapses; the footer trigger is the keyboard-reachable
+  // expand control on the sidebar.
+  await page.locator('[data-slot="sidebar-footer"] [data-slot="sidebar-trigger"]').click();
   // Audit the settled expanded state, not a label mid-opacity transition.
   await expect(page.locator('[data-slot="sidebar-group-label"]')).toHaveCSS(
     "opacity",
@@ -353,7 +349,7 @@ test("mobile and reduced motion: no horizontal overflow, navigation works", asyn
   await expect(
     page.getByRole("heading", { name: "Entire thread" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await page.locator('main [data-slot="sidebar-trigger"]').click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Workspace settings" }),
