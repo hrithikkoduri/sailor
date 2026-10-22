@@ -8,5 +8,7 @@ export default defineConfig({
     // App tests share the database and the queues; parallel files would race
     // on unique keys and interfere with each other's sweeps.
     fileParallelism: false,
+    // Keeps test jobs off the dev stack's Redis database (see tests/setup.ts).
+    setupFiles: ["tests/setup.ts"],
   },
 });
