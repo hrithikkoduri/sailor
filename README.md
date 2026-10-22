@@ -118,8 +118,43 @@ Then pick a way in:
 - **One run, by hand** — `npm run sailor -- run <repo> <issue>`: the same
   engine, no webhooks. Add `--verbose` to stream the model, `--keep` to keep
   the sandbox for debugging.
-- **Individually** — `npm run serve -w apps/server`,
-  `npm run worker:watch -w apps/server`, `npm run dev -w apps/dashboard`.
+- **Individually** — `npm run serve`, `npm run worker`,
+  `npm run dev -w apps/dashboard`.
+
+## Commands
+
+First run, in order:
+
+```bash
+npm ci                     # install exactly what the lockfile pins
+cp .env.example .env       # fill LLM_API_KEY, HEYO_TOKEN (or use --local), GITHUB_APP_*
+docker compose up -d       # Postgres, Redis, LocalStack
+npm run migrate            # apply the schema
+npm run dev                # compose check + migrate + serve + worker + dashboard
+```
+
+Then, by task:
+
+| Task | Command |
+|---|---|
+| Everything locally (serve + worker + dashboard) | `npm run dev` |
+| HTTP server only | `npm run serve` |
+| Queue worker only | `npm run worker` |
+| Dashboard only | `npm run dev -w apps/dashboard` |
+| Check env, services, sandbox | `npm run doctor` |
+| Apply migrations | `npm run migrate` |
+| Generate a migration after editing `db/schema.ts` | `npm run db:generate` |
+| Typecheck both workspaces | `npm run typecheck` |
+| Build (typecheck + dashboard bundle) | `npm run build` |
+| Unit / integration / UI tests | `npm test`, `npm run test:integration`, `npm run test:ui` |
+| CLI directly (one run, no webhooks) | `npm run sailor -- run <repo> <issue>` |
+
+`npm run db:generate` writes a new SQL file under `apps/server/drizzle/`;
+`npm run migrate` applies whatever is pending and is safe to re-run.
+
+Deployment is not a core command: building the image, pushing it, and running
+the migrate task against a hosted database belong to `sailor-cloud`. The
+container commands below are the core equivalents (`migrate` + `serve`/`worker`).
 
 ## Run as a container
 

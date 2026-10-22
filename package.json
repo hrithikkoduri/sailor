@@ -2,7 +2,7 @@
   "name": "sailor",
   "version": "0.1.0",
   "private": true,
-  "description": "Sailor \u2014 an engineering workspace for conversations, repository work, and explicit PR delivery with a full agent trace. Built on Anchor (anchor-ai-sdk).",
+  "description": "Sailor — an engineering workspace for conversations, repository work, and explicit PR delivery with a full agent trace. Built on Anchor (anchor-ai-sdk).",
   "type": "module",
   "workspaces": [
     "apps/*",
@@ -13,9 +13,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:integration": "npm run test:integration -w apps/server --",
+    "test:ui": "npm run test:ui -w apps/dashboard --",
     "dev": "node scripts/dev.mjs",
     "sailor": "npm run cli -w apps/server --",
     "doctor": "npm run doctor -w apps/server --",
+    "serve": "npm run serve -w apps/server",
+    "worker": "npm run worker:watch -w apps/server",
+    "db:generate": "npm run db:generate -w apps/server",
     "migrate": "npm run migrate -w apps/server --",
     "secrets:local": "node scripts/seed-local-secrets.mjs"
   },
