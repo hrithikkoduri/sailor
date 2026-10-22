@@ -4,6 +4,8 @@ import { FolderGit2, Loader2, Repeat } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/animate-ui/components/radix/dialog";
 import { Button } from "@/elements/button";
 import { getGate } from "@/features/repos/api";
+import { enabledRepositoryNames } from "@/features/repos/enabled";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/elements/select";
 import {
   attachThreadRepository,
   repositoryLabel,
@@ -32,8 +34,7 @@ export function ThreadRepositoryControl({ thread, active, blocked, queued, repos
     if (!open) return;
     let alive = true;
     setError("");
-    getGate().then((data) => { if (alive) setRepos(data.installations.filter((i) => !i.suspended)
-      .flatMap((i) => i.repos.filter((r) => r.enabled).map((r) => r.fullName))); })
+    getGate().then((data) => { if (alive) setRepos(enabledRepositoryNames(data.installations)); })
       .catch(() => { if (alive) setError("Couldn't load repositories. Check Settings and try again."); });
     return () => { alive = false; };
   }, [open]);
@@ -106,11 +107,14 @@ export function ThreadRepositoryControl({ thread, active, blocked, queued, repos
           </DialogHeader>
           <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="space-y-4">
             <label className="block text-sm font-medium" htmlFor="thread-repository">Repository</label>
-            <select id="thread-repository" required value={repo} onChange={(event) => setRepo(event.target.value)} disabled={busy}
-              className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm">
-              <option value="">Choose an enabled repository…</option>
-              {repos.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
+            <Select required value={repo} onValueChange={setRepo} disabled={busy}>
+              <SelectTrigger id="thread-repository" className="h-11 text-sm">
+                <SelectValue placeholder="Choose an enabled repository…" />
+              </SelectTrigger>
+              <SelectContent>
+                {repos.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">Missing a repository? <Link to="/settings" className="underline underline-offset-4">Enable it in Settings</Link>.</p>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <div className="flex justify-end">

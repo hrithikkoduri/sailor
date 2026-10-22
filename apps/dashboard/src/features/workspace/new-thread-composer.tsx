@@ -2,9 +2,20 @@ import { useEffect, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowUp, FolderGit2, Loader2 } from "lucide-react";
 import { createThread } from "@/features/threads/api";
-import { getGate, type GateInstallation } from "@/features/repos/api";
+import { getGate } from "@/features/repos/api";
+import { enabledRepositoryNames } from "@/features/repos/enabled";
 import { Button } from "@/elements/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/elements/select";
 import { ApiError } from "@/utils/api-client";
+import { insertAtSelection } from "@/utils/text";
+
+const NO_REPO = "__no_repository__";
 
 export function NewThreadComposer() {
   const navigate = useNavigate();
@@ -19,8 +30,7 @@ export function NewThreadComposer() {
   useEffect(() => {
     let alive = true;
     getGate().then((data) => {
-      if (alive) setRepos([...new Set(data.installations.filter((i: GateInstallation) => !i.suspended)
-        .flatMap((i) => i.repos.filter((r) => r.enabled).map((r) => r.fullName)))].sort());
+      if (alive) setRepos(enabledRepositoryNames(data.installations));
     }).catch((err) => {
       if (err instanceof ApiError && err.status === 401) navigate("/login");
       else if (alive) setRepoError("Repositories couldn't be loaded. You can still start without one.");
@@ -41,10 +51,16 @@ export function NewThreadComposer() {
       // Insert at the caret explicitly, replacing any selection.
       event.preventDefault();
       const textarea = event.currentTarget;
-      const { selectionStart: start, selectionEnd: end, value } = textarea;
-      if (value.length - (end - start) >= 8000) return;
-      setText(value.slice(0, start) + "\n" + value.slice(end));
-      requestAnimationFrame(() => textarea.setSelectionRange(start + 1, start + 1));
+      const next = insertAtSelection(
+        textarea.value,
+        textarea.selectionStart,
+        textarea.selectionEnd,
+        "\n",
+        8000,
+      );
+      if (!next) return;
+      setText(next.value);
+      requestAnimationFrame(() => textarea.setSelectionRange(next.caret, next.caret));
       return;
     }
     if (event.shiftKey || event.altKey) return;
@@ -61,12 +77,19 @@ export function NewThreadComposer() {
       className="block min-h-36 w-full resize-y rounded-t-2xl bg-transparent p-5 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none md:p-6" />
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 md:px-5">
       <div className="flex min-w-0 items-center gap-2"><FolderGit2 aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <label htmlFor="new-thread-repo" className="sr-only">Repository (optional)</label>
-        <select id="new-thread-repo" value={repo} onChange={(e) => setRepo(e.target.value)} disabled={busy || loading}
-          className="h-10 max-w-64 rounded-lg border border-border bg-background px-3 text-xs outline-none">
-          <option value="">{loading ? "Loading repositories…" : "No repository attached"}</option>
-          {repos.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+        <Select
+          value={repo || NO_REPO}
+          onValueChange={(value) => setRepo(value === NO_REPO ? "" : value)}
+          disabled={busy || loading}
+        >
+          <SelectTrigger id="new-thread-repo" aria-label="Repository (optional)" className="max-w-64">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_REPO}>{loading ? "Loading repositories…" : "No repository attached"}</SelectItem>
+            {repos.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
       <Button type="submit" disabled={busy || !text.trim()} className="h-10 rounded-lg">
         {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />} {busy ? "Starting…" : "Start thread"}

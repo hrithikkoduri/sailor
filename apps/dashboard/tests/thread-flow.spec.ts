@@ -98,7 +98,8 @@ test("a repository can be attached from an existing thread's composer", async ({
   await page.goto("/threads/thread-1");
   await page.getByRole("button", { name: "Attach repository", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Attach a repository" });
-  await dialog.getByLabel("Repository", { exact: true }).selectOption("acme/worker-service");
+  await dialog.getByRole("combobox", { name: "Repository" }).click();
+  await page.getByRole("option", { name: "acme/worker-service" }).click();
   await dialog.getByRole("button", { name: "Attach and continue" }).click();
   expect(selected).toBe("acme/worker-service");
   await expect(page.getByRole("button", { name: "Repository attachment queued" })).toBeDisabled();
@@ -141,7 +142,8 @@ test("a repo-backed thread can change repository explicitly", async ({ page }) =
   // The consequence is stated before the switch happens.
   await expect(dialog).toContainText("starts a fresh workspace");
   await expect(dialog).toContainText("stays there");
-  await dialog.getByLabel("Repository").selectOption("acme/worker-service");
+  await dialog.getByRole("combobox", { name: "Repository" }).click();
+  await page.getByRole("option", { name: "acme/worker-service" }).click();
   await dialog.getByRole("button", { name: "Switch and continue" }).click();
   expect(switched).toBe("acme/worker-service");
 });

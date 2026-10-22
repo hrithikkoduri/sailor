@@ -62,7 +62,8 @@ test("home creates a thread with an explicit repository and exposes all sections
   for (const name of ["Home", "Threads", "Issues", "Pull requests", "Traces", "Settings"])
     await expect(page.getByRole("link", { name, exact: true }).first()).toBeVisible();
   await page.getByLabel("What would you like to work on?").fill("Fix the checkout validation");
-  await page.getByLabel("Repository (optional)").selectOption("acme/worker-service");
+  await page.getByRole("combobox", { name: "Repository (optional)" }).click();
+  await page.getByRole("option", { name: "acme/worker-service" }).click();
   await page.screenshot({ path: info.outputPath("home-light.png") });
   expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
   await page.getByRole("button", { name: "Start thread", exact: true }).click();
