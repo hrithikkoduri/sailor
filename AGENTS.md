@@ -114,7 +114,6 @@ npm test -w apps/server      # unit
 npm run test:integration -w apps/server
 npm run test:ui -w apps/dashboard
 npm run build                # typecheck + contracts + server + dashboard
-npm run secrets:local        # seed LocalStack (Secrets Manager) for local dev
 ```
 
 Gates before any commit: `npm run typecheck`, unit + integration for the server,

@@ -247,7 +247,6 @@ export function assertProductionEnv(env: NodeJS.ProcessEnv = process.env): void 
   required("SAILOR_SECRET_KEY", (v) => Buffer.from(v, "base64").length === 32, "32 bytes, base64 — encrypts account secrets");
   if (env.SAILOR_SANDBOX === "heyo") required("HEYO_TOKEN");
   if (env.SAILOR_SANDBOX === "e2b") required("E2B_API_KEY");
-  if (env.SAILOR_SANDBOX === "daytona") required("DAYTONA_API_KEY");
   if (problems.length)
     throw new Error(
       "Refusing to start in production:\n  - " + problems.join("\n  - "),

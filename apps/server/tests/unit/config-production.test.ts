@@ -34,7 +34,6 @@ describe("production config", () => {
 
   it("requires the credential for the selected sandbox backend", () => {
     expect(() => assertProductionEnv({ ...good, SAILOR_SANDBOX: "heyo" })).toThrow(/HEYO_TOKEN/);
-    expect(() => assertProductionEnv({ ...good, SAILOR_SANDBOX: "daytona" })).toThrow(/DAYTONA_API_KEY/);
   });
 
   it("stays permissive outside production", () => {

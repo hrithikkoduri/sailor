@@ -5,7 +5,6 @@ Public documentation lives here.
 | Document | What it covers |
 |---|---|
 | [`github-app.md`](./github-app.md) | Creating and configuring the GitHub App |
-| [`daytona.md`](./daytona.md) | Daytona backend: status and activation checklist |
 | [`../AGENTS.md`](../AGENTS.md) | Repository map, layering rule, invariants, conventions |
 | [`../DECISIONS.md`](../DECISIONS.md) | Architecture decisions with rationale |
 | [`../ROADMAP.md`](../ROADMAP.md) | Deferred work and its triggers |

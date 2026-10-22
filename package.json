@@ -21,7 +21,6 @@
     "worker": "npm run worker:watch -w apps/server",
     "db:generate": "npm run db:generate -w apps/server",
     "migrate": "npm run migrate -w apps/server --",
-    "secrets:local": "node scripts/seed-local-secrets.mjs",
     "build:contracts": "npm run build -w packages/contracts",
     "prebuild": "npm run build:contracts",
     "pretypecheck": "npm run build:contracts",
