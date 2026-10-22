@@ -1,14 +1,9 @@
 import { Hono } from "hono";
 import type { ApiDeps } from "../context.js";
-import {
-  answerQuestions,
-  attachRepository,
-  createThreadFromMessage,
-  deleteThread,
-  isFailure,
-  renameThread,
-  switchRepository,
-} from "../../services/threads/commands.js";
+import { answerQuestions } from "../../services/threads/answers.js";
+import { createThreadFromMessage, deleteThread, renameThread } from "../../services/threads/create.js";
+import { attachRepository, switchRepository } from "../../services/threads/repository.js";
+import { isFailure } from "../../services/threads/result.js";
 import { deleteSecret, listSecrets, putSecret } from "../../services/secrets/store.js";
 import { listTraces } from "../../services/trace/queries.js";
 import { secretCreate } from "@sailor/contracts";

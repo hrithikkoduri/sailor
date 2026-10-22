@@ -5,7 +5,8 @@
  */
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { isFailure, postChatMessage } from "../../services/threads/commands.js";
+import { postChatMessage } from "../../services/threads/messages.js";
+import { isFailure } from "../../services/threads/result.js";
 import {
   threadDetailData,
   threadListData,

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { schema, type Db } from "../../db/index.js";
 import type { Queues } from "../../queue/index.js";
-import type { Notifier } from "./commands.js";
+import type { Notifier } from "./result.js";
 import { requestCancel } from "../runs/lease.js";
 import { drainInbox, latestActiveRun } from "./inbox.js";
 
