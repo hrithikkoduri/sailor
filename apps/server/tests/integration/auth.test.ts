@@ -11,6 +11,7 @@ import { createQueueConnection, createQueues, type Queues } from "../../src/queu
 import { createServerApp } from "../../src/http/app.js";
 import { createLimiter } from "../../src/http/rate-limit.js";
 import { loadConfig } from "../../src/config.js";
+import { hashToken } from "../../src/services/auth/session.js";
 
 const SECRET = "test-webhook-secret";
 
@@ -26,7 +27,7 @@ describe("auth flows", () => {
   let queues: Queues;
   let app: ReturnType<typeof createServerApp>;
   let bypassApp: ReturnType<typeof createServerApp>;
-  const emails: string[] = ["alice@test.dev", "bob@test.dev"];
+  const emails: string[] = ["alice@test.dev", "bob@test.dev", "expired@test.dev"];
   const githubIds: number[] = [4242];
 
   const fakeOauthFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -115,6 +116,31 @@ describe("auth flows", () => {
     const logout = await postJson(app, "/auth/logout", {}, cookie);
     expect(logout.status).toBe(200);
     expect((await app.request("/auth/me", { headers: { cookie } })).status).toBe(401);
+  });
+
+  it("deletes this user's expired session rows on successful login", async () => {
+    const signup = await postJson(app, "/auth/signup", {
+      email: "expired@test.dev",
+      password: "hunter2hunter2",
+    });
+    expect(signup.status).toBe(201);
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.email, "expired@test.dev"));
+    await db.insert(schema.sessions).values({
+      tokenHash: hashToken("expired-token"),
+      userId: user!.id,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+
+    const login = await postJson(app, "/auth/login", {
+      email: "expired@test.dev",
+      password: "hunter2hunter2",
+    });
+    expect(login.status).toBe(200);
+    const [expired] = await db
+      .select()
+      .from(schema.sessions)
+      .where(eq(schema.sessions.tokenHash, hashToken("expired-token")));
+    expect(expired).toBeUndefined();
   });
 
   it("GitHub sign-in: authorize → callback → linked user → onboarding redirect", async () => {

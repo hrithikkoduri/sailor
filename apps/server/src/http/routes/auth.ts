@@ -7,7 +7,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { randomBytes } from "node:crypto";
 import type { Db } from "../../db/index.js";
 import type { User } from "../../db/schema.js";
-import { createSession, deleteSession, SESSION_COOKIE } from "../../services/auth/session.js";
+import { createSession, deleteExpiredSessions, deleteSession, SESSION_COOKIE } from "../../services/auth/session.js";
 import { emailProblem, hashPassword, normalizeEmail, passwordProblem, verifyPassword } from "../../services/auth/password.js";
 import { createEmailUser, findUserByEmail, publicUser, upsertGithubUser } from "../../services/auth/users.js";
 import { exchangeCodeForToken, fetchGithubIdentity } from "../../services/auth/github-oauth.js";
@@ -74,6 +74,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     if (!user?.passwordHash || !(await verifyPassword(user.passwordHash, String(body.password ?? "")))) {
       return c.json({ error: "invalid email or password" }, 401);
     }
+    await deleteExpiredSessions(deps.db, user.id);
     const session = await createSession(deps.db, user.id, deps.config.sessionTtlDays);
     setSession(c, session.token, session.expiresAt);
     deps.log?.(`auth: login ${email}`);
@@ -124,6 +125,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       });
       const identity = await fetchGithubIdentity(token, oauth.fetchFn);
       const user = await upsertGithubUser(deps.db, identity);
+      await deleteExpiredSessions(deps.db, user.id);
       const session = await createSession(deps.db, user.id, deps.config.sessionTtlDays);
       setSession(c, session.token, session.expiresAt);
       deps.log?.(`auth: github sign-in ${identity.login} (user ${user.id})`);

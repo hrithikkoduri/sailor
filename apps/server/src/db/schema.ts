@@ -56,18 +56,23 @@ export const users = pgTable("users", {
     .defaultNow(),
 });
 
-export const sessions = pgTable("sessions", {
-  id: uuidPk(),
-  /** sha256 of the cookie token — the raw token is NEVER stored. */
-  tokenHash: text("token_hash").notNull().unique(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuidPk(),
+    /** sha256 of the cookie token — the raw token is NEVER stored. */
+    tokenHash: text("token_hash").notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  // Login opportunistically deletes this user's expired rows; keep that cheap.
+  (t) => [index("sessions_user_expiry_idx").on(t.userId, t.expiresAt)],
+);
 
 // --- GitHub App installations (decision #42) ------------------------------------
 

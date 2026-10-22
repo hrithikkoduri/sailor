@@ -6,7 +6,7 @@
  * lookup; logout deletes the row.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { schema, type Db } from "../../db/index.js";
 
 export const SESSION_COOKIE = "sailor_session";
@@ -40,4 +40,11 @@ export async function sessionUser(db: Db, token: string | undefined) {
 
 export async function deleteSession(db: Db, token: string): Promise<void> {
   await db.delete(schema.sessions).where(eq(schema.sessions.tokenHash, hashToken(token)));
+}
+
+/** Hygiene on successful login; expired rows already fail lookup. */
+export async function deleteExpiredSessions(db: Db, userId: string): Promise<void> {
+  await db
+    .delete(schema.sessions)
+    .where(and(eq(schema.sessions.userId, userId), lt(schema.sessions.expiresAt, new Date())));
 }
