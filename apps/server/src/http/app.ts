@@ -32,7 +32,7 @@ import { createWebhookRoutes } from "./routes/webhooks.js";
 import type { ServerDeps } from "./server-deps.js";
 
 export type { ServerDeps } from "./server-deps.js";
-export { renderIssueTask } from "../services/github/webhook.js";
+export { renderIssueTask } from "../services/github/issue.js";
 
 export function createServerApp(deps: ServerDeps): Hono {
   const app = new Hono();
