@@ -190,6 +190,13 @@ The dashboard is served at `/` with SPA fallback; `/api`, `/auth`,
   and the [evaluation results](https://github.com/hrithikkoduri/anchor-ai-sdk/tree/main/evals/benchmarks/swe-bench/results)
   (equal resolution vs mini-swe-agent on SWE-bench Lite at ~⅓ the cost).
 
+## License
+
+Sailor core is **FSL-1.1-ALv2** ([Functional Source License](./LICENSE)): use,
+modify, and self-host it for anything except offering a competing commercial
+product, and each version converts to Apache 2.0 two years after release. The
+hosted/paid layer lives in `sailor-cloud`.
+
 ## Status
 
 Early, and honest about it: the whole pipeline runs end-to-end on
