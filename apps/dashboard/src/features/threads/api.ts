@@ -1,10 +1,11 @@
 /** Threads surface: the list, one thread's detail, and its small actions. */
 import { api } from "@/utils/api-client";
 import type { RunConversation } from "@/features/chat/types";
+import type { RunStatus, ThreadSource, ThreadState } from "@sailor/contracts";
 
 export interface RunSummary {
   id: string;
-  status: string;
+  status: RunStatus;
   trigger: string;
   /** Which agent took the turn: "coding" (phase machine) or "chat". */
   agent: string;
@@ -28,8 +29,8 @@ export interface ThreadSummary {
   title?: string | null;
   repo: string;
   issueNumber: number;
-  state: string;
-  source: string;
+  state: ThreadState;
+  source: ThreadSource;
   prNumber: number | null;
   prUrl: string | null;
   headRef: string | null;

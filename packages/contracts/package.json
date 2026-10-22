@@ -1,0 +1,17 @@
+{
+  "name": "@sailor/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared API contracts for Sailor: zod schemas and their inferred types.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
+}

@@ -4,18 +4,12 @@ import { Button } from "@/elements/button";
 import { IconButton } from "@/elements/icon-button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/animate-ui/components/radix/dialog";
 import { api } from "@/utils/api-client";
+import type { SecretMetadata as SecretMeta } from "@sailor/contracts";
 
-interface SecretMeta {
-  id: string;
-  name: string;
-  envVar: string;
-  createdAt: string;
-  updatedAt: string;
-  lastUsedAt: string | null;
-}
-
-const when = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "never";
+const when = (value: string | Date | null) =>
+  value
+    ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "never";
 
 /**
  * Secrets are write-only: the list shows metadata, never a value, and there is
