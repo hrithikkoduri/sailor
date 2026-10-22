@@ -114,6 +114,35 @@ test("questions survive refresh, submit one form, and render read-only after ans
   expect(errors).toEqual([]);
 });
 
+test("a secret question stores the value without putting it in the answer", async ({ page }) => {
+  await mockWorkspace(page);
+  let stored: Record<string, unknown> = {};
+  let answerBody: unknown;
+  await page.route("**/api/secrets", async (route) => {
+    stored = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({ status: 201, json: { secret: { id: "s1", name: "daytona", envVar: "DAYTONA_API_KEY" } } });
+  });
+  await page.route("**/api/questions/q1/answers", (route) => {
+    answerBody = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, runId: "next-run" } });
+  });
+  await page.route("**/api/threads/thread-1", (route) => route.fulfill({ json: {
+    ...detail, thread: { ...detail.thread, source: "workspace", title: "Daytona wiring", repo: "workspace:thread-1" },
+    runs: [{ ...detail.runs[0], status: "paused" }],
+    questions: [{ id: "q1", title: "A key is needed", status: "pending", answers: null, createdAt: new Date().toISOString(),
+      questions: [{ id: "secret", label: "Add the daytona secret", type: "secret", required: true,
+        secretName: "daytona", secretEnvVar: "DAYTONA_API_KEY", description: "Create a key at daytona.io." }] }],
+  } }));
+  await page.goto("/threads/thread-1");
+  const form = page.getByRole("form", { name: "A key is needed" });
+  await expect(form).toContainText("Create a key at daytona.io.");
+  await form.getByLabel("Add the daytona secret").fill("sk-live-never-in-the-answer");
+  await form.getByRole("button", { name: "Submit answers" }).click();
+  await expect(form).toContainText("Answers sent");
+  expect(stored).toEqual({ name: "daytona", envVar: "DAYTONA_API_KEY", value: "sk-live-never-in-the-answer" });
+  expect(JSON.stringify(answerBody)).toBe(JSON.stringify({ answers: { secret: "daytona" } }));
+});
+
 test("a question collapses to a slim bar above the composer and reopens", async ({ page }) => {
   await mockWorkspace(page);
   const questions = [

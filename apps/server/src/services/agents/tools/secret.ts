@@ -1,20 +1,21 @@
 /**
- * `run_with_secret` — how an agent uses an account secret.
+ * `secrets` — the one account-secret tool.
  *
- * The value is read server-side for exactly one command, injected into that
- * command's environment, and then scrubbed from the observation before the
- * engine records or streams it. Nothing is returned to the model, so the value
- * never enters the conversation, the trace, or a published diff.
+ * Modes:
+ *   list_secret  → names and env vars only, never values.
+ *   use_secret   → read one value server-side, inject it into one command,
+ *                  and scrub the observation. The model never sees the value.
+ *   ask_user     → pause the run and open a secure form in chat. The form
+ *                  posts the value directly to /api/secrets; the answer that
+ *                  resumes the run is only the secret's name.
  *
- * The run executor also registers every stored value with a `SecretRedactor`
- * that wraps all tools and trace sinks, so a later `cat` of a file the secret
- * was written to is scrubbed too. Honest limit: a shell can transform a value
- * (`base64`, hashing, splitting), so this cannot make exfiltration impossible;
- * it makes accidental exposure (echo, stack traces, `env`) safe.
+ * Never ask the user to paste a secret into chat or a repository file. The
+ * form is the only write path.
  */
 import { defineTool, type Sandbox } from "anchor-ai-sdk";
-import type { Db } from "../../../db/index.js";
+import { schema, type Db } from "../../../db/index.js";
 import { getSecretValue, secretCatalog } from "../../secrets/store.js";
+import { parseQuestions } from "../../threads/questions.js";
 import type { SecretRedactor } from "../../secrets/redactor.js";
 
 const REDACTED = "[REDACTED]";
@@ -25,82 +26,161 @@ export function redactValue(text: string, value: string): string {
   return text.split(value).join(REDACTED);
 }
 
+function envVarFor(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64) || "SECRET";
+}
+
 export function secretTools(args: {
   db: Db;
   threadId: string;
   userId: string | null;
   sandbox: Sandbox;
   redactor?: SecretRedactor;
+  /** Pause this run and surface the form; the engine aborts at the tool boundary. */
+  onQuestions?: (requestId: string) => void;
+  notify?: () => void;
 }) {
   return [
     defineTool(
       {
-        name: "run_with_secret",
+        name: "secrets",
         description:
-          "Run one shell command with a stored account secret injected as an environment variable. Use this instead of asking the user to paste a key. The secret's value is never shown to you: reference it by name and use the env var the secret declares. If the secret does not exist, ask the user to add it in Settings → Secrets (by name), then continue.",
+          "Account secrets, one tool with three modes. list_secret returns existing names/env vars (never values). use_secret runs one shell command with one stored value injected as its env var; the value is never shown to you. ask_user opens a secure form in chat when no existing secret matches; the user stores the value directly and the run pauses. Never ask the user to paste a secret into chat, a file, or a note.",
         parameters: {
           type: "object",
           properties: {
+            mode: {
+              type: "string",
+              enum: ["list_secret", "use_secret", "ask_user"],
+              description: "Which secret operation to perform.",
+            },
             secret: {
               type: "string",
-              description: "The secret's name as shown in Settings, e.g. daytona",
+              description: "Secret name as shown in Settings, e.g. daytona (use_secret/ask_user).",
             },
             command: {
               type: "string",
-              description:
-                "Shell command run in the workspace. Reference the value through its environment variable.",
+              description: "Shell command for use_secret; reference the value through its env var.",
+            },
+            env_var: {
+              type: "string",
+              description: "Environment variable for ask_user, e.g. DAYTONA_API_KEY. Derived from the name when omitted.",
+            },
+            title: {
+              type: "string",
+              description: "Short form title for ask_user.",
+            },
+            description: {
+              type: "string",
+              description: "How to create/fetch the key for ask_user (link or short instructions).",
             },
             timeout_secs: {
               type: "number",
-              description: "Optional timeout; defaults to 600.",
+              description: "Optional use_secret timeout; defaults to 600.",
             },
           },
-          required: ["secret", "command"],
+          required: ["mode"],
           additionalProperties: false,
         },
       },
       async (input) => {
-        const name = typeof input.secret === "string" ? input.secret.trim() : "";
-        const command = typeof input.command === "string" ? input.command : "";
-        if (!name || !command.trim())
-          return { ok: false, content: "Both a secret name and a command are required." };
+        const mode = typeof input.mode === "string" ? input.mode : "";
         if (!args.userId)
           return {
             ok: false,
             content: "Secrets belong to an account; this thread has no owner to draw them from.",
           };
 
+        if (mode === "list_secret") {
+          const catalog = await secretCatalog(args.db, args.userId);
+          return {
+            ok: true,
+            content: catalog.length
+              ? JSON.stringify(catalog)
+              : "No secrets are configured for this account.",
+            meta: { count: catalog.length },
+          };
+        }
+
+        const name = typeof input.secret === "string" ? input.secret.trim() : "";
+        if (!name) return { ok: false, content: "A secret name is required." };
+
+        if (mode === "ask_user") {
+          const catalog = await secretCatalog(args.db, args.userId);
+          if (catalog.some((secret) => secret.name === name))
+            return {
+              ok: true,
+              content: `Secret "${name}" already exists. Use mode use_secret with that name.`,
+            };
+
+          const envVar = typeof input.env_var === "string" && input.env_var.trim()
+            ? input.env_var.trim()
+            : envVarFor(name);
+          const title = typeof input.title === "string" && input.title.trim()
+            ? input.title.trim().slice(0, 200)
+            : `Secret needed: ${name}`;
+          const description = typeof input.description === "string"
+            ? input.description.trim().slice(0, 1000)
+            : "";
+          let question;
+          try {
+            [question] = parseQuestions([{
+              id: "secret",
+              type: "secret",
+              label: `Add the ${name} secret`,
+              ...(description ? { description } : {}),
+              secretName: name,
+              secretEnvVar: envVar,
+              required: true,
+            }]);
+          } catch (err) {
+            return { ok: false, content: err instanceof Error ? err.message : "Invalid secret request." };
+          }
+
+          const [request] = await args.db
+            .insert(schema.questionRequests)
+            .values({ threadId: args.threadId, title, questions: [question!] })
+            .returning();
+          args.onQuestions?.(request!.id);
+          args.notify?.();
+          return {
+            ok: true,
+            content: "Secret form sent. Work is paused until the user stores it.",
+            meta: { requestId: request!.id, secret: name, envVar },
+          };
+        }
+
+        if (mode !== "use_secret")
+          return { ok: false, content: `Unknown mode "${mode}". Use list_secret, use_secret, or ask_user.` };
+
+        const command = typeof input.command === "string" ? input.command : "";
+        if (!command.trim())
+          return { ok: false, content: "A command is required for use_secret." };
+
         const found = await getSecretValue(args.db, args.userId, name);
         if (!found) {
           const available = (await secretCatalog(args.db, args.userId)).map((s) => s.name);
           return {
             ok: false,
-            content:
-              available.length
-                ? `No secret named "${name}". Available: ${available.join(", ")}. Pick one of those, or ask the user to add "${name}" in Settings → Secrets.`
-                : `No secrets are configured. Ask the user to add one in Settings → Secrets (name "${name}"), then retry. Never ask for the value in chat.`,
+            content: available.length
+              ? `No secret named "${name}". Available: ${available.join(", ")}. Pick one, or use mode ask_user to request "${name}".`
+              : `No secrets are configured. Use mode ask_user to request "${name}", then retry. Never ask for the value in chat.`,
           };
         }
 
-        // Register before the command runs: any output the shell produces is
-        // then covered by the global tool/trace wrapper, not just this result.
         args.redactor?.add(found.value);
-        const timeoutSecs = Math.min(
-          3600,
-          Math.max(5, Number(input.timeout_secs) || 600),
-        );
+        const timeoutSecs = Math.min(3600, Math.max(5, Number(input.timeout_secs) || 600));
         const result = await args.sandbox.exec(command, {
           timeoutSecs,
           env: { [found.envVar]: found.value },
         });
         return {
           ok: result.exitCode === 0,
-          // The observation is what the engine persists and streams — scrub it.
           content: redactValue(result.output, found.value).slice(0, 8000),
           meta: { exitCode: result.exitCode, secret: name },
         };
       },
-      { verb: "Running a command with a stored secret" },
+      { verb: "Using an account secret" },
     ),
   ];
 }

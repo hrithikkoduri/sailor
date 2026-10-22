@@ -1,7 +1,8 @@
 /** Threads surface: the list, one thread's detail, and its small actions. */
 import { api } from "@/utils/api-client";
 import type { RunConversation } from "@/features/chat/types";
-import type { RunStatus, ThreadSource, ThreadState } from "@sailor/contracts";
+import type { QuestionRequest, RunStatus, ThreadSource, ThreadState } from "@sailor/contracts";
+export type { QuestionRequest };
 
 export interface RunSummary {
   id: string;
@@ -77,17 +78,6 @@ export interface ThreadDetail {
   events: ThreadEventRow[];
   pendingEvents: PendingEvent[];
   questions?: QuestionRequest[];
-}
-
-export interface QuestionRequest {
-  id: string;
-  title: string;
-  status: string;
-  questions: Array<{ id: string; label: string; description?: string; required: boolean;
-    type: "text" | "single_select" | "multi_select" | "repository";
-    options?: Array<{ value: string; label: string }>; recommended?: string }>;
-  answers: Record<string, string | string[]> | null;
-  createdAt: string;
 }
 
 export const createThread = (text: string, repo?: string) =>

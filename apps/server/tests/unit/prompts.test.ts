@@ -10,6 +10,14 @@ describe("Sailor interaction contract", () => {
     expect(prompt).toContain("act on clear requests without reassurance");
   });
 
+  it("checks existing secret names before asking for a duplicate", () => {
+    const prompt = buildSailorPrompt("{}");
+    expect(prompt).toContain("availableSecrets");
+    expect(prompt).toContain("A secret request must use the \"secrets\" tool, never ask_questions");
+    expect(prompt).toContain("mode ask_user");
+    expect(prompt).toContain("never values");
+  });
+
   it("describes issue-free PR delivery and same-run repository attachment", () => {
     const prompt = buildSailorPrompt("{}");
     expect(prompt).toContain("A GitHub issue is not required");

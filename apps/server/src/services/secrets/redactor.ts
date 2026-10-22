@@ -10,7 +10,7 @@
  * Honest limit: a shell can transform a value (`base64`, hashing, splitting).
  * We register the literal, base64, and URL-encoded forms — the cheap accidents
  * — but cannot make deliberate exfiltration impossible. The real boundary is
- * that a secret is only injected for one approved `run_with_secret` call.
+ * that a secret is only injected for one approved `secrets use_secret` call.
  */
 import type { Tool, ToolResult, TraceSink, TracedEvent } from "anchor-ai-sdk";
 

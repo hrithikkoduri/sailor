@@ -82,7 +82,7 @@ export const threadRename = z.object({
 
 // --- questions ---------------------------------------------------------------
 
-export const questionType = z.enum(["text", "single_select", "multi_select", "repository"]);
+export const questionType = z.enum(["text", "single_select", "multi_select", "repository", "secret"]);
 export const questionOption = z.object({ value: z.string(), label: z.string() });
 
 export const question = z.object({
@@ -93,6 +93,9 @@ export const question = z.object({
   options: z.array(questionOption).optional(),
   required: z.boolean(),
   recommended: z.string().optional(),
+  /** type=secret: the name/env var the form should store, never a value. */
+  secretName: z.string().optional(),
+  secretEnvVar: z.string().optional(),
 });
 export type Question = z.infer<typeof question>;
 

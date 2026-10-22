@@ -43,7 +43,7 @@ export function questionTools(args: {
   return [
     defineTool({
       name: "ask_questions",
-      description: "Use this tool whenever you have a question for the user or need their decision, clarification, permission, or missing information. Never ask questions in a normal chat response. Send one form with up to 8 questions, then pause immediately until answers arrive. Clear tasks should proceed without unnecessary questions. A repository question must use enabled repository full names as values.",
+      description: "Use this tool whenever you have a question for the user or need their decision, clarification, permission, or missing information. Never ask questions in a normal chat response. Send one form with up to 8 questions, then pause immediately until answers arrive. Clear tasks should proceed without unnecessary questions. A repository question must use enabled repository full names as values. Never use this tool to request a secret value or tell the user to add one in Settings; use the secrets tool with mode ask_user instead.",
       parameters: { type: "object", properties: {
         title: { type: "string" },
         questions: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", properties: {

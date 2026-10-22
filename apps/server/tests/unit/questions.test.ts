@@ -19,6 +19,17 @@ describe("structured questions", () => {
     expect(() => validateAnswers(questions, { repo: "acme/web", behavior: "yes", extra: "bad" })).toThrow(/Unknown/);
     expect(() => validateAnswers(questions, { repo: [], behavior: "yes" })).toThrow(/Invalid answer type/);
   });
+  it("supports a secret question without accepting a value through the answer", () => {
+    const [secret] = parseQuestions([{
+      id: "secret", type: "secret", label: "Add the Daytona key",
+      secretName: "daytona", secretEnvVar: "DAYTONA_API_KEY",
+    }]);
+    expect(secret).toMatchObject({ secretName: "daytona", secretEnvVar: "DAYTONA_API_KEY" });
+    expect(validateAnswers([secret!], { secret: "daytona" })).toEqual({ secret: "daytona" });
+    expect(() => parseQuestions([{ id: "bad", type: "secret", label: "Bad", secretName: "Daytona", secretEnvVar: "KEY" }])).toThrow(/secretName/);
+    expect(() => parseQuestions([{ id: "bad", type: "secret", label: "Bad", secretName: "daytona", secretEnvVar: "bad" }])).toThrow(/secretEnvVar/);
+  });
+
   it("rejects duplicate identifiers, invalid types and duplicate repository questions", () => {
     expect(() => parseQuestions([])).toThrow();
     expect(() => parseQuestions([form[0], form[0]])).toThrow(/unique/);

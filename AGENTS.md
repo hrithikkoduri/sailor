@@ -195,7 +195,7 @@ Gates before any commit: `npm run typecheck`, unit + integration for the server,
 1. **Postgres is the truth.** Streams are nudges; the client refetches. Never
    treat a websocket/SSE delivery as state.
 2. **Secrets never enter the sandbox.** Account secrets are decrypted server-side
-   for a single approved operation (`run_with_secret`) and the value is
+   for a single approved operation (`secrets use_secret`) and the value is
    stripped from observations. A secret must never appear in a prompt,
    the thread store, `trace_events`, a PR, or `.anchor/notes.md`.
 3. **Git credentials are scoped per thread.** `tokenFor(installationId, [repo])`

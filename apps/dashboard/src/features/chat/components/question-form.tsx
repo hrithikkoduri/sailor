@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronUp, HelpCircle, Loader2, PenLine } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronUp, HelpCircle, KeyRound, Loader2, PenLine } from "lucide-react";
 import { answerQuestions, type QuestionRequest } from "@/features/threads/api";
+import { api } from "@/utils/api-client";
 import { Button } from "@/elements/button";
 import { IconButton } from "@/elements/icon-button";
 import { useThreadTabs } from "@/features/thread-tabs/thread-tabs-provider";
@@ -26,6 +27,9 @@ export function QuestionForm({
 }) {
   const { getFormDraft, saveFormDraft } = useThreadTabs();
   const [answers, setAnswers] = useState<Answers>(() => request.answers ?? getFormDraft(request.id) ?? {});
+  // Secret values stay outside `answers`: they are never drafted, sent to the
+  // agent, or persisted in the question/answer row.
+  const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   // Which choice questions are answering with free text ("Something else").
   const [other, setOther] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -61,7 +65,21 @@ export function QuestionForm({
     setBusy(true);
     setError("");
     try {
+      for (const q of questions.filter((question) => question.type === "secret")) {
+        const value = secretValues[q.id]?.trim();
+        if (value) {
+          if (!q.secretName || !q.secretEnvVar) throw new Error("This secret form is missing its name or env var.");
+          await api("/api/secrets", {
+            method: "POST",
+            body: JSON.stringify({ name: q.secretName, envVar: q.secretEnvVar, value }),
+          });
+        }
+        // Empty means "already stored in Settings"; the server verifies it.
+        if (!q.secretName) throw new Error("This secret form is missing its name.");
+        payload[q.id] = q.secretName;
+      }
       await answerQuestions(request.id, payload);
+      setSecretValues({});
       setSubmitted(true);
       onAnswered();
     } catch (err) {
@@ -78,6 +96,35 @@ export function QuestionForm({
     const selectedText = typeof answers[q.id] === "string" ? (answers[q.id] as string) : "";
     const selectedList = Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : [];
     const isPreset = q.options?.some((o) => o.value === selectedText);
+    if (q.type === "secret")
+      return (
+        <>
+          <label htmlFor={id} className="flex items-center gap-2 text-sm font-medium">
+            <KeyRound className="size-3.5 text-muted-foreground" />
+            {q.label}
+          </label>
+          {q.description && (
+            <p id={`${id}-hint`} className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {q.description}
+            </p>
+          )}
+          <input
+            id={id}
+            type="password"
+            autoComplete="new-password"
+            maxLength={8192}
+            aria-describedby={`${id}-hint`}
+            value={secretValues[q.id] ?? ""}
+            onChange={(event) => setSecretValues((values) => ({ ...values, [q.id]: event.target.value }))}
+            placeholder={q.secretEnvVar ? `Value for ${q.secretEnvVar}` : "Secret value"}
+            className="mt-3 block h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
+          />
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            Stored encrypted and write-only. Sailor never sees this value; it can only use it through one command.
+            Leave blank if you already added it in Settings → Secrets.
+          </p>
+        </>
+      );
     if (q.type === "text")
       return (
         <>

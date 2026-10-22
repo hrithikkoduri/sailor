@@ -4,10 +4,13 @@ export interface Question {
   id: string;
   label: string;
   description?: string;
-  type: "text" | "single_select" | "multi_select" | "repository";
+  type: "text" | "single_select" | "multi_select" | "repository" | "secret";
   options?: QuestionOption[];
   required: boolean;
   recommended?: string;
+  /** type=secret: name/env var the form stores; the answer is the name only. */
+  secretName?: string;
+  secretEnvVar?: string;
 }
 export function parseQuestions(value: unknown): Question[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 8)
@@ -21,10 +24,10 @@ export function parseQuestions(value: unknown): Question[] {
     ids.add(q.id);
     if (typeof q.label !== "string" || !q.label.trim() || q.label.length > 300)
       throw new Error("Each question needs a label (300 characters max).");
-    if (!["text", "single_select", "multi_select", "repository"].includes(String(q.type)))
+    if (!["text", "single_select", "multi_select", "repository", "secret"].includes(String(q.type)))
       throw new Error("Unsupported question type.");
     let options: QuestionOption[] | undefined;
-    if (q.type !== "text") {
+    if (q.type !== "text" && q.type !== "secret") {
       if (!Array.isArray(q.options) || q.options.length < 1 || q.options.length > 30)
         throw new Error("Choice questions need 1 to 30 options.");
       options = q.options.map((o: unknown) => {
@@ -39,12 +42,25 @@ export function parseQuestions(value: unknown): Question[] {
     }
     if (q.type === "repository" && ids.has("__repository")) throw new Error("Ask for only one repository.");
     if (q.type === "repository") ids.add("__repository");
+    let secretName: string | undefined;
+    let secretEnvVar: string | undefined;
+    if (q.type === "secret") {
+      if (typeof q.secretName !== "string" || !/^[a-z][a-z0-9_-]{0,39}$/.test(q.secretName))
+        throw new Error("Secret questions need a lowercase secretName.");
+      if (typeof q.secretEnvVar !== "string" || !/^[A-Z][A-Z0-9_]{0,63}$/.test(q.secretEnvVar))
+        throw new Error("Secret questions need an uppercase secretEnvVar.");
+      secretName = q.secretName;
+      secretEnvVar = q.secretEnvVar;
+      if (options) throw new Error("Secret questions do not take options.");
+    }
     return {
       id: q.id, label: q.label.trim(), type: q.type as Question["type"], required: q.required !== false,
       ...(typeof q.description === "string" ? { description: q.description.slice(0, 1000) } : {}),
       ...(options ? { options } : {}),
       ...(typeof q.recommended === "string" && options?.some((o) => o.value === q.recommended)
         ? { recommended: q.recommended } : {}),
+      ...(secretName ? { secretName } : {}),
+      ...(secretEnvVar ? { secretEnvVar } : {}),
     };
   });
 }

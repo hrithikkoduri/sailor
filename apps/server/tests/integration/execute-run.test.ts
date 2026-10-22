@@ -59,7 +59,7 @@ describe("executeRun", () => {
     expect(outcome.status, recorded?.error ?? JSON.stringify(outcome)).toBe("succeeded");
     expect(outcome.summary).toContain("fixed negatives");
     // Secrets are usable by the agent, alongside the coding toolbox.
-    expect(llm.seen[0]!.tools?.map((tool) => tool.function.name)).toContain("run_with_secret");
+    expect(llm.seen[0]!.tools?.map((tool) => tool.function.name)).toContain("secrets");
 
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     expect(run!.status).toBe("succeeded");

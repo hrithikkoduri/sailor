@@ -36,7 +36,7 @@ import { redactEvent } from "anchor-ai-sdk";
 import { attachRepository, questionTools } from "../agents/tools/questions.js";
 import { secretTools } from "../agents/tools/secret.js";
 import { SecretRedactor } from "../secrets/redactor.js";
-import { secretValues } from "../secrets/store.js";
+import { secretCatalog, secretValues } from "../secrets/store.js";
 import { enabledRepositories } from "../threads/repositories.js";
 import { repoEnabled } from "../github/installations.js";
 import {
@@ -516,6 +516,11 @@ export async function executeRun(
     }
     const availableRepos = thread.source === "workspace"
       ? await enabledRepositories(db, thread.userId) : [];
+    // Names and env vars only — never values. This lets the agent use an
+    // existing secret under the right name instead of asking the user to
+    // create a duplicate.
+    const availableSecrets = thread.userId
+      ? await secretCatalog(db, thread.userId) : [];
     const initial =
       thread.source === "github"
         ? await sandbox.exec("git rev-parse --verify HEAD", { timeoutSecs: 60 })
@@ -537,11 +542,20 @@ export async function executeRun(
           availablePublication: ["github", "manual"].includes(thread.source) && !!deps.githubApp,
           publicationAfterRepositoryAttachment: thread.source === "workspace" && !!deps.githubApp,
           availableRepositories: availableRepos.map((r) => ({ repository: r.fullName, defaultBranch: r.defaultBranch })),
+          availableSecrets,
         },
         null,
         2,
       ),
-      [...secretTools({ db, threadId: thread.id, userId: thread.userId, sandbox, redactor }),
+      [...secretTools({
+        db,
+        threadId: thread.id,
+        userId: thread.userId,
+        sandbox,
+        redactor,
+        onQuestions: (id) => { questionRequestId = id; controller.abort("waiting_for_answers"); },
+        notify: () => deps.notify?.(thread.id),
+      }),
        ...questionTools({ db, threadId: thread.id, userId: thread.userId, sandbox,
         hasRepository: thread.source !== "workspace",
         ...(deps.githubApp
@@ -575,7 +589,7 @@ export async function executeRun(
     );
     // Every tool result passes through the redactor before it becomes a model
     // observation or a trace event. This covers built-in bash/read_file as
-    // well as Sailor's product tools; `run_with_secret` additionally registers
+    // well as Sailor's product tools; `secrets use_secret` additionally registers
     // the value as soon as it is read.
     const redactedAgent = { ...agent, tools: agent.tools.map((tool) => redactor.wrap(tool)) };
     const requestedPhase = deps.startPhase ?? run.startPhase;

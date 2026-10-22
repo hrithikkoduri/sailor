@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { schema, type Db } from "../../db/index.js";
 import { RUN_JOB_OPTIONS, type Queues } from "../../queue/index.js";
 import { enabledRepositories } from "./repositories.js";
+import { listSecrets } from "../secrets/store.js";
 import { validateAnswers, type Question } from "./questions.js";
 import { CLOSED_STATES, type Notifier, type ServiceFailure } from "./result.js";
 
@@ -37,6 +38,18 @@ export async function answerQuestions(
     : undefined;
   if (selected && (!repo || thread.source !== "workspace"))
     return { error: "Repository is no longer available, or one is already attached.", status: 409 };
+
+  // A secret answer is the name only. Re-check that the value was actually
+  // stored for this user; the answer path never carries the value itself.
+  const secretQuestions = questions.filter((q) => q.type === "secret");
+  if (secretQuestions.length) {
+    const stored = new Set((await listSecrets(deps.db, actor.userId)).map((s) => s.name));
+    for (const q of secretQuestions) {
+      const answer = answers[q.id];
+      if (typeof answer !== "string" || answer !== q.secretName || !stored.has(answer))
+        return { error: `Secret "${q.secretName ?? q.label}" is not stored yet.`, status: 400 };
+    }
+  }
 
   const task = "Answers to your questions:\n\n" + questions.map((q) =>
     `${q.label}\n${Array.isArray(answers[q.id]) ? (answers[q.id] as string[]).join(", ") : answers[q.id] || "(not provided)"}`,
