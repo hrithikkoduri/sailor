@@ -4,6 +4,8 @@
  * Writes Postgres + the queue only: a labeled issue becomes a thread and a
  * queued run; the worker (separate process, same DB) executes it.
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { serve } from "@hono/node-server";
 import { loadConfig } from "../config.js";
 import { createDb, createPool } from "../db/index.js";
@@ -62,6 +64,13 @@ export async function serveCommand(args: string[]): Promise<number> {
     }
   });
 
+  // The image bakes the dashboard next to the server; `npm run dev` does not,
+  // so the directory is optional and the check keeps dev from serving stale UI.
+  const dashboardDir =
+    process.env.SAILOR_DASHBOARD_DIST ??
+    path.resolve(import.meta.dirname, "../../../dashboard/dist");
+  const hasDashboard = existsSync(path.join(dashboardDir, "index.html"));
+
   const app = createServerApp({
     db,
     queues,
@@ -72,6 +81,20 @@ export async function serveCommand(args: string[]): Promise<number> {
     authConfig: cfg.auth,
     publicUrl: cfg.server.publicUrl,
     hub,
+    ...(hasDashboard ? { dashboardDir } : {}),
+    readyz: async () => {
+      let database = false;
+      let redis = false;
+      try {
+        await pool.query("select 1");
+        database = true;
+      } catch { /* reported below */ }
+      try {
+        await updates.ping();
+        redis = true;
+      } catch { /* reported below */ }
+      return { ok: database && redis, checks: { database, redis } };
+    },
     oauth: {
       ...(cfg.github.appSlug ? { slug: cfg.github.appSlug } : {}),
       ...(cfg.github.clientId ? { clientId: cfg.github.clientId } : {}),
@@ -87,8 +110,12 @@ export async function serveCommand(args: string[]): Promise<number> {
     `  webhook  POST http://localhost:${cfg.server.port}/webhooks/github\n`,
   );
   process.stdout.write(
-    `  health   GET  http://localhost:${cfg.server.port}/healthz\n`,
+    `  health   GET  http://localhost:${cfg.server.port}/healthz  (ready: /readyz)\n`,
   );
+  if (hasDashboard)
+    process.stdout.write(
+      `  ui       GET  http://localhost:${cfg.server.port}/  (${dashboardDir})\n`,
+    );
   process.stdout.write(
     `  api      GET  http://localhost:${cfg.server.port}/api/threads (SSE: /api/threads/:id/stream)\n`,
   );

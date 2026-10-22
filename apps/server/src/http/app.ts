@@ -13,8 +13,10 @@
  *
  * The server only writes Postgres + the queue — the worker executes runs.
  */
+import path from "node:path";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
+import { serveStatic } from "@hono/node-server/serve-static";
 import {
   createAuthRoutes,
   type AuthConfig,
@@ -91,7 +93,31 @@ export function createServerApp(deps: ServerDeps): Hono {
 
   app.get("/healthz", (c) => c.json({ ok: true, service: "sailor" }));
 
+  // Readiness is dependency-aware: the process being up says nothing about
+  // Postgres or Redis. Orchestrators gate traffic on this, not /healthz.
+  app.get("/readyz", async (c) => {
+    const result = deps.readyz ? await deps.readyz() : { ok: true, checks: {} };
+    return c.json(result, result.ok ? 200 : 503);
+  });
+
   app.route("/", createWebhookRoutes({ ...deps, log }));
+
+  // The same origin serves the built dashboard. Backend prefixes always win;
+  // everything else tries a real file, then falls back to index.html so the
+  // SPA's client-side routes survive a refresh.
+  if (deps.dashboardDir) {
+    const root = deps.dashboardDir;
+    const isBackend = (p: string) =>
+      p === "/api" || p.startsWith("/api/") ||
+      p === "/auth" || p.startsWith("/auth/") ||
+      p === "/webhooks" || p.startsWith("/webhooks/") ||
+      p === "/setup" || p.startsWith("/setup/") ||
+      p === "/healthz" || p === "/readyz";
+    app.use("*", async (c, next) =>
+      isBackend(c.req.path) ? next() : serveStatic({ root })(c, next));
+    app.get("*", async (c, next) =>
+      isBackend(c.req.path) ? next() : serveStatic({ path: path.join(root, "index.html") })(c, next));
+  }
 
   return app;
 }

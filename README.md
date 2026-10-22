@@ -121,6 +121,30 @@ Then pick a way in:
 - **Individually** — `npm run serve -w apps/server`,
   `npm run worker:watch -w apps/server`, `npm run dev -w apps/dashboard`.
 
+## Run as a container
+
+One image, two commands. It bakes the dashboard and serves it from the same
+origin as the API.
+
+```bash
+docker build -t sailor .
+docker run --rm -p 8787:8787 --env-file .env sailor            # serve
+docker run --rm --env-file .env sailor worker                  # queue consumer
+docker run --rm --env-file .env sailor migrate                 # schema, one-off
+```
+
+`GET /healthz` says the process is up; `GET /readyz` checks Postgres and Redis
+and returns 503 until both answer. In the container both services reach a
+host-side Postgres/Redis through `host.docker.internal`:
+
+```bash
+DATABASE_URL=postgres://sailor:sailor@host.docker.internal:5432/sailor
+REDIS_URL=redis://host.docker.internal:6379
+```
+
+The dashboard is served at `/` with SPA fallback; `/api`, `/auth`,
+`/webhooks`, `/healthz`, and `/readyz` always take precedence.
+
 ## Docs
 
 - [`DECISIONS.md`](DECISIONS.md) — the decision log, classified

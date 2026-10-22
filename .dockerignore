@@ -1,0 +1,15 @@
+.git
+.github
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+**/traces
+**/.anchor
+**/.env
+**/.env.*
+.env
+PRODUCTION.md
+docs
+fixtures
+infra

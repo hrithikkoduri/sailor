@@ -30,6 +30,10 @@ export interface ServerDeps {
   };
   /** Live-update fanout (step 17b): SSE clients get "thread changed" nudges. */
   hub?: StreamHub;
+  /** Built dashboard to serve from the same origin (production image). */
+  dashboardDir?: string;
+  /** Dependency probe for /readyz; omitted means "trust the process". */
+  readyz?: () => Promise<{ ok: boolean; checks: Record<string, boolean> }>;
   /** Override the per-IP auth limiters (tests, or a Redis-backed limiter). */
   authLimiters?: { login?: Limiter; signup?: Limiter };
 }
