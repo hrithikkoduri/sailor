@@ -112,15 +112,19 @@ export async function handleGithubWebhook(
       return reply({ ignored: true, reason: "repo not enabled" }, 202);
     }
 
-    // --- the door (step 12): labeled agent:fix → thread → run --------------
-    if (
-      eventName === "issues" &&
-      (payload as LabeledEvent).action === "labeled"
-    ) {
+    // --- the door (step 12): agent:fix → thread → run ---------------------
+    // `labeled` covers adding it later; `opened`/`reopened` covers creating
+    // the issue with the label already attached (GitHub sends one event, not
+    // an extra `labeled` delivery, in that case).
+    if (eventName === "issues") {
       const event = payload as LabeledEvent;
-      if (event.label?.name === AGENT_FIX_LABEL) {
-        return handleIssueLabeled(deps, event, deliveryId, log);
-      }
+      const labels = event.issue?.labels ?? [];
+      const hasFix = labels.some((label) =>
+        (typeof label === "string" ? label : label.name) === AGENT_FIX_LABEL);
+      const triggered =
+        (event.action === "labeled" && event.label?.name === AGENT_FIX_LABEL) ||
+        (["opened", "reopened"].includes(event.action ?? "") && hasFix);
+      if (triggered) return handleIssueLabeled(deps, event, deliveryId, log);
     }
 
     // --- step 13: the PR lifecycle ------------------------------------------

@@ -133,6 +133,29 @@ describe("webhook door", () => {
     expect(run!.task).toContain(`https://github.com/${repo}/issues/7`);
   });
 
+  it("an issue created WITH agent:fix opens a thread too", async () => {
+    const repo = newRepo("opened");
+    const installationId = await seed(repo);
+    const body = JSON.stringify({
+      action: "opened",
+      issue: {
+        number: 77,
+        title: "created with the label",
+        body: "no separate labeled event",
+        html_url: `https://github.com/${repo}/issues/77`,
+        labels: [{ name: "agent:fix" }],
+      },
+      repository: { full_name: repo, default_branch: "main" },
+      installation: { id: installationId },
+      sender: { login: "octocat", type: "User" },
+    });
+    const res = await post(body, { delivery: nextDelivery() });
+    expect(res.status).toBe(202);
+    const json = (await res.json()) as { threadId: string; runId: string };
+    const [thread] = await db.select().from(schema.threads).where(eq(schema.threads.id, json.threadId));
+    expect(thread).toMatchObject({ repo, issueNumber: 77, state: "queued" });
+  });
+
   it("relabel while a run is active: the event waits in the inbox (wake refused)", async () => {
     const repo = newRepo("busy");
     const installationId = await seed(repo);

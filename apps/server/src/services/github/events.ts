@@ -16,6 +16,8 @@ export interface LabeledEvent {
     title?: string;
     body?: string | null;
     html_url?: string;
+    /** Present on opened/reopened; the issue may be created WITH agent:fix. */
+    labels?: Array<{ name?: string } | string>;
   };
   repository?: { full_name?: string; default_branch?: string };
   sender?: Sender;
