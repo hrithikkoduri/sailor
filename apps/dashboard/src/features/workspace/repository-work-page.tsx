@@ -7,7 +7,7 @@ import { ApiError } from "@/utils/api-client";
 import { StatusPill } from "@/elements/status-pill";
 import { Button } from "@/elements/button";
 import { Input } from "@/components/ui/input";
-import { timeAgo } from "@/utils/format";
+import { plural, timeAgo } from "@/utils/format";
 import { WorkspacePage } from "./workspace-page";
 
 export function RepositoryWorkPage({ kind }: { kind: "issues" | "prs" }) {
@@ -23,9 +23,9 @@ export function RepositoryWorkPage({ kind }: { kind: "issues" | "prs" }) {
   const rows = useMemo(() => (threads ?? []).filter((t) => (prs ? !!t.prUrl : t.source === "github") &&
     `${t.repo} ${threadTitle(t)} ${t.issueNumber} ${t.prNumber}`.toLowerCase().includes(query.toLowerCase())), [threads, query, prs]);
   return <WorkspacePage eyebrow="Connected work" title={prs ? "From fix to feedback." : "Every issue has a thread."}
-    description={prs ? "Pull requests created or tracked by Sailor, with the conversation and evidence behind each change." : "GitHub issues Sailor is working on. Label an enabled repository’s issue agent:fix to bring it here."}
+    description={prs ? "Pull requests created or tracked by Sailor, with the conversation and evidence behind each change." : <>GitHub issues Sailor is working on. Label an enabled repository’s issue <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px]">agent:fix</code> to bring it here.</>}
     action={<Button variant="outline" asChild><Link to="/settings">Manage repositories <ArrowUpRight className="size-3.5" /></Link></Button>}>
-    <div className="mb-4 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{rows.length} tracked {prs ? "pull requests" : "issues"}</p>
+    <div className="mb-4 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{prs ? plural(rows.length, "tracked pull request") : plural(rows.length, "tracked issue")}</p>
       <div className="relative"><Search className="absolute left-3 top-3 size-3.5 text-muted-foreground" /><Input aria-label={prs ? "Search pull requests" : "Search issues"} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search repository or title…" className="h-10 w-64 bg-card pl-9" /></div>
     </div>
     {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}

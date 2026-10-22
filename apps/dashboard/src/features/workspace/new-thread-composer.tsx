@@ -75,7 +75,7 @@ export function NewThreadComposer() {
       onChange={(e) => setText(e.target.value)}
       onKeyDown={keyDown}
       aria-describedby="new-thread-keyboard"
-      className="block min-h-36 w-full resize-y rounded-t-2xl bg-transparent p-5 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none md:p-6" />
+      className="block min-h-36 w-full resize-none rounded-t-2xl bg-transparent p-5 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none md:p-6" />
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 md:px-5">
       <div className="flex min-w-0 items-center gap-2"><FolderGit2 aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <Select
@@ -96,8 +96,10 @@ export function NewThreadComposer() {
         {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />} {busy ? "Starting…" : "Start thread"}
       </Button>
     </div>
-    <p className="px-5 pb-4 text-xs leading-relaxed text-muted-foreground">Attach a repo to start there. Otherwise Sailor can ask which one to use, or work in a fresh sandbox.</p>
-    <p id="new-thread-keyboard" className="px-5 pb-4 text-xs text-muted-foreground">Enter to start · {newlineShortcut} for a new line</p>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 px-5 pb-4 text-xs leading-relaxed text-muted-foreground">
+      <p className="min-w-0 flex-1 truncate">Attach a repository to start there, or let Sailor ask which one to use.</p>
+      <p id="new-thread-keyboard" className="shrink-0">Enter to start · {newlineShortcut} for a new line</p>
+    </div>
     {repoError && <p role="status" className="px-5 pb-4 text-xs text-warning">{repoError}</p>}
     {error && <p role="alert" className="px-5 pb-4 text-sm text-destructive">{error}</p>}
   </form>;

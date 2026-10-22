@@ -26,15 +26,3 @@ export function filterTraces(rows: TraceRow[], status: string, query: string): T
       .includes(needle);
   });
 }
-
-export function durationLabel(startedAt: string | null, finishedAt: string | null): string {
-  if (!startedAt) return "—";
-  const seconds = Math.max(
-    0,
-    Math.round(
-      (new Date(finishedAt ?? Date.now()).getTime() - new Date(startedAt).getTime()) / 1000,
-    ),
-  );
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-}

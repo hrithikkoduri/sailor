@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Inbox, RefreshCw, Search, Plus } from "lucide-react";
+import { Tabs as TabsPrimitive } from "radix-ui";
 import { getThreads, type ThreadListItem } from "@/features/threads/api";
 import { ThreadRow } from "./components/thread-row";
 import { AppShell } from "@/features/shell/app-shell";
@@ -12,7 +13,6 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-  TabsContent,
 } from "@/components/animate-ui/components/radix/tabs";
 import { usePoll } from "@/hooks/use-poll";
 import { ApiError } from "@/utils/api-client";
@@ -106,11 +106,10 @@ export function ThreadsPage() {
                 </IconButton>
               </div>
             </div>
-            <TabsContent
-              value={filter}
-              className="mt-0"
-              transition={{ duration: 0.15 }}
-            >
+            {/* One list, filtered in place. The plain Radix panel keeps the
+                tab/panel ARIA link without the crossfade that overlaps the
+                outgoing rows with the incoming ones for a frame. */}
+            <TabsPrimitive.Content value={filter} className="mt-0">
               {error && (
                 <p role="alert" className="mb-4 text-sm text-destructive">
                   {error}
@@ -159,7 +158,7 @@ export function ThreadsPage() {
                   )}
                 </div>
               )}
-            </TabsContent>
+            </TabsPrimitive.Content>
           </Tabs>
           <p className="mt-5 text-xs text-muted-foreground">
             Updates automatically · Start from a message, a repository, or a GitHub issue.

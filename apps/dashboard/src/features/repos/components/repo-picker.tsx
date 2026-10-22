@@ -4,6 +4,7 @@ import { saveRepos, type GateData } from "../api";
 import { Switch } from "@/components/animate-ui/components/radix/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/elements/button";
+import { plural } from "@/utils/format";
 
 const selectionFrom = (data: GateData) =>
   Object.fromEntries(
@@ -185,7 +186,7 @@ export function RepoPicker({
           ) : dirty ? (
             "You have unsaved changes"
           ) : (
-            `${enabled} repositories enabled`
+            `${plural(enabled, "repository", "repositories")} enabled`
           )}
         </p>
         <div className="flex gap-2">

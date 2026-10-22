@@ -2,8 +2,7 @@ import { Link } from "react-router-dom";
 import { Activity, ArrowUpRight } from "lucide-react";
 import { repositoryLabel, type TraceRow } from "@/features/threads/api";
 import { StatusPill } from "@/elements/status-pill";
-import { timeAgo } from "@/utils/format";
-import { durationLabel } from "../../traces";
+import { duration, timeAgo } from "@/utils/format";
 
 const COLUMNS = ["Run / thread", "Outcome", "Steps", "Tokens", "Cost", "Duration", "Started"];
 
@@ -40,7 +39,7 @@ export function TracesTable({
               <td className="px-4 py-4 font-mono text-xs">{row.steps}</td>
               <td className="px-4 py-4 font-mono text-xs">{(row.tokensIn + row.tokensOut).toLocaleString()}</td>
               <td className="px-4 py-4 font-mono text-xs">${Number(row.usd).toFixed(4)}</td>
-              <td className="px-4 py-4 text-xs text-muted-foreground">{durationLabel(row.startedAt, row.finishedAt)}</td>
+              <td className="px-4 py-4 text-xs text-muted-foreground">{duration(row.startedAt, row.finishedAt)}</td>
               <td className="px-4 py-4 text-xs text-muted-foreground">{timeAgo(row.startedAt ?? row.createdAt)}</td>
             </tr>
           ))}

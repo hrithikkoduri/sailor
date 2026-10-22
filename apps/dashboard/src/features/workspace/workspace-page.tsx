@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/features/shell/app-shell";
 
 export function WorkspacePage({ eyebrow, title, description, action, children }: {
-  eyebrow: string; title: string; description: string; action?: ReactNode; children: ReactNode;
+  eyebrow: string; title: string; description: ReactNode; action?: ReactNode; children: ReactNode;
 }) {
   return <AppShell>
     <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto w-full max-w-6xl px-5 py-8 md:px-10 md:py-12">

@@ -27,3 +27,8 @@ export function shortId(value: string | null | undefined, length = 8): string {
 export const fmtTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 export const fmtUsd = (value: string | number) => `$${Number(value).toFixed(4)}`;
+
+/** "1 repository" / "3 repositories" — counts read as a sentence, not a template. */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
