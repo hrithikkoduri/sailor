@@ -77,8 +77,8 @@ export function AppShell({
         animateOnHover={false}
         className="border-r border-border"
       >
-        <SidebarHeader className="px-3 pt-4 pb-4 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2">
+        <SidebarHeader className="h-12 px-3 py-0 group-data-[collapsible=icon]:px-2">
+          <div className="flex h-full items-center gap-2">
             <SidebarMenu className="min-w-0 flex-1">
               <SidebarMenuItem>
                 <SidebarMenuButton

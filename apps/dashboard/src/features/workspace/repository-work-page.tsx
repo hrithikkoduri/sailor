@@ -22,7 +22,7 @@ export function RepositoryWorkPage({ kind }: { kind: "issues" | "prs" }) {
   usePoll(load, 10000);
   const rows = useMemo(() => (threads ?? []).filter((t) => (prs ? !!t.prUrl : t.source === "github") &&
     `${t.repo} ${threadTitle(t)} ${t.issueNumber} ${t.prNumber}`.toLowerCase().includes(query.toLowerCase())), [threads, query, prs]);
-  return <WorkspacePage section={prs ? "Pull requests" : "Issues"} eyebrow="Connected work" title={prs ? "From fix to feedback." : "Every issue has a thread."}
+  return <WorkspacePage eyebrow="Connected work" title={prs ? "From fix to feedback." : "Every issue has a thread."}
     description={prs ? "Pull requests created or tracked by Sailor, with the conversation and evidence behind each change." : "GitHub issues Sailor is working on. Label an enabled repository’s issue agent:fix to bring it here."}
     action={<Button variant="outline" asChild><Link to="/settings">Manage repositories <ArrowUpRight className="size-3.5" /></Link></Button>}>
     <div className="mb-4 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{rows.length} tracked {prs ? "pull requests" : "issues"}</p>

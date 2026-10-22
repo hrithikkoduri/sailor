@@ -21,7 +21,7 @@ export function HomePage() {
   usePoll(load, 10000);
   const active = threads.filter((t) => ["running", "queued"].includes(t.latestRun?.status ?? "")).length;
   const name = user?.name?.split(" ")[0] ?? user?.login;
-  return <WorkspacePage section="Home" eyebrow="Your engineering companion" title={name ? `What’s next, ${name}?` : "A little less busywork."}
+  return <WorkspacePage eyebrow="Your engineering companion" title={name ? `What’s next, ${name}?` : "A little less busywork."}
     description="A new idea, a stubborn bug, or a question worth exploring. Start a conversation and follow the work here.">
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-10">
       <div><NewThreadComposer /><div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
@@ -47,5 +47,5 @@ export function HomePage() {
 }
 
 export function NewThreadPage() {
-  return <WorkspacePage section="New thread" eyebrow="Start something" title="What are we working on?" description="Give Sailor a clear goal. Attach a repository if you already know where the work belongs."><div className="max-w-3xl"><NewThreadComposer /></div></WorkspacePage>;
+  return <WorkspacePage eyebrow="Start something" title="What are we working on?" description="Give Sailor a clear goal. Attach a repository if you already know where the work belongs."><div className="max-w-3xl"><NewThreadComposer /></div></WorkspacePage>;
 }

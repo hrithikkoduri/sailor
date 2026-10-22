@@ -49,14 +49,7 @@ export function ThreadsPage() {
   );
 
   return (
-    <AppShell
-      topbar={
-        <span className="text-sm text-muted-foreground">
-          Workspace <span className="mx-2 text-input">/</span>{" "}
-          <span className="text-foreground">Threads</span>
-        </span>
-      }
-    >
+    <AppShell>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
           <div className="mb-9 flex flex-wrap items-start justify-between gap-4">

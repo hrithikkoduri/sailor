@@ -21,7 +21,7 @@ export function TracesPage() {
   }, [page, navigate]);
   usePoll(load, 10000);
   const visible = (rows ?? []).filter((r) => (status === "all" || r.status === status) && `${r.title ?? ""} ${r.task ?? ""} ${r.repo} ${r.id}`.toLowerCase().includes(query.toLowerCase()));
-  return <WorkspacePage section="Traces" eyebrow="The evidence, not just the answer" title="See how the work happened." description="A run-by-run view of actions, tokens, timing, and outcomes. Open any trace to inspect the full execution.">
+  return <WorkspacePage eyebrow="The evidence, not just the answer" title="See how the work happened." description="A run-by-run view of actions, tokens, timing, and outcomes. Open any trace to inspect the full execution.">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><label className="flex items-center gap-2 text-xs text-muted-foreground">Outcome
       <select aria-label="Filter traces by outcome" value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-card px-3 text-foreground"><option value="all">All outcomes</option>{["running", "queued", "succeeded", "failed", "paused", "cancelled", "budget_exhausted"].map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}</select></label>
       <div className="relative"><Search className="absolute top-3 left-3 size-3.5 text-muted-foreground" /><Input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search traces on this page" placeholder="Search this page…" className="h-10 w-64 bg-card pl-9" /></div>
