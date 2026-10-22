@@ -298,7 +298,11 @@ export async function executeRun(
   // at ~10/s + activity markers. Fire-and-forget; the trace is the truth.
   const live = (payload: Record<string, unknown>) =>
     deps.live?.(thread.id, { runId: run.id, ...payload });
-  const projectLive = createLiveProjector(live);
+  // Anchor batches live text at a 100ms clock tick. On a token stream that
+  // arrives in bursts, that can look like paragraph-sized updates. A 2x clock
+  // halves the batch to ~50ms without forking the package; the UI still
+  // receives cumulative text, so no frame is lost.
+  const projectLive = createLiveProjector(live, () => Date.now() * 2);
   let liveSequence = 0;
   const events: AgentEvent[] = [];
   // Live usage: the runs row feeds the trace header, the thread rail and any
