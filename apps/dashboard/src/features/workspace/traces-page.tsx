@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { WorkspacePage } from "./workspace-page";
-import { TracesFilters } from "./components/traces/traces-filters";
-import { TracesPagination } from "./components/traces/traces-pagination";
-import { TracesTable } from "./components/traces/traces-table";
+import { TracesFilters } from "./components/traces-view/traces-filters";
+import { TracesPagination } from "./components/traces-view/traces-pagination";
+import { TracesTable } from "./components/traces-view/traces-table";
 import { filterTraces } from "./traces";
 import { useTraces } from "./use-traces";
 
